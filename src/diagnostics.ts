@@ -56,14 +56,109 @@ export async function serveStagingVirtualAudioDiagnostic(
     || !env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN
     || !timingSafeEqual(suppliedToken, env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN)
   ) {
-    return new Response(JSON.stringify({ error: "not_found" }), {
-      status: 404,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store",
-        "x-content-type-options": "nosniff"
-      }
-    });
+    return diagnosticNotFound();
   }
   return serveVirtualMedia(request, env.MEDIA_BUCKET, SYNTHETIC_MIDROLL_MANIFEST);
+}
+
+export function serveStagingVirtualAudioPlayer(
+  env: PodcastEnv
+): Response {
+  if (env.ENVIRONMENT !== "staging") return diagnosticNotFound();
+  const nonce = "dust-wave-virtual-audio-diagnostic";
+  return new Response(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dust Wave virtual-audio diagnostic</title>
+</head>
+<body>
+  <main>
+    <h1>Virtual-audio diagnostic</h1>
+    <p>Synthetic tones only. The staging token is kept in this page's memory.</p>
+    <form id="fixture-form">
+      <label for="fixture-token">Staging token</label>
+      <input id="fixture-token" type="password" required autocomplete="off">
+      <button type="submit">Load and play fixture</button>
+    </form>
+    <audio id="fixture-audio" controls preload="metadata"></audio>
+    <button id="seek" type="button" disabled>Seek to 7 seconds</button>
+    <button id="pause" type="button" disabled>Pause</button>
+    <output id="status" aria-live="polite">Waiting for a token.</output>
+  </main>
+  <script nonce="${nonce}">
+    const form = document.querySelector("#fixture-form");
+    const token = document.querySelector("#fixture-token");
+    const audio = document.querySelector("#fixture-audio");
+    const seek = document.querySelector("#seek");
+    const pause = document.querySelector("#pause");
+    const status = document.querySelector("#status");
+    const report = (event) => {
+      const duration = Number.isFinite(audio.duration)
+        ? audio.duration.toFixed(3)
+        : "unknown";
+      status.textContent =
+        event + " | duration=" + duration
+        + " | current=" + audio.currentTime.toFixed(3)
+        + " | ready=" + audio.readyState
+        + " | network=" + audio.networkState;
+    };
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const supplied = token.value;
+      token.value = "";
+      audio.src =
+        "/v1/diagnostics/virtual-audio/" + encodeURIComponent(supplied);
+      audio.load();
+      report("loading");
+      try {
+        await audio.play();
+        report("playing");
+      } catch {
+        report("play-blocked");
+      }
+    });
+    audio.addEventListener("loadedmetadata", () => {
+      seek.disabled = false;
+      pause.disabled = false;
+      report("loadedmetadata");
+    });
+    audio.addEventListener("canplay", () => report("canplay"));
+    audio.addEventListener("playing", () => report("playing"));
+    audio.addEventListener("seeked", () => report("seeked"));
+    audio.addEventListener("error", () => report("error"));
+    seek.addEventListener("click", () => {
+      audio.currentTime = 7;
+      void audio.play();
+      report("seeking");
+    });
+    pause.addEventListener("click", () => {
+      audio.pause();
+      report("paused");
+    });
+  </script>
+</body>
+</html>`, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "content-security-policy":
+        `default-src 'none'; media-src 'self'; script-src 'nonce-${nonce}'; `
+        + "style-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff"
+    }
+  });
+}
+
+function diagnosticNotFound(): Response {
+  return new Response(JSON.stringify({ error: "not_found" }), {
+    status: 404,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff"
+    }
+  });
 }

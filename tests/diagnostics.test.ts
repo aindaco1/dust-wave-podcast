@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { PodcastEnv } from "../src/env";
-import { serveStagingVirtualAudioDiagnostic } from "../src/diagnostics";
+import {
+  serveStagingVirtualAudioDiagnostic,
+  serveStagingVirtualAudioPlayer
+} from "../src/diagnostics";
 
 describe("staging virtual-audio diagnostic", () => {
   it("is unavailable outside staging even with a matching token", async () => {
@@ -15,6 +18,26 @@ describe("staging virtual-audio diagnostic", () => {
     );
 
     expect(response.status).toBe(404);
+    expect(
+      serveStagingVirtualAudioPlayer({
+        ENVIRONMENT: "production"
+      } as unknown as PodcastEnv).status
+    ).toBe(404);
+  });
+
+  it("serves a no-store, staging-only player without embedding a token", async () => {
+    const response = serveStagingVirtualAudioPlayer({
+      ENVIRONMENT: "staging"
+    } as PodcastEnv);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain(
+      "media-src 'self'"
+    );
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(html).toContain('type="password"');
+    expect(html).not.toContain("VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN");
   });
 
   it("streams only when a constant-time staging token matches", async () => {

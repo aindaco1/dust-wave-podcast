@@ -44,6 +44,10 @@ rotatable path under `/v1/diagnostics/virtual-audio/`. The path token is a
 staging-only Worker secret, is compared in constant time, and is never
 committed or printed in evidence. Production returns `404` even if a token is
 supplied. Rotate or remove the secret after the client matrix.
+For browser checks, open `/v1/diagnostics/virtual-audio/player` and enter the
+token into its password field. The no-store, no-referrer, staging-only harness
+keeps the value in page memory, clears the field, and exposes explicit load,
+play, seek, and pause status without putting the token in navigation history.
 
 ## Required fixture set
 

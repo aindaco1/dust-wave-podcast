@@ -15,7 +15,10 @@ import {
 } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
-import { serveStagingVirtualAudioDiagnostic } from "./diagnostics";
+import {
+  serveStagingVirtualAudioDiagnostic,
+  serveStagingVirtualAudioPlayer
+} from "./diagnostics";
 import { servePublicFeed } from "./feed";
 import { json, options, privateJson } from "./http";
 import { servePublicEpisodeAudio } from "./media";
@@ -114,6 +117,12 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     return servePublicEpisodeAudio(request, env, mediaMatch[1]);
   }
 
+  if (
+    url.pathname === "/v1/diagnostics/virtual-audio/player"
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveStagingVirtualAudioPlayer(env);
+  }
   const virtualAudioDiagnosticMatch = url.pathname.match(
     VIRTUAL_AUDIO_DIAGNOSTIC_PATH
   );
