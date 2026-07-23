@@ -17,9 +17,11 @@ The current vertical slice implements the public show API, public RSS, private
 R2-backed range delivery, passwordless admin authentication, show and episode
 editing APIs, multipart uploads, one-click idempotent publication
 orchestration, a dry-run GitHub News publisher, a dry-run YouTube adapter, and
-the signed Stripe webhook/readiness boundary. Checkout, private premium feeds,
-dynamic audio assembly, transcript processing, clips, and live YouTube/GitHub
-publishing remain gated roadmap work.
+the signed Stripe webhook/readiness boundary. The bilingual word-alignment
+storage contract and executable launch-quality evaluator are also implemented;
+running a real transcription/alignment adapter and producing its human-reviewed
+benchmark evidence remain gated. Checkout, private premium feeds, dynamic audio
+assembly, clips, and live YouTube/GitHub publishing remain roadmap work.
 
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.
@@ -52,6 +54,8 @@ non-secret human inputs that gate production are kept in
 - [`docs/API.md`](docs/API.md) — current HTTP surface and authentication
   contract
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries and secret handling
+- [`docs/ALIGNMENT_GATE.md`](docs/ALIGNMENT_GATE.md) — English/Spanish
+  word-alignment evidence and launch thresholds
 - [`docs/STAGING_RUNBOOK.md`](docs/STAGING_RUNBOOK.md) — backup, migration,
   deployment, bootstrap, smoke test, and rollback procedure
 
