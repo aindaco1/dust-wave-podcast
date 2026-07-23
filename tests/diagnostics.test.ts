@@ -23,11 +23,17 @@ describe("staging virtual-audio diagnostic", () => {
         ENVIRONMENT: "production"
       } as unknown as PodcastEnv).status
     ).toBe(404);
+    expect(
+      serveStagingVirtualAudioPlayer({
+        ENVIRONMENT: "staging"
+      } as PodcastEnv).status
+    ).toBe(404);
   });
 
   it("serves a no-store, staging-only player without embedding a token", async () => {
     const response = serveStagingVirtualAudioPlayer({
-      ENVIRONMENT: "staging"
+      ENVIRONMENT: "staging",
+      VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: "b".repeat(32)
     } as PodcastEnv);
     const html = await response.text();
 

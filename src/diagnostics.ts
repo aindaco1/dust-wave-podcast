@@ -64,7 +64,12 @@ export async function serveStagingVirtualAudioDiagnostic(
 export function serveStagingVirtualAudioPlayer(
   env: PodcastEnv
 ): Response {
-  if (env.ENVIRONMENT !== "staging") return diagnosticNotFound();
+  if (
+    env.ENVIRONMENT !== "staging"
+    || !env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN
+  ) {
+    return diagnosticNotFound();
+  }
   const nonce = "dust-wave-virtual-audio-diagnostic";
   return new Response(`<!doctype html>
 <html lang="en">
