@@ -2,14 +2,22 @@ import type { EpisodeRow, PriceRow, PublicShow, ShowRow } from "./types";
 
 const SHOW_COLUMNS = `
   id, slug, title, description, language, status, artwork_url,
-  canonical_url, youtube_channel_url, premium_enabled, early_access_days
+  canonical_url, youtube_channel_url, premium_enabled, early_access_days,
+  free_mini_episode_enabled
 `;
 
 function presentShow(show: ShowRow, prices: PriceRow[], episodes?: EpisodeRow[]): PublicShow {
-  const { premium_enabled, ...rest } = show;
+  const {
+    premium_enabled,
+    early_access_days,
+    free_mini_episode_enabled,
+    ...rest
+  } = show;
   return {
     ...rest,
     premiumEnabled: premium_enabled === 1,
+    earlyAccessDays: early_access_days,
+    freeMiniEpisodeEnabled: free_mini_episode_enabled === 1,
     prices,
     ...(episodes ? { episodes } : {})
   };
@@ -71,4 +79,3 @@ export async function getPublicShow(db: D1Database, slug: string): Promise<Publi
 
   return presentShow(show, priceResult.results, episodeResult.results);
 }
-

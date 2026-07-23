@@ -20,9 +20,10 @@ functional evidence pass.
 ## Current checkpoint
 
 - Staging and production D1, R2, and Queue resources exist.
-- Local and staging D1 migrations `0001` and `0002` are applied.
+- Local and staging D1 migrations `0001` through `0003` are applied.
 - Production D1 is not migrated.
 - Both Worker environments pass Wrangler dry-run.
 - No Podcast Worker is deployed.
 - No public route, feed, Stripe product, or YouTube action exists yet.
-
+- `feeds.dustwave.xyz` and `media.dustwave.xyz` are reserved in configuration,
+  but neither DNS nor Worker Custom Domains are attached.

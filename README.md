@@ -16,6 +16,12 @@ multi-show-ready.
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.
 
+The permanent feed and media origins are reserved as `feeds.dustwave.xyz` and
+`media.dustwave.xyz`. Both will terminate at the Podcast Worker; R2 remains
+private so premium access, dynamic ad decisions, byte ranges, and telemetry
+cannot be bypassed. No DNS record is attached before the applicable staging
+routes pass.
+
 ## Local setup
 
 ```sh

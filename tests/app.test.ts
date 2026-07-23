@@ -5,6 +5,8 @@ function createEnv(overrides: Partial<Env> = {}): Env {
   return {
     ENVIRONMENT: "staging",
     SITE_ORIGIN: "https://dustwave.xyz",
+    FEED_ORIGIN: "https://feeds.dustwave.xyz",
+    MEDIA_ORIGIN: "https://media.dustwave.xyz",
     ALLOWED_ORIGINS: "https://dustwave.xyz,http://localhost:8080",
     MEDIA_KEY_PREFIX: "podcasts/",
     YOUTUBE_CHANNEL_URL: "https://youtube.com/@dustwavecollective",
@@ -17,14 +19,15 @@ function createShowDatabase(): D1Database {
     id: "show_opera_en_la_selva",
     slug: "opera-en-la-selva",
     title: "Ópera en la Selva",
-    description: "Beauty and joy.",
+    description: "Belleza y alegría. Y un poco de tecnología de vez en cuando. / Beauty and joy. And a bit of tech from time to time.",
     language: "es",
     status: "coming_soon",
     artwork_url: "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
     canonical_url: "https://dustwave.xyz/podcasts/opera-en-la-selva/",
     youtube_channel_url: "https://youtube.com/@dustwavecollective",
     premium_enabled: 1,
-    early_access_days: null
+    early_access_days: 7,
+    free_mini_episode_enabled: 1
   };
   let values: unknown[] = [];
 
@@ -116,11 +119,19 @@ describe("podcast API", () => {
       createEnv({ DB: createShowDatabase() })
     );
     const payload = await response.json() as {
-      show: { premiumEnabled: boolean; prices: unknown[]; episodes: unknown[] };
+      show: {
+        premiumEnabled: boolean;
+        earlyAccessDays: number;
+        freeMiniEpisodeEnabled: boolean;
+        prices: unknown[];
+        episodes: unknown[];
+      };
     };
 
     expect(response.status).toBe(200);
     expect(payload.show.premiumEnabled).toBe(true);
+    expect(payload.show.earlyAccessDays).toBe(7);
+    expect(payload.show.freeMiniEpisodeEnabled).toBe(true);
     expect(payload.show.prices).toHaveLength(2);
     expect(payload.show.episodes).toEqual([]);
   });

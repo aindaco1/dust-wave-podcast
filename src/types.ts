@@ -14,6 +14,7 @@ export interface ShowRow {
   youtube_channel_url: string | null;
   premium_enabled: number;
   early_access_days: number | null;
+  free_mini_episode_enabled: number;
 }
 
 export interface PriceRow {
@@ -36,8 +37,13 @@ export interface EpisodeRow {
   duration_seconds: number | null;
 }
 
-export interface PublicShow extends Omit<ShowRow, "premium_enabled"> {
+export interface PublicShow extends Omit<
+  ShowRow,
+  "premium_enabled" | "early_access_days" | "free_mini_episode_enabled"
+> {
   premiumEnabled: boolean;
+  earlyAccessDays: number | null;
+  freeMiniEpisodeEnabled: boolean;
   prices: PriceRow[];
   episodes?: EpisodeRow[];
 }
@@ -55,4 +61,3 @@ export interface PodcastJob {
   episodeId?: string;
   requestedAt: string;
 }
-
