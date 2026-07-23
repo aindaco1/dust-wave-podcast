@@ -15,6 +15,7 @@ import {
 } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
+import { serveStagingVirtualAudioDiagnostic } from "./diagnostics";
 import { servePublicFeed } from "./feed";
 import { json, options, privateJson } from "./http";
 import { servePublicEpisodeAudio } from "./media";
@@ -43,6 +44,8 @@ const ADMIN_UPLOAD_PART_PATH =
 const ADMIN_UPLOAD_COMPLETE_PATH =
   /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)\/complete$/;
 const ADMIN_UPLOAD_PATH = /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)$/;
+const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
+  /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})$/;
 
 export async function handleRequest(
   request: Request,
@@ -109,6 +112,20 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const mediaMatch = url.pathname.match(MEDIA_PATH);
   if (mediaMatch && (method === "GET" || method === "HEAD")) {
     return servePublicEpisodeAudio(request, env, mediaMatch[1]);
+  }
+
+  const virtualAudioDiagnosticMatch = url.pathname.match(
+    VIRTUAL_AUDIO_DIAGNOSTIC_PATH
+  );
+  if (
+    virtualAudioDiagnosticMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveStagingVirtualAudioDiagnostic(
+      request,
+      env,
+      virtualAudioDiagnosticMatch[1]
+    );
   }
 
   if (url.pathname === "/v1/admin/auth/start" && method === "POST") {
@@ -192,6 +209,7 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const knownPath = url.pathname === "/health"
     || url.pathname.startsWith("/v1/shows")
     || url.pathname.startsWith("/v1/admin")
+    || url.pathname.startsWith("/v1/diagnostics")
     || Boolean(feedMatch)
     || Boolean(mediaMatch);
   return json(

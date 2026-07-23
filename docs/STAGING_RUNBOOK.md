@@ -56,6 +56,10 @@ Required for later provider tests:
 - `STRIPE_WEBHOOK_SECRET`
 - YouTube OAuth client, secret, and refresh token
 
+Required only while the synthetic real-client audio matrix is active:
+
+- `VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN`
+
 Use least-privilege staging credentials. Cloudflare does not expose existing
 secret values, so rotate or enter them rather than attempting to copy them from
 Pool or Store.

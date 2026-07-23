@@ -39,6 +39,12 @@ and writes a manifest that can be projected into the Worker contract. The tone
 fixture proves framing and byte behavior only; listening-client acceptance
 still requires the matrix below.
 
+The staging Worker exposes this exact fixture only at an opaque, manually
+rotatable path under `/v1/diagnostics/virtual-audio/`. The path token is a
+staging-only Worker secret, is compared in constant time, and is never
+committed or printed in evidence. Production returns `404` even if a token is
+supplied. Rotate or remove the secret after the client matrix.
+
 ## Required fixture set
 
 Generate Dust Wave-owned fixtures for both launch formats:
