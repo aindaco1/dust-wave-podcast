@@ -29,6 +29,10 @@ npm run dev
 Provider credentials belong in `.dev.vars` locally and Cloudflare Worker secrets
 outside local development. Do not put secrets in `wrangler.jsonc`.
 
+Architecture and promotion decisions live in [`docs/adr`](docs/adr). The
+non-secret human inputs that gate production are kept in
+[`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md).
+
 ## Verification
 
 ```sh
@@ -40,4 +44,3 @@ npm run deploy:production:dry
 Remote migrations and deploys are intentionally separate commands. Apply and
 exercise staging first; production promotion requires an explicit release
 decision.
-

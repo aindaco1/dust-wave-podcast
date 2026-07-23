@@ -12,6 +12,51 @@ function createEnv(overrides: Partial<Env> = {}): Env {
   } as Env;
 }
 
+function createShowDatabase(): D1Database {
+  const show = {
+    id: "show_opera_en_la_selva",
+    slug: "opera-en-la-selva",
+    title: "Ópera en la Selva",
+    description: "Beauty and joy.",
+    language: "es",
+    status: "coming_soon",
+    artwork_url: "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
+    canonical_url: "https://dustwave.xyz/podcasts/opera-en-la-selva/",
+    youtube_channel_url: "https://youtube.com/@dustwavecollective",
+    premium_enabled: 1,
+    early_access_days: null
+  };
+  let values: unknown[] = [];
+
+  const statement = (query: string) => ({
+    bind(...bound: unknown[]) {
+      values = bound;
+      return this;
+    },
+    async first() {
+      return query.includes("FROM shows") && values[0] === show.slug ? show : null;
+    },
+    async all() {
+      if (query.includes("FROM show_prices")) {
+        return {
+          results: [
+            { billing_period: "month", amount_cents: 500, currency: "USD" },
+            { billing_period: "year", amount_cents: 5000, currency: "USD" }
+          ]
+        };
+      }
+      if (query.includes("FROM episodes")) {
+        return { results: [] };
+      }
+      return { results: [show] };
+    }
+  });
+
+  return {
+    prepare: statement
+  } as unknown as D1Database;
+}
+
 describe("podcast API", () => {
   it("reports service health without querying storage", async () => {
     const response = await handleRequest(
@@ -64,5 +109,19 @@ describe("podcast API", () => {
     expect(response.status).toBe(405);
     expect(await response.json()).toEqual({ error: "method_not_allowed" });
   });
-});
 
+  it("returns the seeded show with premium prices and no fabricated episodes", async () => {
+    const response = await handleRequest(
+      new Request("https://podcast.example/v1/shows/opera-en-la-selva"),
+      createEnv({ DB: createShowDatabase() })
+    );
+    const payload = await response.json() as {
+      show: { premiumEnabled: boolean; prices: unknown[]; episodes: unknown[] };
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.show.premiumEnabled).toBe(true);
+    expect(payload.show.prices).toHaveLength(2);
+    expect(payload.show.episodes).toEqual([]);
+  });
+});
