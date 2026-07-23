@@ -13,6 +13,14 @@ multi-show-ready.
 - transcript, word-alignment, clip, and YouTube publishing jobs;
 - privacy-conscious first-party analytics.
 
+The current vertical slice implements the public show API, public RSS, private
+R2-backed range delivery, passwordless admin authentication, show and episode
+editing APIs, multipart uploads, one-click idempotent publication
+orchestration, a dry-run GitHub News publisher, a dry-run YouTube adapter, and
+the signed Stripe webhook/readiness boundary. Checkout, private premium feeds,
+dynamic audio assembly, transcript processing, clips, and live YouTube/GitHub
+publishing remain gated roadmap work.
+
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.
 
@@ -38,6 +46,14 @@ outside local development. Do not put secrets in `wrangler.jsonc`.
 Architecture and promotion decisions live in [`docs/adr`](docs/adr). The
 non-secret human inputs that gate production are kept in
 [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md).
+
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — implementation sequence and public
+  positioning gates
+- [`docs/API.md`](docs/API.md) — current HTTP surface and authentication
+  contract
+- [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries and secret handling
+- [`docs/STAGING_RUNBOOK.md`](docs/STAGING_RUNBOOK.md) — backup, migration,
+  deployment, bootstrap, smoke test, and rollback procedure
 
 ## Verification
 

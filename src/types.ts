@@ -7,6 +7,7 @@ export interface ShowRow {
   slug: string;
   title: string;
   description: string;
+  description_en: string;
   language: string;
   status: ShowStatus;
   artwork_url: string | null;
@@ -39,8 +40,12 @@ export interface EpisodeRow {
 
 export interface PublicShow extends Omit<
   ShowRow,
-  "premium_enabled" | "early_access_days" | "free_mini_episode_enabled"
+  | "premium_enabled"
+  | "early_access_days"
+  | "free_mini_episode_enabled"
+  | "description_en"
 > {
+  descriptionEn: string;
   premiumEnabled: boolean;
   earlyAccessDays: number | null;
   freeMiniEpisodeEnabled: boolean;
@@ -54,10 +59,12 @@ export interface PodcastJob {
     | "transcribe"
     | "align-transcript"
     | "render-clip"
+    | "publish-news"
     | "publish-rss"
     | "publish-youtube"
     | "send-premium-notification";
   showId: string;
   episodeId?: string;
+  publicationRevision?: number;
   requestedAt: string;
 }

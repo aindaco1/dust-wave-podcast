@@ -11,6 +11,8 @@ They do gate the indicated production action.
 | `Ópera en la Selva` early-access default | First premium episode schedule | Confirmed: seven days before public release with per-episode override |
 | Optional free mini-episode | First-show offer activation | Confirmed: enabled, maximum one |
 | At least one additional super-admin identity | Production admin authentication | Confirmed privately; raw address remains outside the public repository |
+| Resend sender and staging API key | Staging magic-link delivery | Existing infrastructure is operational; use or rotate a least-privilege key without committing it |
+| Turnstile staging key pair | Staging admin login | Existing infrastructure is operational; configure the secret in the Worker and the site key in the admin shell |
 | Accountant-approved registrations, taxability, rates, evidence, and effective dates | Purchasable Stripe prices | Awaiting professional approval |
 | Sponsor contract/disclosure/creative for the first direct campaign | Direct campaign activation | Not yet required |
 

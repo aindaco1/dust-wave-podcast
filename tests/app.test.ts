@@ -20,6 +20,7 @@ function createShowDatabase(): D1Database {
     slug: "opera-en-la-selva",
     title: "Ópera en la Selva",
     description: "Belleza y alegría. Y un poco de tecnología de vez en cuando. / Beauty and joy. And a bit of tech from time to time.",
+    description_en: "Beauty and joy. And a bit of tech from time to time.",
     language: "es",
     status: "coming_soon",
     artwork_url: "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
@@ -121,6 +122,7 @@ describe("podcast API", () => {
     const payload = await response.json() as {
       show: {
         premiumEnabled: boolean;
+        descriptionEn: string;
         earlyAccessDays: number;
         freeMiniEpisodeEnabled: boolean;
         prices: unknown[];
@@ -130,9 +132,22 @@ describe("podcast API", () => {
 
     expect(response.status).toBe(200);
     expect(payload.show.premiumEnabled).toBe(true);
+    expect(payload.show.descriptionEn).toBe("Beauty and joy. And a bit of tech from time to time.");
     expect(payload.show.earlyAccessDays).toBe(7);
     expect(payload.show.freeMiniEpisodeEnabled).toBe(true);
     expect(payload.show.prices).toHaveLength(2);
     expect(payload.show.episodes).toEqual([]);
+  });
+
+  it("keeps admin routes private without a session", async () => {
+    const response = await handleRequest(
+      new Request("https://podcast.example/v1/admin/shows"),
+      createEnv()
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(response.headers.get("x-robots-tag")).toContain("noindex");
+    expect(await response.json()).toEqual({ error: "unauthorized" });
   });
 });

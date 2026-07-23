@@ -1,0 +1,21 @@
+export type PodcastEnv = Env & {
+  ADMIN_AUTH_EXPOSE_LOGIN_LINK?: string;
+  ADMIN_EMAIL_LOOKUP_PEPPER?: string;
+  ADMIN_SESSION_SECRET?: string;
+  ADMIN_TURNSTILE_REQUIRED?: string;
+  GITHUB_OWNER?: string;
+  GITHUB_REF?: string;
+  GITHUB_REPO?: string;
+  GITHUB_TOKEN?: string;
+  GITHUB_WORKFLOW?: string;
+  GITHUB_PUBLISH_MODE?: string;
+  PODCAST_AUTHOR_NAME?: string;
+  PODCAST_EMAIL_FROM?: string;
+  PODCAST_OWNER_EMAIL?: string;
+  RESEND_API_KEY?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_MODE?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  YOUTUBE_PUBLISH_MODE?: string;
+};
