@@ -56,6 +56,8 @@ non-secret human inputs that gate production are kept in
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries and secret handling
 - [`docs/ALIGNMENT_GATE.md`](docs/ALIGNMENT_GATE.md) — English/Spanish
   word-alignment evidence and launch thresholds
+- [`docs/VIRTUAL_AUDIO_GATE.md`](docs/VIRTUAL_AUDIO_GATE.md) — request-time
+  audio assembly and real podcast-client evidence gate
 - [`docs/STAGING_RUNBOOK.md`](docs/STAGING_RUNBOOK.md) — backup, migration,
   deployment, bootstrap, smoke test, and rollback procedure
 
