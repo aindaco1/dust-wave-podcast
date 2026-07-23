@@ -1,0 +1,112 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dust-wave-podcast",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "env": {
+    "staging": {
+      "name": "dust-wave-podcast-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "SITE_ORIGIN": "https://dustwave.xyz",
+        "ALLOWED_ORIGINS": "https://dustwave.xyz,https://www.dustwave.xyz,http://localhost:8080",
+        "MEDIA_KEY_PREFIX": "podcasts/",
+        "YOUTUBE_CHANNEL_URL": "https://youtube.com/@dustwavecollective"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dust-wave-podcast-staging",
+          "database_id": "5d2d345f-bc66-4299-bf94-09b2bfa0f4a5",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA_BUCKET",
+          "bucket_name": "dustwave-media-staging"
+        }
+      ],
+      "ai": {
+        "binding": "AI"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "ANALYTICS",
+          "dataset": "dust_wave_podcast_staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "JOBS",
+            "queue": "dust-wave-podcast-jobs-staging"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "dust-wave-podcast-jobs-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          }
+        ]
+      }
+    },
+    "production": {
+      "name": "dust-wave-podcast",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "SITE_ORIGIN": "https://dustwave.xyz",
+        "ALLOWED_ORIGINS": "https://dustwave.xyz,https://www.dustwave.xyz",
+        "MEDIA_KEY_PREFIX": "podcasts/",
+        "YOUTUBE_CHANNEL_URL": "https://youtube.com/@dustwavecollective"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "dust-wave-podcast-production",
+          "database_id": "f2cb6d24-c5f3-4695-b1ef-f685eb9a4afa",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA_BUCKET",
+          "bucket_name": "dustwave-media"
+        }
+      ],
+      "ai": {
+        "binding": "AI"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "ANALYTICS",
+          "dataset": "dust_wave_podcast"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "JOBS",
+            "queue": "dust-wave-podcast-jobs-production"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "dust-wave-podcast-jobs-production",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3
+          }
+        ]
+      }
+    }
+  }
+}
+

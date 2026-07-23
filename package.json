@@ -1,0 +1,32 @@
+{
+  "name": "@dustwave/podcast",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dust Wave podcast API, media orchestration, premium feeds, and publishing jobs",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --env staging",
+    "types": "wrangler types --env staging",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run types && npm run typecheck && npm test",
+    "deploy:staging:dry": "wrangler deploy --env staging --dry-run",
+    "deploy:production:dry": "wrangler deploy --env production --dry-run",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local --env staging",
+    "db:migrate:staging": "wrangler d1 migrations apply DB --remote --env staging",
+    "db:migrate:production": "wrangler d1 migrations apply DB --remote --env production"
+  },
+  "dependencies": {
+    "@dustwave/worker-core": "file:shared/dust-wave-platform/packages/worker-core"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260723.1",
+    "@types/node": "^26.1.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "wrangler": "4.114.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
