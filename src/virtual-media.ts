@@ -297,7 +297,11 @@ export async function serveVirtualMedia(
   }
 
   const spans = mapVirtualByteRange(manifest, selectedRange);
-  return new Response(streamVirtualObjectSpans(bucket, spans), {
+  const body = withFixedLength(
+    streamVirtualObjectSpans(bucket, spans),
+    selectedRange.length
+  );
+  return new Response(body, {
     status: range ? 206 : 200,
     headers
   });
@@ -394,6 +398,20 @@ function virtualMediaError(code: string, status: number): Response {
       "x-content-type-options": "nosniff"
     }
   });
+}
+
+function withFixedLength(
+  source: ReadableStream<Uint8Array>,
+  expectedLength: number
+): ReadableStream<Uint8Array> {
+  if (typeof FixedLengthStream === "undefined") return source;
+  const fixedLength = new FixedLengthStream(expectedLength);
+  void source
+    .pipeTo(fixedLength.writable as WritableStream<Uint8Array>)
+    .catch(() => {
+      // pipeTo already propagates the source error to the response stream.
+    });
+  return fixedLength.readable;
 }
 
 function etagMatches(header: string | null, etag: string): boolean {
