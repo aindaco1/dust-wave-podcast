@@ -43,6 +43,7 @@ Login tokens expire after 15 minutes and are single-use. Sessions expire after
 |---|---|---|---|
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
+| `GET` | `/v1/admin/shows/{id}/episodes` | analyst+ | Draft, scheduled, and published episode workbench rows |
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |

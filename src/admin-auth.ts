@@ -396,9 +396,21 @@ export async function getAdminSession(
 ): Promise<Response> {
   const auth = await requireAdmin(request, env);
   if (!auth.ok) return auth.response;
+  const csrfToken = randomToken(24);
+  const csrfTokenHash = await sha256Hex(`${env.ADMIN_SESSION_SECRET}:${csrfToken}`);
+  await env.DB
+    .prepare(
+      `UPDATE admin_sessions
+       SET csrf_token_hash = ?, last_seen_at = datetime('now')
+       WHERE token_hash = ?`
+    )
+    .bind(csrfTokenHash, auth.authorization.sessionTokenHash)
+    .run();
   return privateJson(request, env.ALLOWED_ORIGINS, {
     authenticated: true,
-    identity: auth.authorization.identity
+    identity: auth.authorization.identity,
+    csrfToken,
+    expiresInSeconds: SESSION_TTL_SECONDS
   });
 }
 

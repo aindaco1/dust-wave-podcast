@@ -1,5 +1,6 @@
 import {
   createAdminEpisode,
+  listAdminEpisodes,
   listAdminShows,
   listDistributionDestinations,
   publishAdminEpisode,
@@ -136,8 +137,13 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
 
   const adminShowEpisodesMatch = url.pathname.match(ADMIN_SHOW_EPISODES_PATH);
-  if (adminShowEpisodesMatch && method === "POST") {
-    return createAdminEpisode(request, env, adminShowEpisodesMatch[1]);
+  if (adminShowEpisodesMatch) {
+    if (method === "GET") {
+      return listAdminEpisodes(request, env, adminShowEpisodesMatch[1]);
+    }
+    if (method === "POST") {
+      return createAdminEpisode(request, env, adminShowEpisodesMatch[1]);
+    }
   }
   const adminShowMatch = url.pathname.match(ADMIN_SHOW_PATH);
   if (adminShowMatch && method === "PATCH") {

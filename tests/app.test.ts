@@ -140,14 +140,19 @@ describe("podcast API", () => {
   });
 
   it("keeps admin routes private without a session", async () => {
-    const response = await handleRequest(
-      new Request("https://podcast.example/v1/admin/shows"),
-      createEnv()
-    );
+    for (const path of [
+      "/v1/admin/shows",
+      "/v1/admin/shows/show_opera_en_la_selva/episodes"
+    ]) {
+      const response = await handleRequest(
+        new Request(`https://podcast.example${path}`),
+        createEnv()
+      );
 
-    expect(response.status).toBe(401);
-    expect(response.headers.get("cache-control")).toContain("private");
-    expect(response.headers.get("x-robots-tag")).toContain("noindex");
-    expect(await response.json()).toEqual({ error: "unauthorized" });
+      expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toContain("private");
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
   });
 });

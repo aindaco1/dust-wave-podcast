@@ -286,6 +286,92 @@ export async function createAdminEpisode(
   );
 }
 
+export async function listAdminEpisodes(
+  request: Request,
+  env: PodcastEnv,
+  showIdValue: string
+): Promise<Response> {
+  const showId = validIdentifier(showIdValue, "showId");
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: [...READ_ROLES],
+    showId
+  });
+  if (!auth.ok) return auth.response;
+  const show = await env.DB
+    .prepare(`SELECT id FROM shows WHERE id = ? AND status != 'archived'`)
+    .bind(showId)
+    .first<{ id: string }>();
+  if (!show) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "show_not_found" },
+      { status: 404 }
+    );
+  }
+  const episodes = await env.DB
+    .prepare(
+      `SELECT
+         id, slug, title, summary, content_html, status, access, premium_at,
+         public_at, canonical_url, duration_seconds, explicit, media_status,
+         audio_filename, audio_bytes, video_source_key, youtube_video_id,
+         publication_revision, created_at, updated_at
+       FROM episodes
+       WHERE show_id = ?
+       ORDER BY
+         CASE status WHEN 'draft' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END,
+         COALESCE(public_at, created_at) DESC`
+    )
+    .bind(showId)
+    .all<{
+      id: string;
+      slug: string;
+      title: string;
+      summary: string;
+      content_html: string;
+      status: EpisodeStatus;
+      access: EpisodeAccess;
+      premium_at: string | null;
+      public_at: string | null;
+      canonical_url: string;
+      duration_seconds: number | null;
+      explicit: number;
+      media_status: string;
+      audio_filename: string | null;
+      audio_bytes: number | null;
+      video_source_key: string | null;
+      youtube_video_id: string | null;
+      publication_revision: number;
+      created_at: string;
+      updated_at: string;
+    }>();
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    showId,
+    episodes: episodes.results.map((episode) => ({
+      id: episode.id,
+      slug: episode.slug,
+      title: episode.title,
+      summary: episode.summary,
+      contentHtml: episode.content_html,
+      status: episode.status,
+      access: episode.access,
+      premiumAt: episode.premium_at,
+      publicAt: episode.public_at,
+      canonicalUrl: episode.canonical_url,
+      durationSeconds: episode.duration_seconds,
+      explicit: episode.explicit === 1,
+      mediaStatus: episode.media_status,
+      audioFilename: episode.audio_filename,
+      audioBytes: episode.audio_bytes,
+      hasVideoSource: Boolean(episode.video_source_key),
+      youtubeVideoId: episode.youtube_video_id,
+      publicationRevision: episode.publication_revision,
+      createdAt: episode.created_at,
+      updatedAt: episode.updated_at
+    }))
+  });
+}
+
 export async function updateAdminEpisode(
   request: Request,
   env: PodcastEnv,
