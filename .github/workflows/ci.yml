@@ -19,11 +19,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -35,4 +35,3 @@ jobs:
         run: npm run deploy:staging:dry
       - name: Validate production bundle
         run: npm run deploy:production:dry
-
