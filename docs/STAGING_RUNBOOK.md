@@ -70,11 +70,16 @@ do not expose them. Create a new least-privilege Podcast processor token.
 Required for the isolated signed-decision exercise:
 
 - Worker secret `AD_DECISION_SIGNING_SECRET`
+- optional overlap secret `AD_DECISION_SIGNING_SECRET_PREVIOUS` during rotation
 - staging variable `AD_DECISION_MODE=staging_validate`
 
 Production must keep `AD_DECISION_MODE=disabled` and must not receive that
 staging secret. Issuance is authenticated/CSRF-protected; its returned URL is
 short-lived and is not an episode enclosure.
+
+Rotate by installing the old current value as `..._PREVIOUS`, installing a new
+current value, confirming old and new fixture URLs, waiting at least the
+two-hour decision lifetime, and then deleting the previous secret.
 
 Required only while the synthetic real-client audio matrix is active:
 

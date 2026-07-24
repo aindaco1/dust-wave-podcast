@@ -461,13 +461,18 @@ export async function serveStagingAdDecisionAudio(
   ) {
     return decisionError("invalid_ad_decision_signature", 401);
   }
-  const expected = await signDecision(
-    decisionId,
-    expires,
-    manifestSha256,
-    env.AD_DECISION_SIGNING_SECRET as string
+  const candidateSecrets = [
+    env.AD_DECISION_SIGNING_SECRET,
+    env.AD_DECISION_SIGNING_SECRET_PREVIOUS
+  ].filter((value): value is string => Boolean(value));
+  const expectedSignatures = await Promise.all(
+    candidateSecrets.map((secret) =>
+      signDecision(decisionId, expires, manifestSha256, secret)
+    )
   );
-  if (!timingSafeEqual(signature, expected)) {
+  if (!expectedSignatures.some((expected) =>
+    timingSafeEqual(signature, expected)
+  )) {
     return decisionError("invalid_ad_decision_signature", 401);
   }
 

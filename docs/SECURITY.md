@@ -29,6 +29,9 @@
   verified before D1; the stored manifest hash and every R2 size/ETag are
   checked before headers. Production hard-codes the mode disabled and the
   permanent enclosure does not call this route.
+- Decision-key rotation issues only with the current secret and may validate
+  against one previous secret for the bounded two-hour overlap. Retire the
+  previous secret after that window; never reuse the production key in staging.
 - Creative replacements and program processing use immutable/versioned or
   content-addressed R2 keys so an already issued decision cannot be changed by
   a later upload. Qualification dedupe and hard-cap increments are enforced

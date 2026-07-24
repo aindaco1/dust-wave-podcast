@@ -71,6 +71,9 @@ hash/duration/key/bytes/ETag, the complete ordered virtual manifest, its strong
 ETag, and its SHA-256. Expiring URLs sign the decision ID, expiry, and manifest
 digest; invalid signatures are rejected before D1 lookup. Stored manifests are
 rehash-checked and every R2 object size/ETag is preflighted before headers.
+Rotation accepts a current and optional previous secret while issuing only
+with the current secret; the previous key can be retired after the maximum
+two-hour URL lifetime without changing any stored manifest.
 
 Creative replacement now writes a new versioned object key rather than
 overwriting bytes referenced by an earlier decision. Processor program

@@ -63,6 +63,24 @@ describe("signed staging ad decisions", () => {
     expect(audio.headers.get("content-range")).toBe("bytes 2-16/19");
     expect(await audio.text()).toBe("12PROGRAM1234AD");
 
+    fixture.env.AD_DECISION_SIGNING_SECRET_PREVIOUS = decisionSecret;
+    fixture.env.AD_DECISION_SIGNING_SECRET = "rotated-decision-secret";
+    const duringRotation = await serveStagingAdDecisionAudio(
+      new Request(issued.signedUrl),
+      fixture.env,
+      issued.decisionId
+    );
+    expect(duringRotation.status).toBe(200);
+    expect((await duringRotation.arrayBuffer()).byteLength).toBe(19);
+    fixture.env.AD_DECISION_SIGNING_SECRET_PREVIOUS = undefined;
+    const afterRetirement = await serveStagingAdDecisionAudio(
+      new Request(issued.signedUrl),
+      fixture.env,
+      issued.decisionId
+    );
+    expect(afterRetirement.status).toBe(401);
+    fixture.env.AD_DECISION_SIGNING_SECRET = decisionSecret;
+
     fixture.changeObjectEtag(
       "podcasts/show-1/ads/creative-v1.mp3",
       '"creative-mutated"'

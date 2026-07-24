@@ -156,6 +156,9 @@ plan, complete validated creative snapshots for every marker, one exact stream
 profile, and matching private R2 sizes/ETags. The response contains an expiring
 `GET|HEAD /v1/ads/decisions/{id}/audio` URL whose HMAC covers the decision ID,
 expiry, and manifest SHA-256. Signature validation occurs before D1 lookup.
+During a planned key rotation, issuance uses `AD_DECISION_SIGNING_SECRET` while
+validation also accepts `AD_DECISION_SIGNING_SECRET_PREVIOUS`; remove the
+previous value only after the two-hour maximum decision lifetime.
 
 The signed route reloads and hashes the stored manifest and preflights every
 private object size/ETag before response headers, then uses the existing
