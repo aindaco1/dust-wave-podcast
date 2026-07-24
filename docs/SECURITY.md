@@ -14,6 +14,10 @@
   production. That management API is not yet exposed.
 - Every implemented content, media, and publication mutation emits a D1 audit
   event without credentials or raw email addresses.
+- Sponsor campaign creation, edits, approval, and the kill switch are
+  show-scoped admin mutations with CSRF/origin enforcement and audit events.
+  Edits reset approval; direct campaigns require an active sponsor; revoked
+  rows cannot be silently reactivated.
 
 ## Storage and delivery
 

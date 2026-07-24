@@ -13,6 +13,13 @@ import {
   logoutAdmin,
   startAdminLogin
 } from "./admin-auth";
+import {
+  approveAdminAdCampaign,
+  createAdminAdCampaign,
+  killAdminAdCampaign,
+  listAdminAdCampaigns,
+  updateAdminAdCampaign
+} from "./ad-campaigns";
 import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
@@ -48,6 +55,12 @@ const ADMIN_UPLOAD_PART_PATH =
 const ADMIN_UPLOAD_COMPLETE_PATH =
   /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)\/complete$/;
 const ADMIN_UPLOAD_PATH = /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)$/;
+const ADMIN_AD_CAMPAIGN_PATH =
+  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)$/;
+const ADMIN_AD_CAMPAIGN_APPROVE_PATH =
+  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/approve$/;
+const ADMIN_AD_CAMPAIGN_KILL_PATH =
+  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/kill$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
   /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})$/;
 
@@ -162,6 +175,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   if (url.pathname === "/v1/admin/ads/preview" && method === "POST") {
     return previewAdminAdDecision(request, env);
   }
+  if (url.pathname === "/v1/admin/ads/campaigns") {
+    if (method === "GET") return listAdminAdCampaigns(request, env);
+    if (method === "POST") return createAdminAdCampaign(request, env);
+  }
   if (url.pathname === "/v1/webhooks/stripe" && method === "POST") {
     return handleStripeWebhook(request, env);
   }
@@ -196,6 +213,26 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const adminEpisodeMatch = url.pathname.match(ADMIN_EPISODE_PATH);
   if (adminEpisodeMatch && method === "PATCH") {
     return updateAdminEpisode(request, env, adminEpisodeMatch[1]);
+  }
+  const adminAdCampaignApproveMatch = url.pathname.match(
+    ADMIN_AD_CAMPAIGN_APPROVE_PATH
+  );
+  if (adminAdCampaignApproveMatch && method === "POST") {
+    return approveAdminAdCampaign(
+      request,
+      env,
+      adminAdCampaignApproveMatch[1]
+    );
+  }
+  const adminAdCampaignKillMatch = url.pathname.match(
+    ADMIN_AD_CAMPAIGN_KILL_PATH
+  );
+  if (adminAdCampaignKillMatch && method === "POST") {
+    return killAdminAdCampaign(request, env, adminAdCampaignKillMatch[1]);
+  }
+  const adminAdCampaignMatch = url.pathname.match(ADMIN_AD_CAMPAIGN_PATH);
+  if (adminAdCampaignMatch && method === "PATCH") {
+    return updateAdminAdCampaign(request, env, adminAdCampaignMatch[1]);
   }
 
   if (url.pathname === "/v1/admin/uploads" && method === "POST") {

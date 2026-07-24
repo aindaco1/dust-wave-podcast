@@ -3,12 +3,10 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 import {
   normalizeAdTargetValue,
   selectAdForSlot,
-  type AdCampaignCandidate,
-  type AdCreativeCandidate,
   type AdDeviceType,
-  type AdPosition,
-  type AdRuleCandidate
+  type AdPosition
 } from "./ad-decision";
+import { loadActiveAdInventory } from "./ad-inventory";
 import {
   hasAdminRoleForShow,
   requireAdmin,
@@ -45,45 +43,6 @@ type EpisodeAdRow = {
   publication_revision: number;
   episode_dynamic_ads_enabled: number;
   show_dynamic_ads_enabled: number;
-};
-
-type CampaignRow = {
-  id: string;
-  campaign_type: string;
-  sponsor_active: number | null;
-  active: number;
-  starts_at: string;
-  ends_at: string | null;
-  kill_switch_at: string | null;
-  priority: number;
-  impression_cap: number | null;
-  qualified_impression_goal: number | null;
-  qualified_impressions: number;
-  pacing_strategy: string;
-};
-
-type RuleRow = {
-  id: string;
-  campaign_id: string;
-  show_id: string | null;
-  episode_id: string | null;
-  position: string | null;
-  device_type: string | null;
-  app_name: string | null;
-  starts_at: string | null;
-  ends_at: string | null;
-};
-
-type CreativeRow = {
-  id: string;
-  campaign_id: string;
-  audio_key: string;
-  audio_bytes: number | null;
-  audio_mime_type: string | null;
-  stream_profile: string | null;
-  weight: number;
-  active: number;
-  validation_status: string;
 };
 
 type SegmentRow = {
@@ -162,38 +121,9 @@ export async function previewAdminAdDecision(
     );
   }
 
-  const [campaignResult, ruleResult, creativeResult, segmentResult, marker] =
+  const [campaigns, segmentResult, marker] =
     await Promise.all([
-      env.DB.prepare(
-        `SELECT
-           c.id, c.campaign_type, s.active AS sponsor_active, c.active,
-           c.starts_at, c.ends_at, c.kill_switch_at, c.priority,
-           c.impression_cap, c.qualified_impression_goal,
-           c.qualified_impressions, c.pacing_strategy
-         FROM ad_campaigns c
-         LEFT JOIN sponsors s ON s.id = c.sponsor_id
-         WHERE c.active = 1
-         ORDER BY c.id`
-      ).all<CampaignRow>(),
-      env.DB.prepare(
-        `SELECT
-           r.id, r.campaign_id, r.show_id, r.episode_id, r.position,
-           r.device_type, r.app_name, r.starts_at, r.ends_at
-         FROM ad_rules r
-         JOIN ad_campaigns c ON c.id = r.campaign_id
-         WHERE c.active = 1
-         ORDER BY r.campaign_id, r.id`
-      ).all<RuleRow>(),
-      env.DB.prepare(
-        `SELECT
-           a.id, a.campaign_id, a.audio_key, a.audio_bytes,
-           a.audio_mime_type, a.stream_profile, a.weight, a.active,
-           a.validation_status
-         FROM ad_creatives a
-         JOIN ad_campaigns c ON c.id = a.campaign_id
-         WHERE c.active = 1
-         ORDER BY a.campaign_id, a.id`
-      ).all<CreativeRow>(),
+      loadActiveAdInventory(env.DB),
       env.DB.prepare(
         `SELECT sequence, stream_profile, validation_status
          FROM episode_audio_segments
@@ -210,11 +140,6 @@ export async function previewAdminAdDecision(
       ).bind(episodeId, position).first<{ id: string }>()
     ]);
 
-  const campaigns = assembleCampaigns(
-    campaignResult.results,
-    ruleResult.results,
-    creativeResult.results
-  );
   const inventoryFingerprint = await sha256Hex(JSON.stringify(campaigns));
   const selection = selectAdForSlot(
     campaigns,
@@ -233,6 +158,9 @@ export async function previewAdminAdDecision(
     segmentResult.results,
     streamProfile
   );
+  const approvedCampaignCount = campaigns.filter(
+    ({ approvalStatus }) => approvalStatus === "approved"
+  ).length;
   const blockers = [
     "runtime_not_connected",
     episode.show_dynamic_ads_enabled !== 1
@@ -243,6 +171,9 @@ export async function previewAdminAdDecision(
       : null,
     !marker ? "marker_not_approved" : null,
     !programSegmentsReady ? "program_segments_not_ready" : null,
+    campaigns.length > 0 && approvedCampaignCount === 0
+      ? "campaign_approval_required"
+      : null,
     !selection ? "no_eligible_inventory" : null
   ].filter((value): value is string => Boolean(value));
 
@@ -271,66 +202,13 @@ export async function previewAdminAdDecision(
     },
     inventory: {
       campaignCount: campaigns.length,
+      approvedCampaignCount,
       fingerprint: inventoryFingerprint
     },
     decision: selection
       ? { status: "selected", selection }
       : { status: "fallback", reason: "no_eligible_inventory" }
   });
-}
-
-function assembleCampaigns(
-  campaignRows: CampaignRow[],
-  ruleRows: RuleRow[],
-  creativeRows: CreativeRow[]
-): AdCampaignCandidate[] {
-  const rules = new Map<string, AdRuleCandidate[]>();
-  for (const row of ruleRows) {
-    const target = rules.get(row.campaign_id) ?? [];
-    target.push({
-      id: row.id,
-      showId: row.show_id,
-      episodeId: row.episode_id,
-      position: row.position as AdPosition | null,
-      deviceType: row.device_type,
-      appName: row.app_name,
-      startsAt: row.starts_at,
-      endsAt: row.ends_at
-    });
-    rules.set(row.campaign_id, target);
-  }
-  const creatives = new Map<string, AdCreativeCandidate[]>();
-  for (const row of creativeRows) {
-    const target = creatives.get(row.campaign_id) ?? [];
-    target.push({
-      id: row.id,
-      campaignId: row.campaign_id,
-      objectKey: row.audio_key,
-      audioBytes: row.audio_bytes,
-      audioMimeType: row.audio_mime_type,
-      streamProfile: row.stream_profile,
-      weight: row.weight,
-      active: row.active === 1,
-      validationStatus: row.validation_status as AdCreativeCandidate["validationStatus"]
-    });
-    creatives.set(row.campaign_id, target);
-  }
-  return campaignRows.map((row) => ({
-    id: row.id,
-    campaignType: row.campaign_type as AdCampaignCandidate["campaignType"],
-    sponsorActive: row.sponsor_active === 1,
-    active: row.active === 1,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    killSwitchAt: row.kill_switch_at,
-    priority: row.priority,
-    impressionCap: row.impression_cap,
-    qualifiedImpressionGoal: row.qualified_impression_goal,
-    qualifiedImpressions: row.qualified_impressions,
-    pacingStrategy: row.pacing_strategy as AdCampaignCandidate["pacingStrategy"],
-    rules: rules.get(row.id) ?? [],
-    creatives: creatives.get(row.id) ?? []
-  }));
 }
 
 function segmentsAreReady(

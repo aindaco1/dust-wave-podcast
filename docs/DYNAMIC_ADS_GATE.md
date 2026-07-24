@@ -37,6 +37,13 @@ deduplicated qualified impressions. Raw delivery telemetry belongs in
 Analytics Engine; D1 retains decisions, qualifications, counters, and
 reconciliation evidence.
 
+Migration `0009` adds versioned campaign approval and active-rule state.
+Admin-only create/edit/approve/kill operations are show-scoped, CSRF-protected,
+and audited. Creation and any edit leave the campaign in `draft`; approval
+requires validated compatible creative audio; and the idempotent kill switch
+sets both inactive and revoked state. The serving selector accepts only
+`approved` campaigns with an active sponsor for direct inventory.
+
 ## Privacy and identity
 
 The permanent enclosure must not derive a new byte layout for every range

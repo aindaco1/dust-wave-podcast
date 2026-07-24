@@ -222,6 +222,7 @@ function campaign(
     id,
     campaignType,
     sponsorActive: campaignType === "direct" ? true : null,
+    approvalStatus: "approved",
     active: true,
     startsAt: "2026-07-01T00:00:00.000Z",
     endsAt: "2026-08-01T00:00:00.000Z",

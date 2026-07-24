@@ -142,6 +142,7 @@ async function previewEnvironment(
                 id: "campaign-direct",
                 campaign_type: "direct",
                 sponsor_active: 1,
+                approval_status: "approved",
                 active: 1,
                 starts_at: "2026-07-01T00:00:00.000Z",
                 ends_at: "2026-08-01T00:00:00.000Z",

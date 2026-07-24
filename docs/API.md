@@ -55,6 +55,11 @@ Login tokens expire after 15 minutes and are single-use. Sessions expire after
 | `DELETE` | `/v1/admin/uploads/{id}` | producer+ | Abort an incomplete upload |
 | `GET` | `/v1/admin/billing/readiness` | super-admin | Non-secret provider/tax readiness |
 | `POST` | `/v1/admin/ads/preview` | analyst+ | Read-only sponsor decision preview |
+| `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
+| `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |
+| `PATCH` | `/v1/admin/ads/campaigns/{id}` | admin+ | Edit metadata and reset approval |
+| `POST` | `/v1/admin/ads/campaigns/{id}/approve` | admin+ | Approve only complete, validated inventory |
+| `POST` | `/v1/admin/ads/campaigns/{id}/kill` | admin+ | Immediately and idempotently revoke a campaign |
 
 The publish operation hashes all publication-relevant episode state. Repeating
 the request without a change returns the existing revision. A changed episode
@@ -87,6 +92,17 @@ feature flags, approved-marker and program-segment readiness, an inventory
 fingerprint, the proposed selection or full-file fallback, and explicit
 activation blockers. `runtime_not_connected` remains present until the signed
 manifest, qualification, virtual-audio, privacy, and real-client gates pass.
+
+Campaign creation requires an explicit show, date window, campaign type, and
+one initial targeting rule. Direct campaigns also require an active sponsor;
+house campaigns cannot carry sponsor billing metadata. New and edited
+campaigns are drafts. Approval fails closed until there is an active show rule,
+active sponsor when applicable, and active creative whose validated byte,
+MIME, and exact stream-profile metadata is ready. The kill endpoint is
+irreversible for that campaign row; operators create a new campaign rather
+than silently resurrecting revoked inventory. Every mutation writes an admin
+audit event, while approval still cannot affect playback until the separate
+runtime and show/episode feature gates pass.
 
 ## Provider modes
 

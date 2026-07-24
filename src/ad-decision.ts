@@ -36,6 +36,7 @@ export interface AdCampaignCandidate {
   id: string;
   campaignType: AdCampaignType;
   sponsorActive?: boolean | null;
+  approvalStatus: "draft" | "approved" | "rejected" | "revoked";
   active: boolean;
   startsAt: string;
   endsAt?: string | null;
@@ -321,6 +322,7 @@ function eligibleCampaign(
     || !campaign.id.trim()
     || !["house", "direct"].includes(campaign.campaignType)
     || (campaign.campaignType === "direct" && campaign.sponsorActive !== true)
+    || campaign.approvalStatus !== "approved"
     || !["even", "asap", "manual"].includes(campaign.pacingStrategy)
     || !campaign.active
     || !dateWindowIncludes(now, campaign.startsAt, campaign.endsAt)
