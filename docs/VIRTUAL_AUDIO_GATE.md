@@ -21,6 +21,14 @@ maps a single HTTP byte range onto ordered private R2 object windows. It:
 - returns decision-specific ETags and no-store response policy; and
 - streams sequential R2 ranges without buffering the full episode.
 
+The `0012` isolated-staging route projects persisted selector output into this
+contract. It HMAC-binds a URL to an immutable manifest digest, stores no raw
+address or user-agent, and rechecks the manifest hash plus every object
+size/ETag before streaming. Missing or mutated objects fail before headers.
+Creative uploads use new versioned keys and processed program segments use
+content-addressed filenames, so a later replacement cannot silently alter an
+issued decision.
+
 This contract does not claim that arbitrary MP3 or M4A files can be
 concatenated. The media pipeline must produce frame-boundary program pieces and
 creative assets with the same recorded profile, validate the assembled

@@ -32,6 +32,10 @@ import {
   rejectAdminEpisodeAdPlan,
   submitAdminEpisodeAdPlan
 } from "./ad-plans";
+import {
+  issueAdminStagingAdDecision,
+  serveStagingAdDecisionAudio
+} from "./ad-runtime";
 import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
@@ -87,6 +91,8 @@ const ADMIN_AD_PLAN_REJECT_PATH =
   /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/reject$/;
 const PROCESSOR_AD_PLAN_COMPLETE_PATH =
   /^\/v1\/processor\/ad-plans\/([A-Za-z0-9_-]+)\/complete$/;
+const AD_DECISION_AUDIO_PATH =
+  /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
   /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})$/;
 
@@ -156,6 +162,17 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   if (mediaMatch && (method === "GET" || method === "HEAD")) {
     return servePublicEpisodeAudio(request, env, mediaMatch[1]);
   }
+  const adDecisionAudioMatch = url.pathname.match(AD_DECISION_AUDIO_PATH);
+  if (
+    adDecisionAudioMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveStagingAdDecisionAudio(
+      request,
+      env,
+      adDecisionAudioMatch[1]
+    );
+  }
 
   if (
     url.pathname === "/v1/diagnostics/virtual-audio/player"
@@ -200,6 +217,12 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
   if (url.pathname === "/v1/admin/ads/preview" && method === "POST") {
     return previewAdminAdDecision(request, env);
+  }
+  if (
+    url.pathname === "/v1/admin/ads/decisions/issue"
+    && method === "POST"
+  ) {
+    return issueAdminStagingAdDecision(request, env);
   }
   if (url.pathname === "/v1/admin/ads/campaigns") {
     if (method === "GET") return listAdminAdCampaigns(request, env);
@@ -360,9 +383,11 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const knownPath = url.pathname === "/health"
     || url.pathname.startsWith("/v1/shows")
     || url.pathname.startsWith("/v1/admin")
+    || url.pathname.startsWith("/v1/ads")
     || url.pathname.startsWith("/v1/diagnostics")
     || Boolean(feedMatch)
-    || Boolean(mediaMatch);
+    || Boolean(mediaMatch)
+    || Boolean(adDecisionAudioMatch);
   return json(
     request,
     env.ALLOWED_ORIGINS,

@@ -65,6 +65,7 @@ Login tokens expire after 15 minutes and are single-use. Sessions expire after
 | `POST` | `/v1/admin/episodes/{id}/ad-plan` | producer+ | Submit versioned pre/mid/post marker intent against immutable source audio |
 | `POST` | `/v1/admin/ads/plans/{id}/approve` | producer+ | Atomically approve processor evidence as active markers/segments |
 | `POST` | `/v1/admin/ads/plans/{id}/reject` | producer+ | Reject pending processor evidence with an audited reason |
+| `POST` | `/v1/admin/ads/decisions/issue` | producer+ | Isolated-staging immutable decision exercise; never the public enclosure |
 | `POST` | `/v1/admin/ads/campaigns/{id}/approve` | admin+ | Approve only complete, validated inventory |
 | `POST` | `/v1/admin/ads/campaigns/{id}/kill` | admin+ | Immediately and idempotently revoke a campaign |
 
@@ -145,6 +146,22 @@ A Producer/Admin/Super-admin must then approve. Approval rechecks the manifest
 digest, source identity, and current R2 objects and replaces active
 marker/segment rows in one D1 batch. It does not set either dynamic-ad feature
 flag, create a decision, change the public file, or count an impression.
+
+### Signed staging decisions
+
+With `AD_DECISION_MODE=staging_validate` and a staging-only signing secret, an
+authenticated Producer/Admin/Super-admin may issue a deterministic decision
+exercise. It requires a published revision, current approved marker/program
+plan, complete validated creative snapshots for every marker, one exact stream
+profile, and matching private R2 sizes/ETags. The response contains an expiring
+`GET|HEAD /v1/ads/decisions/{id}/audio` URL whose HMAC covers the decision ID,
+expiry, and manifest SHA-256. Signature validation occurs before D1 lookup.
+
+The signed route reloads and hashes the stored manifest and preflights every
+private object size/ETag before response headers, then uses the existing
+bounded virtual range streamer. It is available only on isolated staging.
+Production sets the mode to `disabled`; the permanent episode enclosure never
+calls this route and both dynamic-ad feature flags remain false.
 
 ## Provider modes
 

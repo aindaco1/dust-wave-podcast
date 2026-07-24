@@ -74,7 +74,7 @@ jobs:
             writeFileSync(
               "work/ad-plan/uploads.tsv",
               body.segments.map((segment) =>
-                `${segment.objectKey}\twork/ad-plan/segments/program-${segment.sequence}.mp3`
+                `${segment.objectKey}\twork/ad-plan/segments/program-${segment.sequence}-${segment.sha256}.mp3`
               ).join("\n") + "\n"
             );
           '

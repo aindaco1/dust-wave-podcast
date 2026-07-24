@@ -80,6 +80,8 @@ iHeartRadio, and Deezer.
   approval; never let browser input directly mark program segments ready.
 - Normalize each episode once to the versioned delivery profile and split only
   on complete MPEG frame boundaries under a plan-specific private R2 prefix.
+- Issue expiring HMAC-bound decision URLs over immutable manifest/object
+  evidence; deduplicate qualifications and enforce hard caps atomically.
 - Select approved pre-, mid-, and post-roll creative at request time by show,
   episode, position, campaign date, and normalized device/app.
 - Preserve a validated preassembled-file fallback until request-time assembly

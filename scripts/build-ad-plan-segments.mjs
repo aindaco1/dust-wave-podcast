@@ -55,7 +55,8 @@ for (let sequence = 0; sequence < boundaries.length - 1; sequence += 1) {
   const last = frames[endFrame - 1];
   const lastByte = last.offset + last.length;
   const bytes = normalized.subarray(firstByte, lastByte);
-  const filename = `program-${sequence}.mp3`;
+  const sha256 = digest(bytes);
+  const filename = `program-${sequence}-${sha256}.mp3`;
   await writeFile(path.join(options.output, filename), bytes);
   const frameCount = endFrame - startFrame;
   segments.push({
@@ -67,7 +68,7 @@ for (let sequence = 0; sequence < boundaries.length - 1; sequence += 1) {
     byteLength: bytes.byteLength,
     audioMimeType: "audio/mpeg",
     streamProfile: PROFILE,
-    sha256: digest(bytes),
+    sha256,
     durationMs: Math.round(frameCount * FRAME_DURATION_MS),
     frameCount
   });

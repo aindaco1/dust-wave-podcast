@@ -26,7 +26,10 @@ export interface AdCreativeCandidate {
   objectKey: string;
   audioBytes: number | null;
   audioMimeType: string | null;
+  audioEtag?: string | null;
   streamProfile: string | null;
+  sha256?: string | null;
+  durationMs?: number | null;
   weight: number;
   active: boolean;
   validationStatus: "pending" | "validating" | "ready" | "failed" | "revoked";
@@ -34,6 +37,7 @@ export interface AdCreativeCandidate {
 
 export interface AdCampaignCandidate {
   id: string;
+  revision?: number;
   campaignType: AdCampaignType;
   sponsorActive?: boolean | null;
   approvalStatus: "draft" | "approved" | "rejected" | "revoked";
@@ -62,8 +66,12 @@ export interface AdSelectionContext {
 
 export interface SelectedAd {
   campaignId: string;
+  campaignRevision: number | null;
   campaignType: AdCampaignType;
   creativeId: string;
+  creativeEtag: string | null;
+  creativeSha256: string | null;
+  creativeDurationMs: number | null;
   ruleId: string | null;
   objectKey: string;
   audioBytes: number;
@@ -162,8 +170,16 @@ export function selectAdForSlot(
 
   return {
     campaignId: selectedCampaign.campaign.id,
+    campaignRevision:
+      Number.isSafeInteger(selectedCampaign.campaign.revision)
+      && Number(selectedCampaign.campaign.revision) > 0
+        ? Number(selectedCampaign.campaign.revision)
+        : null,
     campaignType: selectedCampaign.campaign.campaignType,
     creativeId: creative.id,
+    creativeEtag: creative.audioEtag ?? null,
+    creativeSha256: creative.sha256 ?? null,
+    creativeDurationMs: creative.durationMs ?? null,
     ruleId: selectedCampaign.ruleId,
     objectKey: creative.objectKey,
     audioBytes: creative.audioBytes as number,

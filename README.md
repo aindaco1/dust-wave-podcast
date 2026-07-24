@@ -26,6 +26,13 @@ running a real transcription/alignment adapter and producing its human-reviewed
 benchmark evidence remain gated. Checkout, private premium feeds, dynamic audio
 assembly, clips, and live YouTube/GitHub publishing remain roadmap work.
 
+Migration `0012` adds an isolated staging decision exercise: an authenticated
+Producer can persist one deterministic immutable manifest and receive an
+HMAC-bound, expiring URL that streams only that snapshotted rendition. The
+permanent enclosure does not call it. Production hard-codes the mode disabled,
+and qualification is still a trusted internal contract rather than a public
+telemetry endpoint.
+
 The staging ad-plan processor is intentionally a manual workflow until a new
 least-privilege Podcast R2 token is installed:
 

@@ -7,6 +7,7 @@ import {
 
 type CampaignRow = {
   id: string;
+  revision: number;
   campaign_type: string;
   sponsor_active: number | null;
   approval_status: string;
@@ -39,7 +40,10 @@ type CreativeRow = {
   audio_key: string;
   audio_bytes: number | null;
   audio_mime_type: string | null;
+  audio_etag: string | null;
   stream_profile: string | null;
+  sha256: string | null;
+  duration_ms: number | null;
   weight: number;
   active: number;
   validation_status: string;
@@ -51,7 +55,7 @@ export async function loadActiveAdInventory(
   const [campaignResult, ruleResult, creativeResult] = await Promise.all([
     db.prepare(
       `SELECT
-         c.id, c.campaign_type, s.active AS sponsor_active,
+         c.id, c.revision, c.campaign_type, s.active AS sponsor_active,
          c.approval_status, c.active, c.starts_at, c.ends_at,
          c.kill_switch_at, c.priority, c.impression_cap,
          c.qualified_impression_goal, c.qualified_impressions,
@@ -73,7 +77,9 @@ export async function loadActiveAdInventory(
     db.prepare(
       `SELECT
          a.id, a.campaign_id, a.audio_key, a.audio_bytes,
-         a.audio_mime_type, a.stream_profile, a.weight, a.active,
+         a.audio_mime_type, a.audio_etag, a.stream_profile, a.sha256,
+         a.duration_ms,
+         a.weight, a.active,
          a.validation_status
        FROM ad_creatives a
        JOIN ad_campaigns c ON c.id = a.campaign_id
@@ -117,7 +123,10 @@ function assembleCampaigns(
       objectKey: row.audio_key,
       audioBytes: row.audio_bytes,
       audioMimeType: row.audio_mime_type,
+      audioEtag: row.audio_etag,
       streamProfile: row.stream_profile,
+      sha256: row.sha256,
+      durationMs: row.duration_ms,
       weight: row.weight,
       active: row.active === 1,
       validationStatus: row.validation_status as AdCreativeCandidate["validationStatus"]
@@ -126,6 +135,7 @@ function assembleCampaigns(
   }
   return campaignRows.map((row) => ({
     id: row.id,
+    revision: row.revision,
     campaignType: row.campaign_type as AdCampaignCandidate["campaignType"],
     sponsorActive: row.sponsor_active === 1,
     approvalStatus: row.approval_status as AdCampaignCandidate["approvalStatus"],

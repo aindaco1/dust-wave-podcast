@@ -9,6 +9,7 @@ export interface VirtualMediaSegment {
   id: string;
   kind: VirtualMediaSegmentKind;
   objectKey: string;
+  objectEtag?: string;
   objectBytes: number;
   sourceOffset: number;
   byteLength: number;
@@ -47,6 +48,7 @@ export interface VirtualByteRange {
 
 export interface VirtualObjectSpan {
   objectKey: string;
+  objectEtag?: string;
   sourceOffset: number;
   byteLength: number;
   segmentIds: string[];
@@ -108,6 +110,18 @@ export function compileVirtualMediaManifest(
     segmentIds.add(segment.id);
     if (!segment.objectKey.trim()) {
       throw new VirtualMediaValidationError("Every segment needs an R2 object key.");
+    }
+    if (
+      segment.objectEtag !== undefined
+      && (
+        !segment.objectEtag.trim()
+        || segment.objectEtag.length > 300
+        || /[\r\n]/.test(segment.objectEtag)
+      )
+    ) {
+      throw new VirtualMediaValidationError(
+        `Segment "${segment.id}" has an invalid object ETag.`
+      );
     }
     if (!["program", "house_ad", "direct_ad"].includes(segment.kind)) {
       throw new VirtualMediaValidationError(
@@ -218,6 +232,7 @@ export function mapVirtualByteRange(
     if (
       prior
       && prior.objectKey === segment.objectKey
+      && prior.objectEtag === segment.objectEtag
       && prior.sourceOffset + prior.byteLength === sourceOffset
     ) {
       prior.byteLength += byteLength;
@@ -225,6 +240,9 @@ export function mapVirtualByteRange(
     } else {
       spans.push({
         objectKey: segment.objectKey,
+        ...(segment.objectEtag
+          ? { objectEtag: segment.objectEtag }
+          : {}),
         sourceOffset,
         byteLength,
         segmentIds: [segment.id]
@@ -358,6 +376,15 @@ export function streamVirtualObjectSpans(
         if (!object?.body) {
           controller.error(
             new Error(`Virtual media segment object is unavailable: ${span.objectKey}`)
+          );
+          return;
+        }
+        if (
+          span.objectEtag
+          && object.httpEtag !== span.objectEtag
+        ) {
+          controller.error(
+            new Error(`Virtual media segment object changed: ${span.objectKey}`)
           );
           return;
         }

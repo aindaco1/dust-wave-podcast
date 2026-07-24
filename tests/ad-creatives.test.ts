@@ -67,6 +67,15 @@ describe("admin sponsor creative audio", () => {
       bytes: audio.byteLength,
       validationStatus: "pending"
     });
+    expect(
+      writes.find(({ query }) =>
+        query.includes("audio_key = ?")
+      )?.values[0]
+    ).toMatch(
+      new RegExp(
+        `^podcasts/show-1/ads/campaign-fixture/${created.creativeId}/upload_[a-f0-9]{32}\\.mp3$`
+      )
+    );
 
     const validateResponse = await validateAdminAdCreative(
       jsonRequest(
@@ -239,9 +248,10 @@ async function creativeEnvironment(
             };
           } else if (query.includes("audio_bytes = ?")) {
             if (creative) {
-              creative.audioBytes = Number(values[0]);
+              creative.objectKey = String(values[0]);
+              creative.audioBytes = Number(values[1]);
               creative.audioMimeType = "audio/mpeg";
-              creative.streamProfile = String(values[2]);
+              creative.streamProfile = String(values[3]);
               creative.validationStatus = "pending";
             }
           } else if (query.includes("validation_status = 'ready'")) {

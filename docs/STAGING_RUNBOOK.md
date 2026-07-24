@@ -67,6 +67,15 @@ Required for the isolated ad-plan processor:
 Do not copy Pool/Store GitHub secret values; GitHub and Cloudflare intentionally
 do not expose them. Create a new least-privilege Podcast processor token.
 
+Required for the isolated signed-decision exercise:
+
+- Worker secret `AD_DECISION_SIGNING_SECRET`
+- staging variable `AD_DECISION_MODE=staging_validate`
+
+Production must keep `AD_DECISION_MODE=disabled` and must not receive that
+staging secret. Issuance is authenticated/CSRF-protected; its returned URL is
+short-lived and is not an episode enclosure.
+
 Required only while the synthetic real-client audio matrix is active:
 
 - `VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN`
@@ -96,6 +105,10 @@ Verify:
 - unsigned ad-plan processor callbacks return `401` before D1 lookup; a
   reviewed fixture workflow produces private frame-aligned segments, moves the
   plan only to `needs_review`, and requires an authenticated producer approval.
+- bad ad-decision signatures return `401` before D1 lookup; repeated issuance
+  in one decision epoch returns the same manifest/ETag; changed R2 evidence is
+  rejected before headers; duplicate/capped qualifications do not increment a
+  campaign counter.
 
 Current isolated staging runtime:
 `https://dust-wave-podcast-staging.jogo.workers.dev`. This address is for

@@ -1,4 +1,6 @@
 export type PodcastEnv = Env & {
+  AD_DECISION_MODE?: string;
+  AD_DECISION_SIGNING_SECRET?: string;
   ADMIN_AUTH_EXPOSE_LOGIN_LINK?: string;
   ADMIN_EMAIL_LOOKUP_PEPPER?: string;
   ADMIN_SESSION_SECRET?: string;

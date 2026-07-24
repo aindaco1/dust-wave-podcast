@@ -185,6 +185,14 @@ export async function uploadAdminAdCreativeAudio(
       "body_required"
     );
   }
+  const immutableObjectKey = [
+    env.MEDIA_KEY_PREFIX.replace(/^\/+|\/+$/g, ""),
+    access.creative.show_id,
+    "ads",
+    access.creative.campaign_id,
+    creativeId,
+    `upload_${crypto.randomUUID().replace(/-/g, "")}.mp3`
+  ].join("/");
 
   await env.DB.prepare(
     `UPDATE ad_creatives
@@ -204,7 +212,7 @@ export async function uploadAdminAdCreativeAudio(
   let object: R2Object;
   try {
     object = await env.MEDIA_BUCKET.put(
-      access.creative.object_key,
+      immutableObjectKey,
       request.body,
       {
         httpMetadata: { contentType },
@@ -230,7 +238,7 @@ export async function uploadAdminAdCreativeAudio(
     );
   }
   if (object.size !== declaredLength) {
-    await env.MEDIA_BUCKET.delete(access.creative.object_key);
+    await env.MEDIA_BUCKET.delete(immutableObjectKey);
     await markCreativeUploadFailure(
       env,
       access,
@@ -246,6 +254,7 @@ export async function uploadAdminAdCreativeAudio(
   await env.DB.prepare(
     `UPDATE ad_creatives
      SET
+       audio_key = ?,
        audio_bytes = ?,
        audio_mime_type = 'audio/mpeg',
        audio_etag = ?,
@@ -260,6 +269,7 @@ export async function uploadAdminAdCreativeAudio(
        uploaded_at = datetime('now')
      WHERE id = ?`
   ).bind(
+    immutableObjectKey,
     object.size,
     object.httpEtag,
     DYNAMIC_AD_MP3_PROFILE,
@@ -275,7 +285,9 @@ export async function uploadAdminAdCreativeAudio(
       campaignId: access.creative.campaign_id,
       showId: access.creative.show_id,
       bytes: object.size,
-      contentType
+      contentType,
+      replacesObjectKey: access.creative.object_key,
+      immutableObjectKey
     }
   });
   return privateJson(request, env.ALLOWED_ORIGINS, {

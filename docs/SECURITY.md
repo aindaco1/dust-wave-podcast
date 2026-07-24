@@ -24,6 +24,15 @@
   and an HMAC over the exact body; source identity, output prefix, frame/size
   constraints, manifest digest, and current private R2 objects are rechecked
   before approval.
+- Signed ad decisions are available only when the staging-only mode and secret
+  are both present. The HMAC binds ID, expiry, and manifest digest and is
+  verified before D1; the stored manifest hash and every R2 size/ETag are
+  checked before headers. Production hard-codes the mode disabled and the
+  permanent enclosure does not call this route.
+- Creative replacements and program processing use immutable/versioned or
+  content-addressed R2 keys so an already issued decision cannot be changed by
+  a later upload. Qualification dedupe and hard-cap increments are enforced
+  inside SQLite, not by a race-prone application read/modify/write.
 
 ## Storage and delivery
 

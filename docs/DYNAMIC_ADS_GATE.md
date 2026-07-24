@@ -63,6 +63,21 @@ mid-roll alignment, total episode duration, and manifest SHA-256. Only a later
 Producer/Admin/Super-admin approval atomically promotes markers and segments to
 ready state; approval deliberately leaves show/episode delivery flags false.
 
+Migration `0012` adds the first persisted immutable-decision exercise. The
+staging-only issuer keys one decision by episode/publication revision,
+inventory/marker/segment fingerprint, coarse client dimensions, hourly epoch,
+and an ephemeral daily address HMAC. It snapshots campaign revision, creative
+hash/duration/key/bytes/ETag, the complete ordered virtual manifest, its strong
+ETag, and its SHA-256. Expiring URLs sign the decision ID, expiry, and manifest
+digest; invalid signatures are rejected before D1 lookup. Stored manifests are
+rehash-checked and every R2 object size/ETag is preflighted before headers.
+
+Creative replacement now writes a new versioned object key rather than
+overwriting bytes referenced by an earlier decision. Processor program
+filenames include their SHA-256 under the unique ad-plan prefix. The permanent
+enclosure is still full-file-only; this path exists solely for isolated
+staging/client evidence.
+
 ## Privacy and identity
 
 The permanent enclosure must not derive a new byte layout for every range
@@ -114,6 +129,14 @@ The hard cap update must be atomic; if D1 contention cannot prove this under the
 staged load envelope, move counter reservation to a Durable Object without
 changing the selector or decision manifest contract.
 
+Migration `0012` enforces one qualification per decision slot with a partial
+unique index. A SQLite `BEFORE INSERT` trigger ignores an insertion at a
+reached hard cap, while the paired `AFTER INSERT` trigger increments the
+campaign counter in the same statement/transaction. A reconciliation view
+compares each counter with its durable rows. The trusted code path currently
+accepts only complete-download evidence for the exact creative byte count; it
+is not yet exposed as a browser endpoint.
+
 ## Promotion evidence
 
 Live request-time ads require all of:
@@ -121,7 +144,7 @@ Live request-time ads require all of:
 - admin authorization, approval, kill-switch, audit, and campaign CRUD tests;
 - deterministic selector fixtures for every target dimension and date edge;
 - exact program/creative stream-profile validation and full-file comparison;
-- immutable signed decision URLs with expiry, rotation, and replay tests;
+- signed-decision key rotation plus expiry-boundary and revocation evidence;
 - atomic cap and qualification deduplication under staged concurrency;
 - the complete real podcast-client range/seek/resume/download matrix in
   `VIRTUAL_AUDIO_GATE.md`;
