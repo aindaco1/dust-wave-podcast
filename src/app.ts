@@ -17,6 +17,13 @@ import {
   startAdminLogin
 } from "./admin-auth";
 import {
+  grantAdminUserRole,
+  inviteAdminUser,
+  listAdminUsers,
+  revokeAdminUserRole,
+  updateAdminUserStatus
+} from "./admin-users";
+import {
   approveAdminAdCampaign,
   createAdminAdCampaign,
   killAdminAdCampaign,
@@ -99,6 +106,12 @@ const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
   /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})(?:\/(virtual|baseline))?$/;
+const ADMIN_USER_PATH =
+  /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)$/;
+const ADMIN_USER_ROLES_PATH =
+  /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)\/roles$/;
+const ADMIN_USER_ROLE_PATH =
+  /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)\/roles\/(super_admin|admin|producer|analyst)$/;
 
 export async function handleRequest(
   request: Request,
@@ -213,6 +226,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   if (url.pathname === "/v1/admin/logout" && method === "POST") {
     return logoutAdmin(request, env);
   }
+  if (url.pathname === "/v1/admin/users") {
+    if (method === "GET") return listAdminUsers(request, env);
+    if (method === "POST") return inviteAdminUser(request, env);
+  }
   if (url.pathname === "/v1/admin/shows" && method === "GET") {
     return listAdminShows(request, env);
   }
@@ -259,6 +276,23 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     if (method === "POST") {
       return createAdminEpisode(request, env, adminShowEpisodesMatch[1]);
     }
+  }
+  const adminUserRoleMatch = url.pathname.match(ADMIN_USER_ROLE_PATH);
+  if (adminUserRoleMatch && method === "DELETE") {
+    return revokeAdminUserRole(
+      request,
+      env,
+      adminUserRoleMatch[1],
+      adminUserRoleMatch[2]
+    );
+  }
+  const adminUserRolesMatch = url.pathname.match(ADMIN_USER_ROLES_PATH);
+  if (adminUserRolesMatch && method === "POST") {
+    return grantAdminUserRole(request, env, adminUserRolesMatch[1]);
+  }
+  const adminUserMatch = url.pathname.match(ADMIN_USER_PATH);
+  if (adminUserMatch && method === "PATCH") {
+    return updateAdminUserStatus(request, env, adminUserMatch[1]);
   }
   const adminShowMatch = url.pathname.match(ADMIN_SHOW_PATH);
   if (adminShowMatch && method === "PATCH") {

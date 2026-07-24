@@ -15,7 +15,10 @@
 - Roles are `super_admin`, `admin`, `producer`, and `analyst`, with optional
   show scope. Multiple super-admins are supported.
 - Super-admin management must preserve at least two active super-admins before
-  production. That management API is not yet exposed.
+  production. Lifecycle mutations require a session authenticated within 15
+  minutes, CSRF/origin validation, and a global super-admin role. D1 triggers
+  preserve the last two active super-admins under concurrent status, role, or
+  user deletion attempts; API preflight returns a stable conflict first.
 - Every implemented content, media, and publication mutation emits a D1 audit
   event without credentials or raw email addresses.
 - Sponsor campaign creation, edits, approval, and the kill switch are

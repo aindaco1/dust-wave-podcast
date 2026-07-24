@@ -37,6 +37,25 @@ for public access, and backed by ready delivery media.
 Login tokens expire after 15 minutes and are single-use. Sessions expire after
 8 hours. Raw administrator email addresses are not stored in Podcast D1.
 
+### Super-admin lifecycle
+
+All lifecycle mutations require a `super_admin` session, same-origin CSRF, and
+authentication within the preceding 15 minutes. Responses never expose an
+email address or lookup HMAC.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/v1/admin/users` | List up to 100 admin identities and scoped roles |
+| `POST` | `/v1/admin/users` | Invite an email lookup with one initial role |
+| `PATCH` | `/v1/admin/users/{id}` | Move an identity to invited, suspended, or revoked |
+| `POST` | `/v1/admin/users/{id}/roles` | Idempotently grant a global or show-scoped role |
+| `DELETE` | `/v1/admin/users/{id}/roles/{role}?showId={id}` | Idempotently revoke a role |
+
+Invited administrators use the standard Turnstile-protected magic-link form.
+Once an environment has two active super-admins, D1 triggers prevent a status
+change, user deletion, or role deletion from reducing that count below two,
+including under concurrent requests.
+
 ## Admin
 
 | Method | Path | Roles | Purpose |
