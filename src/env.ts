@@ -22,6 +22,7 @@ export type PodcastEnv = Env & {
   STRIPE_SECRET_KEY?: string;
   STRIPE_MODE?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  TAX_QUOTE_HASH_SECRET?: string;
   TURNSTILE_SECRET_KEY?: string;
   VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN?: string;
   YOUTUBE_PUBLISH_MODE?: string;

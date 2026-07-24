@@ -58,6 +58,7 @@ import { servePublicFeed } from "./feed";
 import { json, options, privateJson } from "./http";
 import { servePublicEpisodeAudio } from "./media";
 import { getPublicShow, listPublicShows } from "./shows";
+import { quoteSubscriptionTax } from "./tax-quotes";
 import {
   abortMultipartUpload,
   completeMultipartUpload,
@@ -67,6 +68,8 @@ import {
 import { readJsonObject, RequestValidationError } from "./validation";
 
 const SHOW_PATH = /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/;
+const SHOW_TAX_QUOTE_PATH =
+  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/tax\/quote$/;
 const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
@@ -156,6 +159,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     return json(request, env.ALLOWED_ORIGINS, { shows });
   }
 
+  const showTaxQuoteMatch = url.pathname.match(SHOW_TAX_QUOTE_PATH);
+  if (showTaxQuoteMatch && method === "POST") {
+    return quoteSubscriptionTax(request, env, showTaxQuoteMatch[1]);
+  }
   const showMatch = url.pathname.match(SHOW_PATH);
   if (showMatch && (method === "GET" || method === "HEAD")) {
     const show = await getPublicShow(env.DB, showMatch[1]);

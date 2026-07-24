@@ -17,7 +17,8 @@
           "AD_QUALIFICATION_CALLBACK_SECRET",
           "ADMIN_EMAIL_LOOKUP_PEPPER",
           "ADMIN_SESSION_SECRET",
-          "MEDIA_PROCESSOR_CALLBACK_SECRET"
+          "MEDIA_PROCESSOR_CALLBACK_SECRET",
+          "TAX_QUOTE_HASH_SECRET"
         ]
       },
       "vars": {

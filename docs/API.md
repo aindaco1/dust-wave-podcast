@@ -16,10 +16,18 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 | `GET`, `HEAD` | `/episodes/{episode-id}/audio` | Public R2-backed audio with byte ranges |
 | `GET`, `HEAD` | `/v1/media/{episode-id}` | Media alias for staging and diagnostics |
 | `POST` | `/v1/webhooks/stripe` | Signed Stripe event intake |
+| `POST` | `/v1/shows/{slug}/tax/quote` | Rate-limited, no-store manual subscription-tax estimate |
 
 Append `?download=1` to the episode media URL for attachment disposition.
 Public audio is available only when the episode is published, due, eligible
 for public access, and backed by ready delivery media.
+
+Subscription tax quotes accept a configured `priceId` and a billing
+`destination`. The Worker normalizes the destination with the same shared
+primitive used by Store, selects the most specific assigned
+accountant-approved rate version, and returns integer-cent exclusive or
+inclusive math. It never returns the Stripe Tax Rate ID, stores the address, or
+enables checkout. A missing assignment or provider mapping fails closed.
 
 ## Passwordless admin authentication
 

@@ -20,6 +20,7 @@
     "db:migrate:production": "wrangler d1 migrations apply DB --remote --env production"
   },
   "dependencies": {
+    "@dustwave/tax-core": "file:shared/dust-wave-platform/packages/tax-core",
     "@dustwave/worker-core": "file:shared/dust-wave-platform/packages/worker-core"
   },
   "devDependencies": {

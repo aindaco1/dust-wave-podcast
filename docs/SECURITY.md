@@ -67,6 +67,14 @@
   D1 is touched. Event IDs are journaled once.
 - Stripe product and price identifiers are configuration, not credentials.
   Checkout stays disabled until listener identity and approved tax rules exist.
+- Subscription tax estimates reuse Store-characterized destination and
+  integer-cent primitives through `@dustwave/tax-core`; provider lookup,
+  jurisdiction approval, and subscription policy remain in their owning
+  runtimes. Podcast accepts only assigned, effective, accountant-approved
+  versions with a manual Stripe Tax Rate mapping, retains no submitted address,
+  exposes no Stripe Tax Rate ID, and caps pseudonymous clients at 60 quotes per
+  minute. Provider mappings are mode-bound so test data cannot satisfy live
+  billing readiness.
 - GitHub and YouTube writes are dry-run by default. Live mode requires
   least-privilege provider credentials and an audited environment change.
 - Resend receives the raw destination only at send time. Delivery failures are

@@ -103,6 +103,7 @@ export async function getBillingReadiness(
     allowedRoles: ["super_admin"]
   });
   if (!auth.ok) return auth.response;
+  const expectedMode = String(env.STRIPE_MODE) === "live" ? "live" : "test";
   const [shows, prices, approvedTaxes, failedEvents] = await Promise.all([
     env.DB.prepare(
       `SELECT id, title, billing_mode, stripe_product_id
@@ -118,11 +119,18 @@ export async function getBillingReadiness(
     ).all<Record<string, unknown>>(),
     env.DB.prepare(
       `SELECT COUNT(*) AS count
-       FROM tax_rate_versions
-       WHERE status = 'approved'
-         AND effective_at <= datetime('now')
-         AND (expires_at IS NULL OR expires_at > datetime('now'))`
-    ).first<{ count: number }>(),
+       FROM show_tax_rate_assignments a
+       JOIN tax_rate_versions t ON t.id = a.tax_rate_version_id
+       JOIN shows s ON s.id = a.show_id
+       WHERE
+         t.status = 'approved'
+         AND t.rate_parts_per_million IS NOT NULL
+         AND t.provider_mode = ?
+         AND t.stripe_tax_rate_id IS NOT NULL
+         AND t.effective_at <= datetime('now')
+         AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))
+         AND s.billing_mode = ?`
+    ).bind(expectedMode, expectedMode).first<{ count: number }>(),
     env.DB.prepare(
       `SELECT COUNT(*) AS count
        FROM stripe_event_journal
@@ -131,13 +139,14 @@ export async function getBillingReadiness(
   ]);
   return privateJson(request, env.ALLOWED_ORIGINS, {
     provider: "stripe",
-    mode: String(env.STRIPE_MODE || "test"),
+    mode: expectedMode,
     configured: {
       apiKey: Boolean(env.STRIPE_SECRET_KEY),
       webhookSecret: Boolean(env.STRIPE_WEBHOOK_SECRET)
     },
     checkoutEnabled: false,
     taxCollectionEnabled: (approvedTaxes?.count ?? 0) > 0,
+    taxCalculationVersion: "@dustwave/tax-core@0.1.0",
     failedWebhookEvents: failedEvents?.count ?? 0,
     shows: shows.results,
     prices: prices.results
