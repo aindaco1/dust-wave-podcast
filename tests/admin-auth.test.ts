@@ -24,6 +24,9 @@ describe("admin authentication privacy", () => {
             return this;
           },
           async first() {
+            if (query.includes("RETURNING attempt_count")) {
+              return { attempt_count: 1 };
+            }
             return query.includes("FROM admin_users") ? { id: "admin_fixture" } : null;
           },
           async run() {
@@ -59,10 +62,73 @@ describe("admin authentication privacy", () => {
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ accepted: true });
     expect(boundValues.flat()).not.toContain("admin@example.com");
-    expect(String(boundValues[0][0])).toMatch(/^[a-f0-9]{64}$/);
+    expect(
+      boundValues.flat().some((value) => /^[a-f0-9]{64}$/.test(String(value)))
+    ).toBe(true);
     const resendBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(resendBody.to).toEqual(["admin@example.com"]);
     expect(resendBody.text).toContain("#magic-link=");
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+      "idempotency-key": expect.stringMatching(
+        /^podcast-admin-login\/[a-f0-9]{64}$/
+      )
+    });
+  });
+
+  it("silently rate-limits login email without looking up an account", async () => {
+    const queries: string[] = [];
+    const db = {
+      prepare(query: string) {
+        queries.push(query);
+        let action = "";
+        return {
+          bind(...values: unknown[]) {
+            action = String(values[0] ?? "");
+            return this;
+          },
+          async first() {
+            if (query.includes("RETURNING attempt_count")) {
+              return {
+                attempt_count: action === "start_email" ? 6 : 1
+              };
+            }
+            return null;
+          },
+          async run() {
+            return { success: true };
+          }
+        };
+      }
+    } as unknown as D1Database;
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const env = {
+      ENVIRONMENT: "staging",
+      SITE_ORIGIN: "https://dustwave.xyz",
+      ALLOWED_ORIGINS: "https://dustwave.xyz",
+      DB: db,
+      ADMIN_EMAIL_LOOKUP_PEPPER: "pepper_fixture",
+      ADMIN_SESSION_SECRET: "session_fixture",
+      ADMIN_TURNSTILE_REQUIRED: "false",
+      RESEND_API_KEY: "resend_fixture"
+    } as unknown as PodcastEnv;
+
+    const response = await startAdminLogin(
+      new Request("https://feeds.dustwave.xyz/v1/admin/auth/start", {
+        method: "POST",
+        headers: {
+          origin: "https://dustwave.xyz",
+          "cf-connecting-ip": "192.0.2.10"
+        }
+      }),
+      env,
+      { email: "admin@example.com" }
+    );
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true });
+    expect(response.headers.get("retry-after")).toBe("900");
+    expect(queries.some((query) => query.includes("FROM admin_users"))).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rotates the in-memory CSRF token when restoring an authenticated session", async () => {

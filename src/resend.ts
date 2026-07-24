@@ -7,8 +7,14 @@ export async function sendAdminMagicLink(
   {
     email,
     loginUrl,
-    language
-  }: { email: string; loginUrl: string; language: LoginLanguage }
+    language,
+    deliveryKey
+  }: {
+    email: string;
+    loginUrl: string;
+    language: LoginLanguage;
+    deliveryKey: string;
+  }
 ): Promise<{ sent: boolean; providerId?: string }> {
   if (!env.RESEND_API_KEY) return { sent: false };
   const spanish = language === "es";
@@ -19,25 +25,32 @@ export async function sendAdminMagicLink(
   const explanation = spanish
     ? "Este enlace vence en 15 minutos y solo puede usarse una vez."
     : "This link expires in 15 minutes and can only be used once.";
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      from: env.PODCAST_EMAIL_FROM || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
-      to: [email],
-      subject,
-      text: `${action}: ${loginUrl}\n\n${explanation}`,
-      html: `<p><a href="${escapeAttribute(loginUrl)}">${action}</a></p><p>${explanation}</p>`
-    })
-  });
-  const payload = await response.json().catch(() => ({})) as { id?: string };
-  return {
-    sent: response.ok,
-    ...(response.ok && payload.id ? { providerId: payload.id } : {})
-  };
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "content-type": "application/json",
+        "idempotency-key": `podcast-admin-login/${deliveryKey}`
+      },
+      body: JSON.stringify({
+        from: env.PODCAST_EMAIL_FROM || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+        to: [email],
+        subject,
+        text: `${action}: ${loginUrl}\n\n${explanation}`,
+        html: `<p><a href="${escapeAttribute(loginUrl)}">${action}</a></p><p>${explanation}</p>`
+      }),
+      redirect: "error",
+      signal: AbortSignal.timeout(8_000)
+    });
+    const payload = await response.json().catch(() => ({})) as { id?: string };
+    return {
+      sent: response.ok,
+      ...(response.ok && payload.id ? { providerId: payload.id } : {})
+    };
+  } catch {
+    return { sent: false };
+  }
 }
 
 function escapeAttribute(value: string): string {

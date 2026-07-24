@@ -3,6 +3,10 @@
 ## Authentication and authorization
 
 - Administrator login is passwordless and enumeration-resistant.
+- Login initiation requires the configured site origin and Turnstile action.
+  Atomic D1 buckets cap requests per pseudonymous client and normalized-email
+  HMAC while preserving the same accepted response for registered and
+  unregistered addresses. Token exchange has an independent client cap.
 - D1 stores an HMAC lookup value instead of a raw email address.
 - Login and session secrets are one-way hashes at rest; login tokens are
   single-use.
@@ -64,6 +68,10 @@
   least-privilege provider credentials and an audited environment change.
 - Resend receives the raw destination only at send time. Delivery failures are
   logged by internal admin ID, never by email address.
+- Resend calls have an eight-second timeout and a token-hash idempotency key;
+  redirects fail closed. Scheduled maintenance removes expired rate buckets,
+  consumed login tokens, and revoked/expired sessions after a one-day
+  diagnostic buffer.
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.

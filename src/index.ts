@@ -1,4 +1,5 @@
 import { handleRequest } from "./app";
+import { pruneAdminAuthState } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { processPodcastJob, scheduleDuePublications } from "./jobs";
 import type { PodcastJob } from "./types";
@@ -51,6 +52,9 @@ export default {
     _controller: ScheduledController,
     env: PodcastEnv
   ): Promise<void> {
-    await scheduleDuePublications(env);
+    await Promise.all([
+      scheduleDuePublications(env),
+      pruneAdminAuthState(env.DB)
+    ]);
   }
 } satisfies ExportedHandler<PodcastEnv, PodcastJob>;

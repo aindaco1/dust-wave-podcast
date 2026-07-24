@@ -17,6 +17,15 @@ export const ADMIN_SESSION_COOKIE = "dustwave_podcast_admin_session";
 const LOGIN_TTL_SECONDS = 15 * 60;
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
 const CSRF_HEADER = "x-podcast-csrf";
+const AUTH_RATE_LIMITS = {
+  startClient: { action: "start_client", windowSeconds: 15 * 60, maximum: 10 },
+  startEmail: { action: "start_email", windowSeconds: 60 * 60, maximum: 5 },
+  exchangeClient: {
+    action: "exchange_client",
+    windowSeconds: 15 * 60,
+    maximum: 30
+  }
+} as const;
 
 export type AdminRole = "super_admin" | "admin" | "producer" | "analyst";
 
@@ -112,6 +121,14 @@ export async function startAdminLogin(
       { status: 503 }
     );
   }
+  if (!trustedOrigin(request, env)) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "origin_not_allowed" },
+      { status: 403 }
+    );
+  }
 
   const challenge = await verifyTurnstile(
     request,
@@ -132,6 +149,12 @@ export async function startAdminLogin(
   }
 
   const email = normalizeEmail(body.email);
+  const clientHash = await authClientHash(request, env);
+  const clientAllowed = await consumeAuthRateLimit(
+    env.DB,
+    AUTH_RATE_LIMITS.startClient,
+    clientHash
+  );
   if (!isValidEmail(email)) {
     return privateJson(
       request,
@@ -142,6 +165,19 @@ export async function startAdminLogin(
   }
 
   const lookupHash = await emailLookupHash(env, email);
+  const emailAllowed = await consumeAuthRateLimit(
+    env.DB,
+    AUTH_RATE_LIMITS.startEmail,
+    lookupHash
+  );
+  if (!clientAllowed || !emailAllowed) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { accepted: true },
+      { status: 202, headers: { "retry-after": "900" } }
+    );
+  }
   const admin = await env.DB
     .prepare(
       `SELECT id
@@ -171,7 +207,12 @@ export async function startAdminLogin(
     if (exposeLink) {
       exposedLoginUrl = loginUrl;
     } else {
-      const delivery = await sendAdminMagicLink(env, { email, loginUrl, language });
+      const delivery = await sendAdminMagicLink(env, {
+        email,
+        loginUrl,
+        language,
+        deliveryKey: tokenHash
+      });
       if (!delivery.sent) {
         console.error(JSON.stringify({
           level: "error",
@@ -201,6 +242,27 @@ export async function exchangeAdminLogin(
       env.ALLOWED_ORIGINS,
       { error: "admin_auth_not_configured" },
       { status: 503 }
+    );
+  }
+  if (!trustedOrigin(request, env)) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "origin_not_allowed" },
+      { status: 403 }
+    );
+  }
+  const clientAllowed = await consumeAuthRateLimit(
+    env.DB,
+    AUTH_RATE_LIMITS.exchangeClient,
+    await authClientHash(request, env)
+  );
+  if (!clientAllowed) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "rate_limited" },
+      { status: 429, headers: { "retry-after": "900" } }
     );
   }
   const token = String(body.token ?? "").trim();
@@ -387,7 +449,8 @@ export async function requireAdmin(
     .prepare(
       `UPDATE admin_sessions
        SET last_seen_at = datetime('now')
-       WHERE token_hash = ?`
+       WHERE token_hash = ?
+         AND last_seen_at < datetime('now', '-5 minutes')`
     )
     .bind(sessionTokenHash)
     .run();
@@ -395,6 +458,68 @@ export async function requireAdmin(
     ok: true,
     authorization: { identity, sessionTokenHash }
   };
+}
+
+export async function pruneAdminAuthState(db: D1Database): Promise<void> {
+  await db.batch([
+    db.prepare(
+      `DELETE FROM admin_auth_rate_limit_buckets
+       WHERE expires_at <= datetime('now')`
+    ),
+    db.prepare(
+      `DELETE FROM admin_login_tokens
+       WHERE expires_at < datetime('now', '-1 day')
+          OR consumed_at < datetime('now', '-1 day')`
+    ),
+    db.prepare(
+      `DELETE FROM admin_sessions
+       WHERE expires_at < datetime('now', '-1 day')
+          OR revoked_at < datetime('now', '-1 day')`
+    )
+  ]);
+}
+
+async function authClientHash(
+  request: Request,
+  env: PodcastEnv
+): Promise<string> {
+  const clientAddress = request.headers.get("cf-connecting-ip") ?? "unknown";
+  return hmacSha256(
+    `podcast-admin-auth-client:${clientAddress}`,
+    env.ADMIN_SESSION_SECRET || "",
+    "hex"
+  );
+}
+
+async function consumeAuthRateLimit(
+  db: D1Database,
+  limit: {
+    action: "start_client" | "start_email" | "exchange_client";
+    windowSeconds: number;
+    maximum: number;
+  },
+  identityHash: string
+): Promise<boolean> {
+  const currentSeconds = Math.floor(Date.now() / 1_000);
+  const windowStartedAt =
+    Math.floor(currentSeconds / limit.windowSeconds) * limit.windowSeconds;
+  const expiresAt = windowStartedAt + limit.windowSeconds * 2;
+  const bucket = await db
+    .prepare(
+      `INSERT INTO admin_auth_rate_limit_buckets (
+         action, identity_hash, window_started_at, attempt_count, expires_at
+       ) VALUES (?, ?, ?, 1, datetime(?, 'unixepoch'))
+       ON CONFLICT (action, identity_hash, window_started_at)
+       DO UPDATE SET attempt_count = attempt_count + 1
+       RETURNING attempt_count`
+    )
+    .bind(limit.action, identityHash, windowStartedAt, expiresAt)
+    .first<{ attempt_count: number }>();
+  return Boolean(
+    bucket
+    && Number.isInteger(bucket.attempt_count)
+    && bucket.attempt_count <= limit.maximum
+  );
 }
 
 export async function getAdminSession(

@@ -106,6 +106,12 @@ Use least-privilege staging credentials. Cloudflare does not expose existing
 secret values, so rotate or enter them rather than attempting to copy them from
 Pool or Store.
 
+The verified `dustwave.xyz` Resend domain may be reused, but Podcast requires
+its own domain-restricted sending key. Do not reuse the existing Pool or Store
+key. The same separation applies to the Turnstile widget secret. Public
+Turnstile test keys are not acceptable on the Internet-accessible staging
+Worker.
+
 ## 5. Deploy and smoke test
 
 ```sh
