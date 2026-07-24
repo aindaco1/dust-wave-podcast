@@ -1,8 +1,13 @@
 import { handleRequest } from "./app";
+import { pruneAdminAuthState } from "./admin-auth";
+import type { PodcastEnv } from "./env";
+import { processPodcastJob, scheduleDuePublications } from "./jobs";
+import { pruneListenerAuthState } from "./listener-auth";
+import { pruneTaxQuoteRateLimits } from "./tax-quotes";
 import type { PodcastJob } from "./types";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: PodcastEnv): Promise<Response> {
     try {
       return await handleRequest(request, env);
     } catch (error) {
@@ -24,7 +29,7 @@ export default {
     }
   },
 
-  async queue(batch: MessageBatch<PodcastJob>): Promise<void> {
+  async queue(batch: MessageBatch<PodcastJob>, env: PodcastEnv): Promise<void> {
     for (const message of batch.messages) {
       console.log(
         JSON.stringify({
@@ -36,8 +41,24 @@ export default {
           episodeId: message.body.episodeId ?? null
         })
       );
-      message.ack();
+      try {
+        await processPodcastJob(env, message.body);
+        message.ack();
+      } catch {
+        message.retry();
+      }
     }
-  }
-} satisfies ExportedHandler<Env, PodcastJob>;
+  },
 
+  async scheduled(
+    _controller: ScheduledController,
+    env: PodcastEnv
+  ): Promise<void> {
+    await Promise.all([
+      scheduleDuePublications(env),
+      pruneAdminAuthState(env.DB),
+      pruneListenerAuthState(env.DB),
+      pruneTaxQuoteRateLimits(env.DB)
+    ]);
+  }
+} satisfies ExportedHandler<PodcastEnv, PodcastJob>;

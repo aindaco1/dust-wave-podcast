@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "npm run types && npm run typecheck && npm test",
+    "fixtures:virtual-audio": "node scripts/generate-virtual-audio-fixtures.mjs",
+    "matrix:virtual-audio": "node scripts/run-virtual-audio-protocol-matrix.mjs",
+    "load:virtual-audio": "node scripts/run-virtual-audio-load-gate.mjs",
     "deploy:staging:dry": "wrangler deploy --env staging --dry-run",
     "deploy:production:dry": "wrangler deploy --env production --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --env staging",
@@ -17,6 +20,7 @@
     "db:migrate:production": "wrangler d1 migrations apply DB --remote --env production"
   },
   "dependencies": {
+    "@dustwave/tax-core": "file:shared/dust-wave-platform/packages/tax-core",
     "@dustwave/worker-core": "file:shared/dust-wave-platform/packages/worker-core"
   },
   "devDependencies": {

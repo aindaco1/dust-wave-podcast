@@ -6,17 +6,53 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
+    "logs": {
+      "invocation_logs": false
+    }
   },
   "env": {
     "staging": {
       "name": "dust-wave-podcast-staging",
+      "secrets": {
+        "required": [
+          "AD_DECISION_SIGNING_SECRET",
+          "AD_QUALIFICATION_CALLBACK_SECRET",
+          "ADMIN_EMAIL_LOOKUP_PEPPER",
+          "ADMIN_SESSION_SECRET",
+          "FEED_TOKEN_PEPPER",
+          "LISTENER_EMAIL_LOOKUP_PEPPER",
+          "LISTENER_SESSION_SECRET",
+          "MEDIA_PROCESSOR_CALLBACK_SECRET",
+          "TAX_QUOTE_HASH_SECRET"
+        ]
+      },
       "vars": {
         "ENVIRONMENT": "staging",
         "SITE_ORIGIN": "https://dustwave.xyz",
+        "FEED_ORIGIN": "https://dust-wave-podcast-staging.jogo.workers.dev",
+        "MEDIA_ORIGIN": "https://dust-wave-podcast-staging.jogo.workers.dev",
         "ALLOWED_ORIGINS": "https://dustwave.xyz,https://www.dustwave.xyz,http://localhost:8080",
         "MEDIA_KEY_PREFIX": "podcasts/",
-        "YOUTUBE_CHANNEL_URL": "https://youtube.com/@dustwavecollective"
+        "MEDIA_BUCKET_NAME": "dustwave-media-staging",
+        "AD_DECISION_MODE": "staging_validate",
+        "YOUTUBE_CHANNEL_URL": "https://youtube.com/@dustwavecollective",
+        "YOUTUBE_PUBLISH_MODE": "dry_run",
+        "GITHUB_OWNER": "aindaco1",
+        "GITHUB_REPO": "dust-wave-new",
+        "GITHUB_REF": "release/1.2.0",
+        "GITHUB_PUBLISH_MODE": "dry_run",
+        "PODCAST_AUTHOR_NAME": "Dust Wave",
+        "PODCAST_EMAIL_FROM": "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+        "PODCAST_OWNER_EMAIL": "podcasts@dustwave.xyz",
+        "STRIPE_MODE": "test",
+        "ADMIN_AUTH_EXPOSE_LOGIN_LINK": "false",
+        "ADMIN_TURNSTILE_REQUIRED": "true",
+        "LISTENER_AUTH_EXPOSE_LOGIN_LINK": "false",
+        "LISTENER_TURNSTILE_REQUIRED": "true"
+      },
+      "triggers": {
+        "crons": ["*/5 * * * *"]
       },
       "d1_databases": [
         {
@@ -63,9 +99,29 @@
       "vars": {
         "ENVIRONMENT": "production",
         "SITE_ORIGIN": "https://dustwave.xyz",
+        "FEED_ORIGIN": "https://feeds.dustwave.xyz",
+        "MEDIA_ORIGIN": "https://media.dustwave.xyz",
         "ALLOWED_ORIGINS": "https://dustwave.xyz,https://www.dustwave.xyz",
         "MEDIA_KEY_PREFIX": "podcasts/",
-        "YOUTUBE_CHANNEL_URL": "https://youtube.com/@dustwavecollective"
+        "MEDIA_BUCKET_NAME": "dustwave-media",
+        "AD_DECISION_MODE": "disabled",
+        "YOUTUBE_CHANNEL_URL": "https://youtube.com/@dustwavecollective",
+        "YOUTUBE_PUBLISH_MODE": "dry_run",
+        "GITHUB_OWNER": "aindaco1",
+        "GITHUB_REPO": "dust-wave-new",
+        "GITHUB_REF": "main",
+        "GITHUB_PUBLISH_MODE": "dry_run",
+        "PODCAST_AUTHOR_NAME": "Dust Wave",
+        "PODCAST_EMAIL_FROM": "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+        "PODCAST_OWNER_EMAIL": "podcasts@dustwave.xyz",
+        "STRIPE_MODE": "test",
+        "ADMIN_AUTH_EXPOSE_LOGIN_LINK": "false",
+        "ADMIN_TURNSTILE_REQUIRED": "true",
+        "LISTENER_AUTH_EXPOSE_LOGIN_LINK": "false",
+        "LISTENER_TURNSTILE_REQUIRED": "true"
+      },
+      "triggers": {
+        "crons": ["*/5 * * * *"]
       },
       "d1_databases": [
         {
@@ -109,4 +165,3 @@
     }
   }
 }
-

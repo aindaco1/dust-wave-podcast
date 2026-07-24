@@ -1,4 +1,9 @@
 [submodule "shared/dust-wave-platform"]
 	path = shared/dust-wave-platform
 	url = https://github.com/aindaco1/dust-wave-platform.git
+	branch = release/0.4.0
 
+[submodule "alignment-runner"]
+	path = alignment-runner
+	url = https://github.com/aindaco1/dust-wave-alignment-runner.git
+	branch = release/0.1.0
