@@ -56,6 +56,17 @@ Required for later provider tests:
 - `STRIPE_WEBHOOK_SECRET`
 - YouTube OAuth client, secret, and refresh token
 
+Required for the isolated ad-plan processor:
+
+- Worker secret `MEDIA_PROCESSOR_CALLBACK_SECRET`
+- Podcast GitHub secret `MEDIA_PROCESSOR_CALLBACK_SECRET` with the same
+  staging-only value
+- Podcast GitHub secrets `CLOUDFLARE_ACCOUNT_ID` and a dedicated
+  `CLOUDFLARE_API_TOKEN` limited to the staging media bucket
+
+Do not copy Pool/Store GitHub secret values; GitHub and Cloudflare intentionally
+do not expose them. Create a new least-privilege Podcast processor token.
+
 Required only while the synthetic real-client audio matrix is active:
 
 - `VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN`
@@ -82,6 +93,9 @@ Verify:
 - News and YouTube jobs report `dry-run`;
 - the canonical website remains unchanged;
 - Stripe rejects unsigned and wrong-mode events.
+- unsigned ad-plan processor callbacks return `401` before D1 lookup; a
+  reviewed fixture workflow produces private frame-aligned segments, moves the
+  plan only to `needs_review`, and requires an authenticated producer approval.
 
 Current isolated staging runtime:
 `https://dust-wave-podcast-staging.jogo.workers.dev`. This address is for

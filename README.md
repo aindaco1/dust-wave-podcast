@@ -17,11 +17,25 @@ The current vertical slice implements the public show API, public RSS, private
 R2-backed range delivery, passwordless admin authentication, show and episode
 editing APIs, multipart uploads, one-click idempotent publication
 orchestration, a dry-run GitHub News publisher, a dry-run YouTube adapter, and
-the signed Stripe webhook/readiness boundary. The bilingual word-alignment
+the signed Stripe webhook/readiness boundary. Draft/approval/kill sponsor
+operations, deterministic targeting preview, bounded creative validation, and
+the signed processor/producer-review boundary for frame-aligned episode ad
+plans are implemented without connecting public audio assembly. The bilingual word-alignment
 storage contract and executable launch-quality evaluator are also implemented;
 running a real transcription/alignment adapter and producing its human-reviewed
 benchmark evidence remain gated. Checkout, private premium feeds, dynamic audio
 assembly, clips, and live YouTube/GitHub publishing remain roadmap work.
+
+The staging ad-plan processor is intentionally a manual workflow until a new
+least-privilege Podcast R2 token is installed:
+
+```sh
+gh workflow run process-ad-plan.yml \
+  -f plan_manifest="$(jq -c . /absolute/path/to/podcast-ad-plan.json)"
+```
+
+The manifest is downloaded from the authenticated Episode workbench. The
+workflow can only target the isolated staging bucket and staging callback.
 
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.

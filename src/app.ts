@@ -25,6 +25,13 @@ import {
   uploadAdminAdCreativeAudio,
   validateAdminAdCreative
 } from "./ad-creatives";
+import {
+  approveAdminEpisodeAdPlan,
+  completeEpisodeAdPlanProcessing,
+  getAdminEpisodeAdPlan,
+  rejectAdminEpisodeAdPlan,
+  submitAdminEpisodeAdPlan
+} from "./ad-plans";
 import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
@@ -55,6 +62,8 @@ const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
+const ADMIN_EPISODE_AD_PLAN_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
 const ADMIN_UPLOAD_PART_PATH =
   /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)\/parts\/(\d+)$/;
 const ADMIN_UPLOAD_COMPLETE_PATH =
@@ -72,6 +81,12 @@ const ADMIN_AD_CREATIVE_AUDIO_PATH =
   /^\/v1\/admin\/ads\/creatives\/([A-Za-z0-9_-]+)\/audio$/;
 const ADMIN_AD_CREATIVE_VALIDATE_PATH =
   /^\/v1\/admin\/ads\/creatives\/([A-Za-z0-9_-]+)\/validate$/;
+const ADMIN_AD_PLAN_APPROVE_PATH =
+  /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/approve$/;
+const ADMIN_AD_PLAN_REJECT_PATH =
+  /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/reject$/;
+const PROCESSOR_AD_PLAN_COMPLETE_PATH =
+  /^\/v1\/processor\/ad-plans\/([A-Za-z0-9_-]+)\/complete$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
   /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})$/;
 
@@ -221,6 +236,21 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       adminEpisodeDistributionMatch[1]
     );
   }
+  const adminEpisodeAdPlanMatch = url.pathname.match(
+    ADMIN_EPISODE_AD_PLAN_PATH
+  );
+  if (adminEpisodeAdPlanMatch) {
+    if (method === "GET") {
+      return getAdminEpisodeAdPlan(request, env, adminEpisodeAdPlanMatch[1]);
+    }
+    if (method === "POST") {
+      return submitAdminEpisodeAdPlan(
+        request,
+        env,
+        adminEpisodeAdPlanMatch[1]
+      );
+    }
+  }
   const adminEpisodeMatch = url.pathname.match(ADMIN_EPISODE_PATH);
   if (adminEpisodeMatch && method === "PATCH") {
     return updateAdminEpisode(request, env, adminEpisodeMatch[1]);
@@ -271,6 +301,26 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       adminAdCreativeValidateMatch[1]
     );
   }
+  const adminAdPlanApproveMatch = url.pathname.match(
+    ADMIN_AD_PLAN_APPROVE_PATH
+  );
+  if (adminAdPlanApproveMatch && method === "POST") {
+    return approveAdminEpisodeAdPlan(
+      request,
+      env,
+      adminAdPlanApproveMatch[1]
+    );
+  }
+  const adminAdPlanRejectMatch = url.pathname.match(
+    ADMIN_AD_PLAN_REJECT_PATH
+  );
+  if (adminAdPlanRejectMatch && method === "POST") {
+    return rejectAdminEpisodeAdPlan(
+      request,
+      env,
+      adminAdPlanRejectMatch[1]
+    );
+  }
   const adminAdCampaignMatch = url.pathname.match(ADMIN_AD_CAMPAIGN_PATH);
   if (adminAdCampaignMatch && method === "PATCH") {
     return updateAdminAdCampaign(request, env, adminAdCampaignMatch[1]);
@@ -295,6 +345,16 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const uploadMatch = url.pathname.match(ADMIN_UPLOAD_PATH);
   if (uploadMatch && method === "DELETE") {
     return abortMultipartUpload(request, env, uploadMatch[1]);
+  }
+  const processorAdPlanCompleteMatch = url.pathname.match(
+    PROCESSOR_AD_PLAN_COMPLETE_PATH
+  );
+  if (processorAdPlanCompleteMatch && method === "POST") {
+    return completeEpisodeAdPlanProcessing(
+      request,
+      env,
+      processorAdPlanCompleteMatch[1]
+    );
   }
 
   const knownPath = url.pathname === "/health"

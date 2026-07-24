@@ -18,6 +18,12 @@
   show-scoped admin mutations with CSRF/origin enforcement and audit events.
   Edits reset approval; direct campaigns require an active sponsor; revoked
   rows cannot be silently reactivated.
+- Episode ad plans separate producer marker intent from machine evidence and
+  human approval. Browser requests cannot write ready marker/segment rows.
+  Processor callbacks use a dedicated staging secret, a five-minute timestamp,
+  and an HMAC over the exact body; source identity, output prefix, frame/size
+  constraints, manifest digest, and current private R2 objects are rechecked
+  before approval.
 
 ## Storage and delivery
 
@@ -42,6 +48,9 @@
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.
+- The staging GitHub processor requires its own least-privilege R2-capable
+  Cloudflare token plus the same dedicated callback secret. Pool/Store
+  deployment secrets are not copied or exposed.
 
 ## Before production
 

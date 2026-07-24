@@ -53,6 +53,16 @@ operator identities. Browser clients declare size with
 `x-podcast-upload-bytes`; R2 size remains authoritative. Upload, replacement,
 and revalidation reset campaign approval, and failures cannot become selectable.
 
+Migration `0011` separates marker intent, machine evidence, and human approval.
+An ad plan snapshots the exact episode source key/bytes/ETag, marker intent,
+profile, and revision. The isolated staging processor normalizes the source
+once, splits only on full MPEG frames, uploads plan-prefixed private program
+objects, and returns a timestamped HMAC evidence manifest. The Worker verifies
+R2 sizes, contiguous order, frame-count duration, 128 kbps byte bounds,
+mid-roll alignment, total episode duration, and manifest SHA-256. Only a later
+Producer/Admin/Super-admin approval atomically promotes markers and segments to
+ready state; approval deliberately leaves show/episode delivery flags false.
+
 ## Privacy and identity
 
 The permanent enclosure must not derive a new byte layout for every range

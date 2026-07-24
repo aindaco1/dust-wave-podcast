@@ -61,6 +61,10 @@ Login tokens expire after 15 minutes and are single-use. Sessions expire after
 | `POST` | `/v1/admin/ads/campaigns/{id}/creatives` | producer+ | Create pending MP3 creative metadata |
 | `PUT` | `/v1/admin/ads/creatives/{id}/audio` | producer+ | Stream one bounded creative MP3 to private R2 |
 | `POST` | `/v1/admin/ads/creatives/{id}/validate` | producer+ | Validate exact frame/profile/duration/size and hash |
+| `GET` | `/v1/admin/episodes/{id}/ad-plan` | analyst+ | Latest processor/review state and approved marker/segment state |
+| `POST` | `/v1/admin/episodes/{id}/ad-plan` | producer+ | Submit versioned pre/mid/post marker intent against immutable source audio |
+| `POST` | `/v1/admin/ads/plans/{id}/approve` | producer+ | Atomically approve processor evidence as active markers/segments |
+| `POST` | `/v1/admin/ads/plans/{id}/reject` | producer+ | Reject pending processor evidence with an audited reason |
 | `POST` | `/v1/admin/ads/campaigns/{id}/approve` | admin+ | Approve only complete, validated inventory |
 | `POST` | `/v1/admin/ads/campaigns/{id}/kill` | admin+ | Immediately and idempotently revoke a campaign |
 
@@ -117,6 +121,30 @@ boundaries and object size, checks declared versus measured duration, and
 records a SHA-256 digest and review evidence. Creating, replacing, or
 revalidating audio returns the campaign to draft. Upload and validation
 failures remain non-ready and are audited.
+
+### Episode ad plans and processor evidence
+
+Submitting an episode ad plan records 1–3 unique pre/mid/post positions against
+the exact ready delivery MP3 key, byte size, ETag, and reviewed duration. It
+does not edit the currently approved marker/segment rows. The response includes
+a non-secret `processorManifest` for the isolated staging workflow.
+
+The `Process staging Podcast ad plan` GitHub workflow downloads the private
+source through authenticated Wrangler, normalizes it once to the launch MP3
+profile, splits that normalized stream only on complete MPEG frame boundaries,
+uploads full private program objects under the plan-specific R2 prefix, and
+submits its evidence to
+`POST /v1/processor/ad-plans/{id}/complete`. That internal callback is not a
+browser API: it requires a five-minute timestamp and HMAC-SHA256 signature over
+the exact request body. The Worker checks immutable source evidence, contiguous
+sequence, object prefix, exact R2 sizes, frame-derived duration, 128 kbps frame
+byte bounds, the mid-roll boundary, whole-episode duration, and per-segment
+SHA-256 before changing the plan to `needs_review`.
+
+A Producer/Admin/Super-admin must then approve. Approval rechecks the manifest
+digest, source identity, and current R2 objects and replaces active
+marker/segment rows in one D1 batch. It does not set either dynamic-ad feature
+flag, create a decision, change the public file, or count an impression.
 
 ## Provider modes
 

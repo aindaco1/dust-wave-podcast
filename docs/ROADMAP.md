@@ -76,6 +76,10 @@ iHeartRadio, and Deezer.
 ### H1 sponsors and dynamic audio
 
 - Limit inventory to Dust Wave promos and directly sold sponsors.
+- Separate producer marker intent, FFmpeg/frame-validation evidence, and human
+  approval; never let browser input directly mark program segments ready.
+- Normalize each episode once to the versioned delivery profile and split only
+  on complete MPEG frame boundaries under a plan-specific private R2 prefix.
 - Select approved pre-, mid-, and post-roll creative at request time by show,
   episode, position, campaign date, and normalized device/app.
 - Preserve a validated preassembled-file fallback until request-time assembly

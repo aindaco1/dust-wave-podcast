@@ -161,6 +161,8 @@ describe("podcast API", () => {
       ["/v1/admin/ads/preview", { episodeId: "episode_fixture" }],
       ["/v1/admin/ads/campaigns", { showId: "show_fixture" }],
       ["/v1/admin/ads/campaigns/campaign-fixture/creatives", {}],
+      ["/v1/admin/episodes/episode-fixture/ad-plan", { markers: [] }],
+      ["/v1/admin/ads/plans/adplan-fixture/approve", {}],
       ["/v1/admin/ads/campaigns/campaign-fixture/kill", {}]
     ] as const) {
       const response = await handleRequest(
