@@ -45,6 +45,10 @@
 - Insertable MP3 creatives must be frame-aligned and free of ID3 metadata;
   decision and fallback byte-length declarations are recomputed from their
   signed manifests before delivery.
+- House fallbacks are selected only from approved, currently eligible
+  inventory and must exactly match the selected creative's validated byte
+  count, duration, MIME type, and stream profile. Their immutable object and
+  campaign evidence is snapshotted separately from billable sponsor evidence.
 - Byte ranges are validated and bounded; upload kinds, MIME types, object
   sizes, filenames, and part numbers are allowlisted.
 - CORS reflects only explicit origins. Admin responses are private/no-store and

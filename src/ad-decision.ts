@@ -220,6 +220,57 @@ export function selectAdSlots(
   });
 }
 
+export function selectHouseFallbackSlots(
+  campaigns: AdCampaignCandidate[],
+  baseContext: Omit<AdSelectionContext, "position">,
+  primarySlots: AdSlotDecision[],
+  seed: string
+): AdSlotDecision[] {
+  const usedCampaignIds = new Set<string>();
+  return primarySlots.map((slot) => {
+    const primary = slot.selection;
+    if (!primary) {
+      return {
+        position: slot.position,
+        selection: null,
+        fallbackReason: "no_eligible_inventory"
+      };
+    }
+    if (primary.campaignType === "house") {
+      usedCampaignIds.add(primary.campaignId);
+      return {
+        position: slot.position,
+        selection: primary,
+        fallbackReason: null
+      };
+    }
+    const matchingHouseCampaigns = campaigns
+      .filter(({ campaignType }) => campaignType === "house")
+      .map((campaign) => ({
+        ...campaign,
+        creatives: campaign.creatives.filter((creative) =>
+          creative.audioBytes === primary.audioBytes
+          && creative.durationMs === primary.creativeDurationMs
+          && creative.audioMimeType === primary.audioMimeType
+          && creative.streamProfile === primary.streamProfile
+        )
+      }))
+      .filter(({ creatives }) => creatives.length > 0);
+    const selection = selectAdForSlot(
+      matchingHouseCampaigns,
+      { ...baseContext, position: slot.position },
+      `${seed}|house-fallback`,
+      usedCampaignIds
+    );
+    if (selection) usedCampaignIds.add(selection.campaignId);
+    return {
+      position: slot.position,
+      selection,
+      fallbackReason: selection ? null : "no_eligible_inventory"
+    };
+  });
+}
+
 export function normalizePodcastClient(
   userAgentValue: string | null
 ): NormalizedPodcastClient {

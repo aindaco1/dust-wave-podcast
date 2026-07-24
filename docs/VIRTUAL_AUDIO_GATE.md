@@ -139,3 +139,11 @@ usable for diagnostic fallback evidence but are explicitly not launch-ready.
 Before the permanent enclosure can use request-time selection, each supported
 slot duration needs an approved house/filler rendition whose complete
 assembled byte count exactly matches the sponsor rendition.
+
+The staging selector now enforces this mechanically. For each selected
+sponsor slot it considers only approved, targeted house inventory with the
+same validated object bytes, duration, MIME type, and stream profile, then
+snapshots the house campaign/creative/object evidence separately. Complete
+coverage produces a `house_fill` fallback with the same virtual length;
+incomplete coverage retains the diagnostic `full_file` fallback and leaves the
+length gate false.

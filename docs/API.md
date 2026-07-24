@@ -167,15 +167,23 @@ bounded virtual range streamer. It is available only on isolated staging.
 Production sets the mode to `disabled`; the permanent episode enclosure never
 calls this route and both dynamic-ad feature flags remain false.
 
-Every newly issued staging decision also snapshots one validated full-file
-fallback manifest from the current immutable delivery-audio key, size, and
-ETag. The signed manifest records a derived `equal-byte-length-v1` contract
-containing primary bytes, fallback bytes, and their equality result. The
-Worker recomputes that contract from the signed manifests before presenting or
-serving a decision, so a missing or altered declaration fails closed. Staging
-may exercise an unequal full-file fallback, but reports
-`deliveryLengthReady: false`; production activation requires a same-length
-house/filler rendition plus every other documented launch gate.
+Every newly issued staging decision also selects a deterministic house
+fallback for each slot. A house creative is eligible only when its validated
+byte count, duration, MIME type, and stream profile exactly match the selected
+sponsor creative. The decision snapshots those fallback campaign, creative,
+hash, duration, object-key, size, ETag, and profile fields. When every slot is
+covered, the fallback manifest reuses the same program segments with the
+matching house creatives and reports `fallbackType: "house_fill"`.
+
+If any slot lacks an exact house rendition, the staging decision instead
+snapshots one validated `fallbackType: "full_file"` manifest from the current
+immutable delivery-audio key, size, and ETag. The signed manifest records a
+derived `equal-byte-length-v1` contract containing primary bytes, fallback
+bytes, and their equality result. The Worker recomputes that contract before
+presenting or serving a decision, so a missing or altered declaration fails
+closed. An unequal full-file diagnostic reports
+`deliveryLengthReady: false`; production activation requires complete
+same-length house/filler coverage plus every other documented launch gate.
 
 On the signed URL's first `GET` or `HEAD`, the Worker preflights the primary
 virtual manifest. If primary evidence is unavailable, it preflights the

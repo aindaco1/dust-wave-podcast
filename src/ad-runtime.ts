@@ -8,6 +8,7 @@ import {
   buildAdRequestKey,
   normalizeAdTargetValue,
   selectAdSlots,
+  selectHouseFallbackSlots,
   type AdDeviceType,
   type AdPosition,
   type AdSlotDecision,
@@ -115,6 +116,7 @@ type StoredDecisionRow = {
 
 type StoredAdDecisionManifest = VirtualMediaManifest & {
   fallback: VirtualMediaManifest;
+  fallbackType: "house_fill" | "full_file";
   deliveryLengthContract: VirtualMediaLengthContract;
 };
 
@@ -295,16 +297,17 @@ export async function issueAdminStagingAdDecision(
   }
 
   const positions = markers.map((marker) => marker.position);
+  const selectionContext = {
+    showId: episode.show_id,
+    episodeId: episode.id,
+    deviceType,
+    appName,
+    streamProfile,
+    now: now.toISOString()
+  };
   const slotDecisions = selectAdSlots(
     campaigns,
-    {
-      showId: episode.show_id,
-      episodeId: episode.id,
-      deviceType,
-      appName,
-      streamProfile,
-      now: now.toISOString()
-    },
+    selectionContext,
     positions,
     requestKey.selectionSeed
   );
@@ -325,11 +328,22 @@ export async function issueAdminStagingAdDecision(
     );
   }
   validateSelectedCreativeSnapshots(slotDecisions, streamProfile);
+  const fallbackSlotDecisions = selectHouseFallbackSlots(
+    campaigns,
+    selectionContext,
+    slotDecisions,
+    requestKey.selectionSeed
+  );
+  validateSelectedCreativeSnapshots(
+    fallbackSlotDecisions.filter(({ selection }) => Boolean(selection)),
+    streamProfile
+  );
   const objectEtags = await verifyRuntimeObjects(
     env.MEDIA_BUCKET,
     episode,
     programSegments,
-    slotDecisions
+    slotDecisions,
+    fallbackSlotDecisions
   );
 
   const decisionId = `decision_${requestKey.requestKeyHash.slice(0, 48)}`;
@@ -341,6 +355,7 @@ export async function issueAdminStagingAdDecision(
     markers,
     programSegments,
     slotDecisions,
+    fallbackSlotDecisions,
     objectEtags
   );
   const compiled = compileVirtualMediaManifest(manifest);
@@ -397,13 +412,21 @@ export async function issueAdminStagingAdDecision(
   for (const slot of slotDecisions) {
     const selection = slot.selection;
     if (!selection) continue;
+    const fallbackSelection = fallbackSlotDecisions.find(
+      ({ position }) => position === slot.position
+    )?.selection ?? null;
     statements.push(env.DB.prepare(
       `INSERT OR IGNORE INTO ad_decision_slots (
          id, decision_id, marker_id, position, campaign_id, creative_id,
          selection_reason_json, campaign_revision, creative_object_key,
          creative_object_bytes, creative_object_etag, creative_sha256,
-         creative_duration_ms, stream_profile
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         creative_duration_ms, stream_profile, fallback_campaign_id,
+         fallback_creative_id, fallback_object_key, fallback_object_bytes,
+         fallback_object_etag, fallback_sha256, fallback_duration_ms,
+         fallback_stream_profile
+       ) VALUES (
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       )`
     ).bind(
       `${decisionId}_${slot.position}`,
       decisionId,
@@ -418,7 +441,15 @@ export async function issueAdminStagingAdDecision(
       selection.creativeEtag,
       selection.creativeSha256,
       selection.creativeDurationMs,
-      selection.streamProfile
+      selection.streamProfile,
+      fallbackSelection?.campaignId ?? null,
+      fallbackSelection?.creativeId ?? null,
+      fallbackSelection?.objectKey ?? null,
+      fallbackSelection?.audioBytes ?? null,
+      fallbackSelection?.creativeEtag ?? null,
+      fallbackSelection?.creativeSha256 ?? null,
+      fallbackSelection?.creativeDurationMs ?? null,
+      fallbackSelection?.streamProfile ?? null
     ));
   }
   statements.push(prepareAdminAudit(env.DB, {
@@ -432,6 +463,7 @@ export async function issueAdminStagingAdDecision(
       publicationRevision: episode.publication_revision,
       slotCount: slotDecisions.length,
       totalBytes: compiled.totalBytes,
+      fallbackType: manifest.fallbackType,
       deliveryLengthContract: manifest.deliveryLengthContract,
       deliveryLengthReady: manifest.deliveryLengthContract.equalByteLength,
       manifestSha256,
@@ -869,9 +901,9 @@ async function verifyRuntimeObjects(
   bucket: R2Bucket,
   episode: RuntimeEpisodeRow,
   programSegments: RuntimeProgramSegmentRow[],
-  slots: AdSlotDecision[]
+  ...slotGroups: AdSlotDecision[][]
 ): Promise<Map<string, string>> {
-  const expected = [
+  const candidates = [
     {
       objectKey: episode.audio_key as string,
       objectBytes: episode.audio_bytes as number,
@@ -882,14 +914,44 @@ async function verifyRuntimeObjects(
       objectBytes: segment.object_bytes,
       etag: null
     })),
-    ...slots.flatMap((slot) => slot.selection
+    ...slotGroups.flatMap((slots) => slots.flatMap((slot) => slot.selection
       ? [{
           objectKey: slot.selection.objectKey,
           objectBytes: slot.selection.audioBytes,
           etag: slot.selection.creativeEtag
         }]
-      : [])
+      : []))
   ];
+  const expectedByKey = new Map<string, {
+    objectKey: string;
+    objectBytes: number;
+    etag: string | null;
+  }>();
+  for (const candidate of candidates) {
+    const existing = expectedByKey.get(candidate.objectKey);
+    if (
+      existing
+      && (
+        existing.objectBytes !== candidate.objectBytes
+        || (
+          existing.etag
+          && candidate.etag
+          && existing.etag !== candidate.etag
+        )
+      )
+    ) {
+      throw new RequestValidationError(
+        "A decision object has conflicting immutable evidence",
+        "ad_decision_object_mismatch",
+        409
+      );
+    }
+    expectedByKey.set(candidate.objectKey, {
+      ...candidate,
+      etag: existing?.etag ?? candidate.etag
+    });
+  }
+  const expected = [...expectedByKey.values()];
   const objects = await Promise.all(
     expected.map(({ objectKey }) => bucket.head(objectKey))
   );
@@ -924,42 +986,18 @@ async function buildDecisionManifest(
   markers: RuntimeMarkerRow[],
   programSegments: RuntimeProgramSegmentRow[],
   slots: AdSlotDecision[],
+  fallbackSlots: AdSlotDecision[],
   objectEtags: ReadonlyMap<string, string>
 ): Promise<StoredAdDecisionManifest> {
-  const byPosition = new Map(
-    slots.map((slot) => [slot.position, slot.selection])
-  );
-  const segments: VirtualMediaSegment[] = [];
-  const appendAd = (position: AdPosition) => {
-    const selection = byPosition.get(position);
-    if (!selection) return;
-    segments.push({
-      id: `${decisionId}_${position}_creative`,
-      kind: selection.campaignType === "direct" ? "direct_ad" : "house_ad",
-      objectKey: selection.objectKey,
-      objectEtag: objectEtags.get(selection.objectKey),
-      objectBytes: selection.audioBytes,
-      sourceOffset: 0,
-      byteLength: selection.audioBytes,
-      contentType: "audio/mpeg",
-      streamProfile
-    });
-  };
-  if (markers.some(({ position }) => position === "pre")) appendAd("pre");
-  segments.push(programVirtualSegment(
-    programSegments[0],
+  const segments = buildRuntimeVirtualSegments(
+    decisionId,
     streamProfile,
-    objectEtags
-  ));
-  if (markers.some(({ position }) => position === "mid")) {
-    appendAd("mid");
-    segments.push(programVirtualSegment(
-      programSegments[1],
-      streamProfile,
-      objectEtags
-    ));
-  }
-  if (markers.some(({ position }) => position === "post")) appendAd("post");
+    markers,
+    programSegments,
+    slots,
+    objectEtags,
+    "primary"
+  );
 
   const materialSha256 = await sha256Hex(JSON.stringify({
     schemaVersion: "1",
@@ -969,7 +1007,7 @@ async function buildDecisionManifest(
     streamProfile,
     segments
   }));
-  const fallbackMaterialSha256 = await sha256Hex(JSON.stringify({
+  const fullFileFallbackMaterialSha256 = await sha256Hex(JSON.stringify({
     schemaVersion: "1",
     decisionId,
     episodeId: episode.id,
@@ -979,12 +1017,12 @@ async function buildDecisionManifest(
     objectBytes: episode.audio_bytes,
     objectEtag: episode.audio_etag
   }));
-  const fallback: VirtualMediaManifest = {
+  const fullFileFallback: VirtualMediaManifest = {
     schemaVersion: "1",
-    id: `fallback_${fallbackMaterialSha256.slice(0, 48)}`,
+    id: `fallback_${fullFileFallbackMaterialSha256.slice(0, 48)}`,
     episodeId: episode.id,
     decisionId,
-    etag: `"fallback-${fallbackMaterialSha256}"`,
+    etag: `"fallback-${fullFileFallbackMaterialSha256}"`,
     contentType: "audio/mpeg",
     streamProfile,
     validatedAt,
@@ -1011,11 +1049,98 @@ async function buildDecisionManifest(
     validatedAt,
     segments
   };
+  const completeHouseFallback = fallbackSlots.length === markers.length
+    && fallbackSlots.every(({ selection }) => Boolean(selection));
+  let fallback = fullFileFallback;
+  let fallbackType: StoredAdDecisionManifest["fallbackType"] = "full_file";
+  if (completeHouseFallback) {
+    const houseSegments = buildRuntimeVirtualSegments(
+      decisionId,
+      streamProfile,
+      markers,
+      programSegments,
+      fallbackSlots,
+      objectEtags,
+      "house_fallback"
+    );
+    const houseMaterialSha256 = await sha256Hex(JSON.stringify({
+      schemaVersion: "1",
+      decisionId,
+      episodeId: episode.id,
+      publicationRevision: episode.publication_revision,
+      streamProfile,
+      segments: houseSegments
+    }));
+    const houseFallback: VirtualMediaManifest = {
+      schemaVersion: "1",
+      id: `house_fallback_${houseMaterialSha256.slice(0, 48)}`,
+      episodeId: episode.id,
+      decisionId,
+      etag: `"house-${houseMaterialSha256}"`,
+      contentType: "audio/mpeg",
+      streamProfile,
+      validatedAt,
+      segments: houseSegments
+    };
+    if (
+      buildVirtualMediaLengthContract(primary, houseFallback).equalByteLength
+    ) {
+      fallback = houseFallback;
+      fallbackType = "house_fill";
+    }
+  }
   return {
     ...primary,
+    fallbackType,
     deliveryLengthContract: buildVirtualMediaLengthContract(primary, fallback),
     fallback
   };
+}
+
+function buildRuntimeVirtualSegments(
+  decisionId: string,
+  streamProfile: string,
+  markers: RuntimeMarkerRow[],
+  programSegments: RuntimeProgramSegmentRow[],
+  slots: AdSlotDecision[],
+  objectEtags: ReadonlyMap<string, string>,
+  idKind: "primary" | "house_fallback"
+): VirtualMediaSegment[] {
+  const byPosition = new Map(
+    slots.map((slot) => [slot.position, slot.selection])
+  );
+  const segments: VirtualMediaSegment[] = [];
+  const appendAd = (position: AdPosition) => {
+    const selection = byPosition.get(position);
+    if (!selection) return;
+    segments.push({
+      id: `${decisionId}_${idKind}_${position}_creative`,
+      kind: selection.campaignType === "direct" ? "direct_ad" : "house_ad",
+      objectKey: selection.objectKey,
+      objectEtag: objectEtags.get(selection.objectKey),
+      objectBytes: selection.audioBytes,
+      sourceOffset: 0,
+      byteLength: selection.audioBytes,
+      contentType: "audio/mpeg",
+      streamProfile
+    });
+  };
+  if (markers.some(({ position }) => position === "pre")) appendAd("pre");
+  segments.push(programVirtualSegment(
+    programSegments[0],
+    streamProfile,
+    objectEtags
+  ));
+  if (markers.some(({ position }) => position === "mid")) {
+    appendAd("mid");
+    segments.push(programVirtualSegment(
+      programSegments[1],
+      streamProfile,
+      objectEtags
+    ));
+  }
+  if (markers.some(({ position }) => position === "post")) appendAd("post");
+  return segments;
 }
 
 function programVirtualSegment(
@@ -1070,13 +1195,7 @@ async function presentIssuedDecision(
     );
   }
   const manifest = parseStoredManifest(decision.manifest_json);
-  if (
-    !virtualMediaLengthContractMatches(
-      manifest,
-      manifest.fallback,
-      manifest.deliveryLengthContract
-    )
-  ) {
+  if (!storedDeliveryContractValid(manifest)) {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -1108,6 +1227,7 @@ async function presentIssuedDecision(
       expiresAt: decision.expires_at,
       manifestSha256: decision.manifest_sha256,
       totalBytes: decision.total_bytes,
+      fallbackType: manifest.fallbackType,
       deliveryLengthContract: manifest.deliveryLengthContract,
       deliveryLengthReady: manifest.deliveryLengthContract.equalByteLength,
       runtimeEnabled: false,
@@ -1156,18 +1276,7 @@ async function resolveDecisionDeliveryManifest(
   decision: StoredDecisionRow,
   manifest: StoredAdDecisionManifest
 ): Promise<VirtualMediaManifest | null> {
-  if (
-    !manifest.fallback
-    || manifest.fallback.decisionId !== manifest.decisionId
-    || manifest.fallback.episodeId !== manifest.episodeId
-    || !virtualMediaLengthContractMatches(
-      manifest,
-      manifest.fallback,
-      manifest.deliveryLengthContract
-    )
-  ) {
-    return null;
-  }
+  if (!storedDeliveryContractValid(manifest)) return null;
   if (decision.delivery_variant) {
     const committed = decision.delivery_variant === "primary"
       ? manifest
@@ -1215,6 +1324,26 @@ async function resolveDecisionDeliveryManifest(
   return await preflightStoredManifest(bucket, selected)
     ? selected
     : null;
+}
+
+function storedDeliveryContractValid(
+  manifest: StoredAdDecisionManifest
+): boolean {
+  return Boolean(
+    manifest.fallback
+    && ["house_fill", "full_file"].includes(manifest.fallbackType)
+    && manifest.fallback.decisionId === manifest.decisionId
+    && manifest.fallback.episodeId === manifest.episodeId
+    && virtualMediaLengthContractMatches(
+      manifest,
+      manifest.fallback,
+      manifest.deliveryLengthContract
+    )
+    && (
+      manifest.fallbackType !== "house_fill"
+      || manifest.deliveryLengthContract.equalByteLength
+    )
+  );
 }
 
 async function preflightStoredManifest(

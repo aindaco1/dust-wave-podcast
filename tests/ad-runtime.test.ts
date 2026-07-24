@@ -40,6 +40,7 @@ describe("signed staging ad decisions", () => {
         equalByteLength: boolean;
       };
       deliveryLengthReady: boolean;
+      fallbackType: string;
       runtimeEnabled: boolean;
       publicEnclosureConnected: boolean;
     };
@@ -52,10 +53,11 @@ describe("signed staging ad decisions", () => {
     expect(issued.deliveryLengthContract).toEqual({
       schemaVersion: "equal-byte-length-v1",
       primaryBytes: 19,
-      fallbackBytes: 11,
-      equalByteLength: false
+      fallbackBytes: 19,
+      equalByteLength: true
     });
-    expect(issued.deliveryLengthReady).toBe(false);
+    expect(issued.deliveryLengthReady).toBe(true);
+    expect(issued.fallbackType).toBe("house_fill");
     expect(issued.runtimeEnabled).toBe(false);
     expect(issued.publicEnclosureConnected).toBe(false);
     expect(fixture.batches).toHaveLength(1);
@@ -64,6 +66,20 @@ describe("signed staging ad decisions", () => {
         query.includes("INSERT OR IGNORE INTO ad_decision_slots")
       )
     ).toHaveLength(2);
+    const preSlot = fixture.batches[0].find(({ query, values }) =>
+      query.includes("INSERT OR IGNORE INTO ad_decision_slots")
+      && values[3] === "pre"
+    );
+    expect(preSlot?.values.slice(14)).toEqual([
+      "campaign-house",
+      "creative-house",
+      "podcasts/show-1/ads/house-v1.mp3",
+      4,
+      '"house-v1-etag"',
+      "e".repeat(64),
+      1_000,
+      streamProfile
+    ]);
     expect(
       fixture.batches[0].find(({ query }) =>
         query.includes("INSERT INTO admin_audit_events")
@@ -79,7 +95,7 @@ describe("signed staging ad decisions", () => {
     );
     expect(audio.status).toBe(206);
     expect(audio.headers.get("content-range")).toBe("bytes 2-16/19");
-    expect(await audio.text()).toBe("12PROGRAM1234AD");
+    expect(await audio.text()).toBe("12PROGRAM1234HO");
 
     fixture.env.AD_DECISION_SIGNING_SECRET_PREVIOUS = decisionSecret;
     fixture.env.AD_DECISION_SIGNING_SECRET = "rotated-decision-secret";
@@ -134,13 +150,14 @@ describe("signed staging ad decisions", () => {
       expiresAt: expect.any(String),
       manifestSha256: issued.manifestSha256,
       totalBytes: 19,
+      fallbackType: "house_fill",
       deliveryLengthContract: {
         schemaVersion: "equal-byte-length-v1",
         primaryBytes: 19,
-        fallbackBytes: 11,
-        equalByteLength: false
+        fallbackBytes: 19,
+        equalByteLength: true
       },
-      deliveryLengthReady: false,
+      deliveryLengthReady: true,
       runtimeEnabled: false,
       publicEnclosureConnected: false,
       flags: {
@@ -201,7 +218,7 @@ describe("signed staging ad decisions", () => {
     });
   });
 
-  it("commits a full-file fallback before headers and never switches that signed URL back to primary", async () => {
+  it("commits an exact-length house fallback before headers and never switches that signed URL back to primary", async () => {
     const fixture = await runtimeEnvironment();
     const issuedResponse = await issueAdminStagingAdDecision(
       issueRequest(),
@@ -229,12 +246,12 @@ describe("signed staging ad decisions", () => {
       )
     ]);
     expect(fallback.status).toBe(200);
-    expect(fallback.headers.get("content-length")).toBe("11");
-    expect(fallback.headers.get("etag")).toMatch(/^"fallback-/);
-    expect(await fallback.text()).toBe("FULLPROGRAM");
+    expect(fallback.headers.get("content-length")).toBe("19");
+    expect(fallback.headers.get("etag")).toMatch(/^"house-/);
+    expect(await fallback.text()).toBe("HOMEPROGRAM1234HOME");
     expect(concurrentFallback.status).toBe(200);
-    expect(concurrentFallback.headers.get("content-length")).toBe("11");
-    expect(await concurrentFallback.text()).toBe("FULLPROGRAM");
+    expect(concurrentFallback.headers.get("content-length")).toBe("19");
+    expect(await concurrentFallback.text()).toBe("HOMEPROGRAM1234HOME");
 
     fixture.changeObjectEtag(
       "podcasts/show-1/ads/creative-v1.mp3",
@@ -246,8 +263,38 @@ describe("signed staging ad decisions", () => {
       issued.decisionId
     );
     expect(committedFallback.status).toBe(200);
-    expect(committedFallback.headers.get("content-length")).toBe("11");
-    expect(await committedFallback.text()).toBe("FULLPROGRAM");
+    expect(committedFallback.headers.get("content-length")).toBe("19");
+    expect(await committedFallback.text()).toBe("HOMEPROGRAM1234HOME");
+  });
+
+  it("uses the explicit non-launch full-file fallback when no exact house rendition exists", async () => {
+    const fixture = await runtimeEnvironment({ houseBytes: 3 });
+    const issuedResponse = await issueAdminStagingAdDecision(
+      issueRequest(),
+      fixture.env
+    );
+    const issued = await issuedResponse.json() as {
+      decisionId: string;
+      signedUrl: string;
+      fallbackType: string;
+      deliveryLengthReady: boolean;
+    };
+    expect(issued.fallbackType).toBe("full_file");
+    expect(issued.deliveryLengthReady).toBe(false);
+    fixture.changeObjectEtag(
+      "podcasts/show-1/ads/creative-v1.mp3",
+      '"creative-unavailable"'
+    );
+
+    const fallback = await serveStagingAdDecisionAudio(
+      new Request(issued.signedUrl),
+      fixture.env,
+      issued.decisionId
+    );
+    expect(fallback.status).toBe(200);
+    expect(fallback.headers.get("content-length")).toBe("11");
+    expect(fallback.headers.get("etag")).toMatch(/^"fallback-/);
+    expect(await fallback.text()).toBe("FULLPROGRAM");
   });
 
   it("stays unavailable in production even if a signing secret exists", async () => {
@@ -489,7 +536,11 @@ function issueRequest(): Request {
   );
 }
 
-async function runtimeEnvironment(): Promise<{
+async function runtimeEnvironment({
+  houseBytes = 4
+}: {
+  houseBytes?: number;
+} = {}): Promise<{
   env: PodcastEnv;
   batches: Array<Array<{ query: string; values: unknown[] }>>;
   changeObjectEtag: (key: string, etag: string) => void;
@@ -552,55 +603,102 @@ async function runtimeEnvironment(): Promise<{
         }
         if (query.includes("FROM ad_campaigns c")) {
           return {
-            results: [{
-              id: "campaign-direct",
-              revision: 3,
-              campaign_type: "direct",
-              sponsor_active: 1,
-              approval_status: "approved",
-              active: 1,
-              starts_at: "2026-01-01T00:00:00.000Z",
-              ends_at: null,
-              kill_switch_at: null,
-              priority: 10,
-              impression_cap: 1_000,
-              qualified_impression_goal: 500,
-              qualified_impressions: 0,
-              pacing_strategy: "even"
-            }]
+            results: [
+              {
+                id: "campaign-direct",
+                revision: 3,
+                campaign_type: "direct",
+                sponsor_active: 1,
+                approval_status: "approved",
+                active: 1,
+                starts_at: "2026-01-01T00:00:00.000Z",
+                ends_at: null,
+                kill_switch_at: null,
+                priority: 10,
+                impression_cap: 1_000,
+                qualified_impression_goal: 500,
+                qualified_impressions: 0,
+                pacing_strategy: "even"
+              },
+              {
+                id: "campaign-house",
+                revision: 2,
+                campaign_type: "house",
+                sponsor_active: null,
+                approval_status: "approved",
+                active: 1,
+                starts_at: "2026-01-01T00:00:00.000Z",
+                ends_at: null,
+                kill_switch_at: null,
+                priority: 10,
+                impression_cap: null,
+                qualified_impression_goal: null,
+                qualified_impressions: 0,
+                pacing_strategy: "even"
+              }
+            ]
           };
         }
         if (query.includes("FROM ad_rules r")) {
           return {
-            results: [{
-              id: "rule-show",
-              campaign_id: "campaign-direct",
-              show_id: "show-1",
-              episode_id: null,
-              position: null,
-              device_type: null,
-              app_name: null,
-              starts_at: null,
-              ends_at: null
-            }]
+            results: [
+              {
+                id: "rule-show",
+                campaign_id: "campaign-direct",
+                show_id: "show-1",
+                episode_id: null,
+                position: null,
+                device_type: null,
+                app_name: null,
+                starts_at: null,
+                ends_at: null
+              },
+              {
+                id: "rule-house",
+                campaign_id: "campaign-house",
+                show_id: "show-1",
+                episode_id: null,
+                position: null,
+                device_type: null,
+                app_name: null,
+                starts_at: null,
+                ends_at: null
+              }
+            ]
           };
         }
         if (query.includes("FROM ad_creatives a")) {
           return {
-            results: [{
-              id: "creative-direct",
-              campaign_id: "campaign-direct",
-              audio_key: "podcasts/show-1/ads/creative-v1.mp3",
-              audio_bytes: 4,
-              audio_mime_type: "audio/mpeg",
-              audio_etag: '"creative-v1-etag"',
-              stream_profile: streamProfile,
-              sha256: "c".repeat(64),
-              duration_ms: 1_000,
-              weight: 1,
-              active: 1,
-              validation_status: "ready"
-            }]
+            results: [
+              {
+                id: "creative-direct",
+                campaign_id: "campaign-direct",
+                audio_key: "podcasts/show-1/ads/creative-v1.mp3",
+                audio_bytes: 4,
+                audio_mime_type: "audio/mpeg",
+                audio_etag: '"creative-v1-etag"',
+                stream_profile: streamProfile,
+                sha256: "c".repeat(64),
+                duration_ms: 1_000,
+                weight: 1,
+                active: 1,
+                validation_status: "ready"
+              },
+              {
+                id: "creative-house",
+                campaign_id: "campaign-house",
+                audio_key: "podcasts/show-1/ads/house-v1.mp3",
+                audio_bytes: houseBytes,
+                audio_mime_type: "audio/mpeg",
+                audio_etag: '"house-v1-etag"',
+                stream_profile: streamProfile,
+                sha256: "e".repeat(64),
+                duration_ms: 1_000,
+                weight: 1,
+                active: 1,
+                validation_status: "ready"
+              }
+            ]
           };
         }
         if (query.includes("FROM episode_ad_markers")) {
@@ -701,6 +799,12 @@ async function runtimeEnvironment(): Promise<{
     "podcasts/show-1/ads/creative-v1.mp3": {
       bytes: new TextEncoder().encode("AD12"),
       etag: '"creative-v1-etag"'
+    },
+    "podcasts/show-1/ads/house-v1.mp3": {
+      bytes: new TextEncoder().encode(
+        houseBytes === 4 ? "HOME" : "HOU".slice(0, houseBytes)
+      ),
+      etag: '"house-v1-etag"'
     }
   };
   const bucket = {

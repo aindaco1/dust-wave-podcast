@@ -130,8 +130,10 @@ Verify:
   does not switch that signed URL back to primary, and mutating a committed
   primary fails closed rather than switching mid-download.
 - each issued decision reports its recomputed primary/fallback byte contract;
-  the current unequal full-file diagnostic is `deliveryLengthReady: false`,
-  and a tampered or missing contract fails before delivery.
+  exact house coverage reports `fallbackType: house_fill` and
+  `deliveryLengthReady: true`; incomplete coverage uses the unequal
+  `full_file` diagnostic with `deliveryLengthReady: false`; a tampered or
+  missing contract fails before delivery.
 - bad qualification callback signatures return `401` before D1 lookup; one
   signed full-creative completion is idempotent across secret rotation; the
   analyst reconciliation report is show-scoped, bounded, and returns zero

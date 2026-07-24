@@ -4,6 +4,7 @@ import {
   buildAdRequestKey,
   normalizePodcastClient,
   selectAdForSlot,
+  selectHouseFallbackSlots,
   selectAdSlots,
   type AdCampaignCandidate,
   type AdSelectionContext
@@ -162,6 +163,57 @@ describe("dynamic ad decisions", () => {
         "invalid"
       )
     ).toThrow("at most one pre, mid, and post");
+  });
+
+  it("selects only exact-length eligible house fallback renditions", () => {
+    const direct = campaign("direct", "direct");
+    direct.creatives[0].durationMs = 2_000;
+    const exactHouse = campaign("house-exact", "house");
+    exactHouse.creatives[0].durationMs = 2_000;
+    const wrongBytes = campaign("house-wrong-bytes", "house");
+    wrongBytes.creatives[0].audioBytes = 31_999;
+    wrongBytes.creatives[0].durationMs = 2_000;
+    wrongBytes.priority = 100;
+    const wrongDuration = campaign("house-wrong-duration", "house");
+    wrongDuration.creatives[0].durationMs = 2_001;
+    wrongDuration.priority = 100;
+    const primary = selectAdSlots(
+      [direct],
+      baseContext,
+      ["mid"],
+      "primary"
+    );
+
+    expect(
+      selectHouseFallbackSlots(
+        [direct, exactHouse, wrongBytes, wrongDuration],
+        baseContext,
+        primary,
+        "fallback"
+      )
+    ).toMatchObject([{
+      position: "mid",
+      selection: {
+        campaignId: "house-exact",
+        campaignType: "house",
+        audioBytes: 32_000,
+        creativeDurationMs: 2_000
+      },
+      fallbackReason: null
+    }]);
+
+    expect(
+      selectHouseFallbackSlots(
+        [direct, wrongBytes, wrongDuration],
+        baseContext,
+        primary,
+        "fallback"
+      )
+    ).toEqual([{
+      position: "mid",
+      selection: null,
+      fallbackReason: "no_eligible_inventory"
+    }]);
   });
 
   it("normalizes supported podcast apps without retaining the raw user agent", () => {

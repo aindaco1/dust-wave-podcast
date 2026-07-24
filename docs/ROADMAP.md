@@ -86,6 +86,9 @@ iHeartRadio, and Deezer.
   episode, position, campaign date, and normalized device/app.
 - Require raw-frame creative audio and an immutable, recomputed equal-byte
   contract between sponsor and house/filler renditions before activation.
+- Select deterministic house fallback per slot only from approved inventory
+  with an exact validated byte, duration, MIME, and profile match; snapshot its
+  immutable campaign/creative/object evidence with the decision.
 - Preserve a validated preassembled-file fallback until request-time assembly
   passes compatibility, latency, caching, disclosure, and measurement gates.
 

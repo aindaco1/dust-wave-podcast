@@ -117,6 +117,13 @@ Fallback is a successful safe delivery state, not an ad impression. Admin
 analytics must separate decisions, full-file fallbacks, starts, byte delivery,
 qualified impressions, and completed downloads.
 
+For a selected sponsor slot, a request-time house fallback is eligible only
+when its approved targeting still matches and its validated byte count,
+duration, MIME type, and stream profile exactly equal the sponsor creative.
+The immutable decision snapshots that house evidence without treating it as
+billable sponsor delivery. Incomplete house coverage keeps the staging
+full-file diagnostic and blocks the equal-length activation gate.
+
 ## Qualification and pacing gate
 
 A campaign counter increments once per decision slot only after a durable,
