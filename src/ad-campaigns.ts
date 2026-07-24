@@ -1,5 +1,10 @@
 import { normalizeAdTargetValue } from "./ad-decision";
-import { requireAdmin, type AdminRole } from "./admin-auth";
+import {
+  hasAdminRoleForShow,
+  requireAdmin,
+  type AdminAuthorization,
+  type AdminRole
+} from "./admin-auth";
 import { recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
@@ -321,14 +326,9 @@ export async function updateAdminAdCampaign(
   campaignIdValue: string
 ): Promise<Response> {
   const campaignId = validIdentifier(campaignIdValue, "campaignId");
-  const campaign = await loadCampaignScope(env.DB, campaignId);
-  if (!campaign) return campaignNotFound(request, env);
-  const auth = await requireAdmin(request, env, {
-    allowedRoles: WRITE_ROLES,
-    requireCsrf: true,
-    showId: campaign.show_id
-  });
+  const auth = await requireCampaignAdmin(request, env, campaignId);
   if (!auth.ok) return auth.response;
+  const { campaign, authorization } = auth;
   if (campaign.active !== 1 || campaign.kill_switch_at) {
     return privateJson(
       request,
@@ -428,7 +428,7 @@ export async function updateAdminAdCampaign(
      WHERE id = ?`
   ).bind(...updates.map(({ value }) => value), campaignId).run();
   await recordAdminAudit(env.DB, {
-    adminUserId: auth.authorization.identity.id,
+    adminUserId: authorization.identity.id,
     action: "ad_campaign.updated",
     targetType: "ad_campaign",
     targetId: campaignId,
@@ -451,14 +451,9 @@ export async function approveAdminAdCampaign(
   campaignIdValue: string
 ): Promise<Response> {
   const campaignId = validIdentifier(campaignIdValue, "campaignId");
-  const campaign = await loadCampaignScope(env.DB, campaignId);
-  if (!campaign) return campaignNotFound(request, env);
-  const auth = await requireAdmin(request, env, {
-    allowedRoles: WRITE_ROLES,
-    requireCsrf: true,
-    showId: campaign.show_id
-  });
+  const auth = await requireCampaignAdmin(request, env, campaignId);
   if (!auth.ok) return auth.response;
+  const { campaign, authorization } = auth;
   const readiness = await campaignReadiness(env.DB, campaign);
   if (readiness.length > 0) {
     return privateJson(
@@ -484,7 +479,7 @@ export async function approveAdminAdCampaign(
        revision = revision + 1,
        updated_at = datetime('now')
      WHERE id = ? AND active = 1 AND kill_switch_at IS NULL`
-  ).bind(auth.authorization.identity.id, campaignId).run();
+  ).bind(authorization.identity.id, campaignId).run();
   if ((approved.meta?.changes ?? 0) !== 1) {
     return privateJson(
       request,
@@ -494,7 +489,7 @@ export async function approveAdminAdCampaign(
     );
   }
   await recordAdminAudit(env.DB, {
-    adminUserId: auth.authorization.identity.id,
+    adminUserId: authorization.identity.id,
     action: "ad_campaign.approved",
     targetType: "ad_campaign",
     targetId: campaignId,
@@ -513,14 +508,9 @@ export async function killAdminAdCampaign(
   campaignIdValue: string
 ): Promise<Response> {
   const campaignId = validIdentifier(campaignIdValue, "campaignId");
-  const campaign = await loadCampaignScope(env.DB, campaignId);
-  if (!campaign) return campaignNotFound(request, env);
-  const auth = await requireAdmin(request, env, {
-    allowedRoles: WRITE_ROLES,
-    requireCsrf: true,
-    showId: campaign.show_id
-  });
+  const auth = await requireCampaignAdmin(request, env, campaignId);
   if (!auth.ok) return auth.response;
+  const { campaign, authorization } = auth;
   if (campaign.active !== 1 || campaign.kill_switch_at) {
     return privateJson(request, env.ALLOWED_ORIGINS, {
       killed: true,
@@ -539,7 +529,7 @@ export async function killAdminAdCampaign(
      WHERE id = ?`
   ).bind(campaignId).run();
   await recordAdminAudit(env.DB, {
-    adminUserId: auth.authorization.identity.id,
+    adminUserId: authorization.identity.id,
     action: "ad_campaign.killed",
     targetType: "ad_campaign",
     targetId: campaignId,
@@ -550,6 +540,51 @@ export async function killAdminAdCampaign(
     idempotent: false,
     campaignId
   });
+}
+
+async function requireCampaignAdmin(
+  request: Request,
+  env: PodcastEnv,
+  campaignId: string
+): Promise<
+  | {
+      ok: true;
+      authorization: AdminAuthorization;
+      campaign: CampaignScopeRow;
+    }
+  | { ok: false; response: Response }
+> {
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: WRITE_ROLES,
+    requireCsrf: true
+  });
+  if (!auth.ok) return auth;
+  const campaign = await loadCampaignScope(env.DB, campaignId);
+  if (!campaign) {
+    return { ok: false, response: campaignNotFound(request, env) };
+  }
+  if (
+    !hasAdminRoleForShow(
+      auth.authorization.identity,
+      WRITE_ROLES,
+      campaign.show_id
+    )
+  ) {
+    return {
+      ok: false,
+      response: privateJson(
+        request,
+        env.ALLOWED_ORIGINS,
+        { error: "forbidden" },
+        { status: 403 }
+      )
+    };
+  }
+  return {
+    ok: true,
+    authorization: auth.authorization,
+    campaign
+  };
 }
 
 async function loadCampaignScope(

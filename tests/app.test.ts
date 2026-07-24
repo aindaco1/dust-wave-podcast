@@ -159,7 +159,8 @@ describe("podcast API", () => {
   it("keeps sponsor operations private before loading inventory", async () => {
     for (const [path, body] of [
       ["/v1/admin/ads/preview", { episodeId: "episode_fixture" }],
-      ["/v1/admin/ads/campaigns", { showId: "show_fixture" }]
+      ["/v1/admin/ads/campaigns", { showId: "show_fixture" }],
+      ["/v1/admin/ads/campaigns/campaign-fixture/kill", {}]
     ] as const) {
       const response = await handleRequest(
         new Request(`https://podcast.example${path}`, {
