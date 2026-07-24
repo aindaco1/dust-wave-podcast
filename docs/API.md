@@ -58,6 +58,9 @@ Login tokens expire after 15 minutes and are single-use. Sessions expire after
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |
 | `PATCH` | `/v1/admin/ads/campaigns/{id}` | admin+ | Edit metadata and reset approval |
+| `POST` | `/v1/admin/ads/campaigns/{id}/creatives` | producer+ | Create pending MP3 creative metadata |
+| `PUT` | `/v1/admin/ads/creatives/{id}/audio` | producer+ | Stream one bounded creative MP3 to private R2 |
+| `POST` | `/v1/admin/ads/creatives/{id}/validate` | producer+ | Validate exact frame/profile/duration/size and hash |
 | `POST` | `/v1/admin/ads/campaigns/{id}/approve` | admin+ | Approve only complete, validated inventory |
 | `POST` | `/v1/admin/ads/campaigns/{id}/kill` | admin+ | Immediately and idempotently revoke a campaign |
 
@@ -103,6 +106,17 @@ irreversible for that campaign row; operators create a new campaign rather
 than silently resurrecting revoked inventory. Every mutation writes an admin
 audit event, while approval still cannot affect playback until the separate
 runtime and show/episode feature gates pass.
+
+Creative audio is a separate, bounded streaming workflow rather than a copy of
+the episode multipart uploader. Create metadata first, then send an
+`audio/mpeg` body of at most 25 MiB with the exact byte count in
+`x-podcast-upload-bytes`, and call the returned validation route. Validation
+parses every MPEG frame, permits bounded ID3 metadata outside the frames,
+requires MPEG-1 Layer III at 128 kbps/44.1 kHz/stereo, verifies complete frame
+boundaries and object size, checks declared versus measured duration, and
+records a SHA-256 digest and review evidence. Creating, replacing, or
+revalidating audio returns the campaign to draft. Upload and validation
+failures remain non-ready and are audited.
 
 ## Provider modes
 

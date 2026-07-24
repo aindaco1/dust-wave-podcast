@@ -36,7 +36,7 @@ const DEVICE_TYPES = [
   "unknown"
 ] as const;
 
-type CampaignScopeRow = {
+export type CampaignScopeRow = {
   id: string;
   show_id: string;
   campaign_type: "house" | "direct";
@@ -559,7 +559,7 @@ async function requireCampaignAdmin(
     requireCsrf: true
   });
   if (!auth.ok) return auth;
-  const campaign = await loadCampaignScope(env.DB, campaignId);
+  const campaign = await loadAdCampaignScope(env.DB, campaignId);
   if (!campaign) {
     return { ok: false, response: campaignNotFound(request, env) };
   }
@@ -587,7 +587,7 @@ async function requireCampaignAdmin(
   };
 }
 
-async function loadCampaignScope(
+export async function loadAdCampaignScope(
   db: D1Database,
   campaignId: string
 ): Promise<CampaignScopeRow | null> {

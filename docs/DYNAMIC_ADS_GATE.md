@@ -44,6 +44,15 @@ requires validated compatible creative audio; and the idempotent kill switch
 sets both inactive and revoked state. The serving selector accepts only
 `approved` campaigns with an active sponsor for direct inventory.
 
+Migration `0010` makes creative approval evidence durable. The producer/admin
+workflow streams a maximum 25 MiB MP3 to private R2, verifies the declared and
+stored byte counts, parses every frame against the launch
+`mp3-44100-stereo-cbr128-frame-v1` profile, compares declared and measured
+duration, and stores the measured duration, SHA-256, validation report, and
+operator identities. Browser clients declare size with
+`x-podcast-upload-bytes`; R2 size remains authoritative. Upload, replacement,
+and revalidation reset campaign approval, and failures cannot become selectable.
+
 ## Privacy and identity
 
 The permanent enclosure must not derive a new byte layout for every range

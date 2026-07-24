@@ -20,6 +20,11 @@ import {
   listAdminAdCampaigns,
   updateAdminAdCampaign
 } from "./ad-campaigns";
+import {
+  createAdminAdCreative,
+  uploadAdminAdCreativeAudio,
+  validateAdminAdCreative
+} from "./ad-creatives";
 import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
@@ -61,6 +66,12 @@ const ADMIN_AD_CAMPAIGN_APPROVE_PATH =
   /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_AD_CAMPAIGN_KILL_PATH =
   /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/kill$/;
+const ADMIN_AD_CAMPAIGN_CREATIVES_PATH =
+  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/creatives$/;
+const ADMIN_AD_CREATIVE_AUDIO_PATH =
+  /^\/v1\/admin\/ads\/creatives\/([A-Za-z0-9_-]+)\/audio$/;
+const ADMIN_AD_CREATIVE_VALIDATE_PATH =
+  /^\/v1\/admin\/ads\/creatives\/([A-Za-z0-9_-]+)\/validate$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
   /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})$/;
 
@@ -229,6 +240,36 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   );
   if (adminAdCampaignKillMatch && method === "POST") {
     return killAdminAdCampaign(request, env, adminAdCampaignKillMatch[1]);
+  }
+  const adminAdCampaignCreativesMatch = url.pathname.match(
+    ADMIN_AD_CAMPAIGN_CREATIVES_PATH
+  );
+  if (adminAdCampaignCreativesMatch && method === "POST") {
+    return createAdminAdCreative(
+      request,
+      env,
+      adminAdCampaignCreativesMatch[1]
+    );
+  }
+  const adminAdCreativeAudioMatch = url.pathname.match(
+    ADMIN_AD_CREATIVE_AUDIO_PATH
+  );
+  if (adminAdCreativeAudioMatch && method === "PUT") {
+    return uploadAdminAdCreativeAudio(
+      request,
+      env,
+      adminAdCreativeAudioMatch[1]
+    );
+  }
+  const adminAdCreativeValidateMatch = url.pathname.match(
+    ADMIN_AD_CREATIVE_VALIDATE_PATH
+  );
+  if (adminAdCreativeValidateMatch && method === "POST") {
+    return validateAdminAdCreative(
+      request,
+      env,
+      adminAdCreativeValidateMatch[1]
+    );
   }
   const adminAdCampaignMatch = url.pathname.match(ADMIN_AD_CAMPAIGN_PATH);
   if (adminAdCampaignMatch && method === "PATCH") {
