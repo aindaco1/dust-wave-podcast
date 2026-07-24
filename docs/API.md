@@ -167,6 +167,17 @@ bounded virtual range streamer. It is available only on isolated staging.
 Production sets the mode to `disabled`; the permanent episode enclosure never
 calls this route and both dynamic-ad feature flags remain false.
 
+Every newly issued staging decision also snapshots one validated full-file
+fallback manifest from the current immutable delivery-audio key, size, and
+ETag. On the signed URL's first `GET` or `HEAD`, the Worker preflights the
+primary virtual manifest. If primary evidence is unavailable, it preflights
+the fallback and atomically commits exactly one `primary` or `fallback`
+delivery variant in D1 before emitting headers. Concurrent first requests use
+the committed winner. Later range/retry requests may never switch variants;
+if the committed objects change, the route fails closed instead of returning
+different bytes under one signed URL. This staging safety path does not attach
+the permanent enclosure or enable either dynamic-ad feature flag.
+
 ### Trusted staging qualification and reconciliation
 
 `POST /v1/internal/ad-qualifications` is a server-to-server staging contract,

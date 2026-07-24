@@ -180,6 +180,55 @@ describe("signed staging ad decisions", () => {
     });
   });
 
+  it("commits a full-file fallback before headers and never switches that signed URL back to primary", async () => {
+    const fixture = await runtimeEnvironment();
+    const issuedResponse = await issueAdminStagingAdDecision(
+      issueRequest(),
+      fixture.env
+    );
+    const issued = await issuedResponse.json() as {
+      decisionId: string;
+      signedUrl: string;
+    };
+    fixture.changeObjectEtag(
+      "podcasts/show-1/ads/creative-v1.mp3",
+      '"creative-unavailable"'
+    );
+
+    const [fallback, concurrentFallback] = await Promise.all([
+      serveStagingAdDecisionAudio(
+        new Request(issued.signedUrl),
+        fixture.env,
+        issued.decisionId
+      ),
+      serveStagingAdDecisionAudio(
+        new Request(issued.signedUrl),
+        fixture.env,
+        issued.decisionId
+      )
+    ]);
+    expect(fallback.status).toBe(200);
+    expect(fallback.headers.get("content-length")).toBe("11");
+    expect(fallback.headers.get("etag")).toMatch(/^"fallback-/);
+    expect(await fallback.text()).toBe("FULLPROGRAM");
+    expect(concurrentFallback.status).toBe(200);
+    expect(concurrentFallback.headers.get("content-length")).toBe("11");
+    expect(await concurrentFallback.text()).toBe("FULLPROGRAM");
+
+    fixture.changeObjectEtag(
+      "podcasts/show-1/ads/creative-v1.mp3",
+      '"creative-v1-etag"'
+    );
+    const committedFallback = await serveStagingAdDecisionAudio(
+      new Request(issued.signedUrl),
+      fixture.env,
+      issued.decisionId
+    );
+    expect(committedFallback.status).toBe(200);
+    expect(committedFallback.headers.get("content-length")).toBe("11");
+    expect(await committedFallback.text()).toBe("FULLPROGRAM");
+  });
+
   it("stays unavailable in production even if a signing secret exists", async () => {
     const env = {
       ENVIRONMENT: "production",
@@ -461,6 +510,18 @@ async function runtimeEnvironment(): Promise<{
             show_dynamic_ads_enabled: 0
           };
         }
+        if (
+          query.includes("UPDATE ad_decisions")
+          && query.includes("RETURNING delivery_variant")
+        ) {
+          if (!decision) return null;
+          if (!decision.delivery_variant) {
+            decision.delivery_variant = values[0];
+            decision.delivery_committed_at =
+              "2026-07-24T12:00:00.000Z";
+          }
+          return { delivery_variant: decision.delivery_variant };
+        }
         if (query.includes("FROM ad_decisions")) return decision;
         return null;
       },
@@ -593,7 +654,9 @@ async function runtimeEnvironment(): Promise<{
           total_bytes: insert.values[12],
           expires_at: insert.values[13],
           manifest_sha256: insert.values[15],
-          qualification_expires_at: insert.values[17]
+          qualification_expires_at: insert.values[17],
+          delivery_variant: null,
+          delivery_committed_at: null
         };
       }
       return statements.map(() => ({
@@ -606,6 +669,10 @@ async function runtimeEnvironment(): Promise<{
     bytes: Uint8Array;
     etag: string;
   }> = {
+    "podcasts/show-1/episode-fixture/delivery.mp3": {
+      bytes: new TextEncoder().encode("FULLPROGRAM"),
+      etag: sourceEtag
+    },
     "podcasts/show-1/episode-fixture/ad-plans/adplan-fixture/program-0.mp3": {
       bytes: new TextEncoder().encode("PROGRAM1234"),
       etag: '"program-v1-etag"'

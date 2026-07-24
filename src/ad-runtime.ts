@@ -106,6 +106,12 @@ type StoredDecisionRow = {
   total_bytes: number | null;
   expires_at: string;
   qualification_expires_at: string | null;
+  delivery_variant: "primary" | "fallback" | null;
+  delivery_committed_at: string | null;
+};
+
+type StoredAdDecisionManifest = VirtualMediaManifest & {
+  fallback: VirtualMediaManifest;
 };
 
 type QualificationSlotRow = {
@@ -317,6 +323,7 @@ export async function issueAdminStagingAdDecision(
   validateSelectedCreativeSnapshots(slotDecisions, streamProfile);
   const objectEtags = await verifyRuntimeObjects(
     env.MEDIA_BUCKET,
+    episode,
     programSegments,
     slotDecisions
   );
@@ -500,10 +507,16 @@ export async function serveStagingAdDecisionAudio(
   ) {
     return decisionError("ad_decision_manifest_mismatch", 409);
   }
-  if (!await preflightStoredManifest(env.MEDIA_BUCKET, manifest)) {
+  const deliveryManifest = await resolveDecisionDeliveryManifest(
+    env.DB,
+    env.MEDIA_BUCKET,
+    decision,
+    manifest
+  );
+  if (!deliveryManifest) {
     return decisionError("ad_decision_object_mismatch", 409);
   }
-  return serveVirtualMedia(request, env.MEDIA_BUCKET, manifest);
+  return serveVirtualMedia(request, env.MEDIA_BUCKET, deliveryManifest);
 }
 
 export async function recordTrustedDownloadQualification(
@@ -703,7 +716,7 @@ async function loadDecisionByRequestKey(
     `SELECT
        id, episode_id, publication_revision, request_key_hash, status,
        manifest_json, manifest_etag, manifest_sha256, total_bytes, expires_at,
-       qualification_expires_at
+       qualification_expires_at, delivery_variant, delivery_committed_at
      FROM ad_decisions
      WHERE
        episode_id = ?
@@ -724,7 +737,7 @@ async function loadDecision(
     `SELECT
        id, episode_id, publication_revision, request_key_hash, status,
        manifest_json, manifest_etag, manifest_sha256, total_bytes, expires_at,
-       qualification_expires_at
+       qualification_expires_at, delivery_variant, delivery_committed_at
      FROM ad_decisions
      WHERE id = ?`
   ).bind(decisionId).first<StoredDecisionRow>();
@@ -848,10 +861,16 @@ function validateSelectedCreativeSnapshots(
 
 async function verifyRuntimeObjects(
   bucket: R2Bucket,
+  episode: RuntimeEpisodeRow,
   programSegments: RuntimeProgramSegmentRow[],
   slots: AdSlotDecision[]
 ): Promise<Map<string, string>> {
   const expected = [
+    {
+      objectKey: episode.audio_key as string,
+      objectBytes: episode.audio_bytes as number,
+      etag: episode.audio_etag
+    },
     ...programSegments.map((segment) => ({
       objectKey: segment.object_key,
       objectBytes: segment.object_bytes,
@@ -900,7 +919,7 @@ async function buildDecisionManifest(
   programSegments: RuntimeProgramSegmentRow[],
   slots: AdSlotDecision[],
   objectEtags: ReadonlyMap<string, string>
-): Promise<VirtualMediaManifest> {
+): Promise<StoredAdDecisionManifest> {
   const byPosition = new Map(
     slots.map((slot) => [slot.position, slot.selection])
   );
@@ -944,6 +963,37 @@ async function buildDecisionManifest(
     streamProfile,
     segments
   }));
+  const fallbackMaterialSha256 = await sha256Hex(JSON.stringify({
+    schemaVersion: "1",
+    decisionId,
+    episodeId: episode.id,
+    publicationRevision: episode.publication_revision,
+    streamProfile,
+    objectKey: episode.audio_key,
+    objectBytes: episode.audio_bytes,
+    objectEtag: episode.audio_etag
+  }));
+  const fallback: VirtualMediaManifest = {
+    schemaVersion: "1",
+    id: `fallback_${fallbackMaterialSha256.slice(0, 48)}`,
+    episodeId: episode.id,
+    decisionId,
+    etag: `"fallback-${fallbackMaterialSha256}"`,
+    contentType: "audio/mpeg",
+    streamProfile,
+    validatedAt,
+    segments: [{
+      id: `${decisionId}_fallback_program`,
+      kind: "program",
+      objectKey: episode.audio_key as string,
+      objectEtag: objectEtags.get(episode.audio_key as string),
+      objectBytes: episode.audio_bytes as number,
+      sourceOffset: 0,
+      byteLength: episode.audio_bytes as number,
+      contentType: "audio/mpeg",
+      streamProfile
+    }]
+  };
   return {
     schemaVersion: "1",
     id: `manifest_${materialSha256.slice(0, 48)}`,
@@ -953,7 +1003,8 @@ async function buildDecisionManifest(
     contentType: "audio/mpeg",
     streamProfile,
     validatedAt,
-    segments
+    segments,
+    fallback
   };
 }
 
@@ -1064,12 +1115,74 @@ function stagingDecisionRuntimeEnabled(env: PodcastEnv): boolean {
     && Boolean(env.AD_DECISION_SIGNING_SECRET);
 }
 
-function parseStoredManifest(value: string): VirtualMediaManifest {
+function parseStoredManifest(value: string): StoredAdDecisionManifest {
   const parsed = JSON.parse(value) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Stored ad decision manifest is invalid.");
   }
-  return parsed as VirtualMediaManifest;
+  return parsed as StoredAdDecisionManifest;
+}
+
+async function resolveDecisionDeliveryManifest(
+  db: D1Database,
+  bucket: R2Bucket,
+  decision: StoredDecisionRow,
+  manifest: StoredAdDecisionManifest
+): Promise<VirtualMediaManifest | null> {
+  if (
+    !manifest.fallback
+    || manifest.fallback.decisionId !== manifest.decisionId
+    || manifest.fallback.episodeId !== manifest.episodeId
+  ) {
+    return null;
+  }
+  if (decision.delivery_variant) {
+    const committed = decision.delivery_variant === "primary"
+      ? manifest
+      : manifest.fallback;
+    return await preflightStoredManifest(bucket, committed)
+      ? committed
+      : null;
+  }
+
+  const primaryReady = await preflightStoredManifest(bucket, manifest);
+  const proposedVariant = primaryReady
+    ? "primary"
+    : await preflightStoredManifest(bucket, manifest.fallback)
+      ? "fallback"
+      : null;
+  if (!proposedVariant) return null;
+
+  const committed = await db.prepare(
+    `UPDATE ad_decisions
+     SET
+       delivery_variant = ?,
+       delivery_committed_at = datetime('now'),
+       updated_at = datetime('now')
+     WHERE id = ? AND delivery_variant IS NULL
+     RETURNING delivery_variant`
+  ).bind(
+    proposedVariant,
+    decision.id
+  ).first<{ delivery_variant: "primary" | "fallback" }>();
+  const committedVariant = committed?.delivery_variant
+    ?? (
+      await db.prepare(
+        `SELECT delivery_variant
+         FROM ad_decisions
+         WHERE id = ?`
+      ).bind(decision.id).first<{
+        delivery_variant: "primary" | "fallback" | null;
+      }>()
+    )?.delivery_variant;
+  if (!committedVariant) return null;
+  const selected = committedVariant === "primary"
+    ? manifest
+    : manifest.fallback;
+  if (committedVariant === proposedVariant) return selected;
+  return await preflightStoredManifest(bucket, selected)
+    ? selected
+    : null;
 }
 
 async function preflightStoredManifest(

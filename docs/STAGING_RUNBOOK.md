@@ -120,6 +120,10 @@ Verify:
   in one decision epoch returns the same manifest/ETag; changed R2 evidence is
   rejected before headers; duplicate/capped qualifications do not increment a
   campaign counter.
+- a decision whose ad object is unavailable before its first response commits
+  the snapshotted full-file fallback before headers; restoring the ad object
+  does not switch that signed URL back to primary, and mutating a committed
+  primary fails closed rather than switching mid-download.
 - bad qualification callback signatures return `401` before D1 lookup; one
   signed full-creative completion is idempotent across secret rotation; the
   analyst reconciliation report is show-scoped, bounded, and returns zero
