@@ -66,6 +66,7 @@ Login tokens expire after 15 minutes and are single-use. Sessions expire after
 | `POST` | `/v1/admin/ads/plans/{id}/approve` | producer+ | Atomically approve processor evidence as active markers/segments |
 | `POST` | `/v1/admin/ads/plans/{id}/reject` | producer+ | Reject pending processor evidence with an audited reason |
 | `POST` | `/v1/admin/ads/decisions/issue` | producer+ | Isolated-staging immutable decision exercise; never the public enclosure |
+| `GET` | `/v1/admin/ads/reconciliation?showId={id}` | analyst+ | Bounded, paginated campaign-counter versus durable-qualification report |
 | `POST` | `/v1/admin/ads/campaigns/{id}/approve` | admin+ | Approve only complete, validated inventory |
 | `POST` | `/v1/admin/ads/campaigns/{id}/kill` | admin+ | Immediately and idempotently revoke a campaign |
 
@@ -165,6 +166,31 @@ private object size/ETag before response headers, then uses the existing
 bounded virtual range streamer. It is available only on isolated staging.
 Production sets the mode to `disabled`; the permanent episode enclosure never
 calls this route and both dynamic-ad feature flags remain false.
+
+### Trusted staging qualification and reconciliation
+
+`POST /v1/internal/ad-qualifications` is a server-to-server staging contract,
+not a browser telemetry route. It requires
+`AD_QUALIFICATION_CALLBACK_SECRET`, `application/json`, a five-minute
+`x-podcast-qualification-timestamp`, and
+`x-podcast-qualification-signature` containing HMAC-SHA256 over
+`{timestamp}.{exact raw body}`. Signature validation and the 20 KB body bound
+run before D1. The body contains only `decisionId`, `decisionSlotId`, and
+`creativeBytesServed`; it does not accept an IP address, user agent, listener
+identity, or caller-supplied qualification time.
+
+The callback counts at most one completed delivery per immutable decision
+slot, only while its qualification window is open and only after the
+snapshotted creative byte threshold is met. D1 triggers enforce the campaign
+hard cap and counter increment atomically. Retries resolve by immutable slot
+identity, so callback-secret rotation cannot duplicate or strand an already
+recorded qualification.
+
+The admin reconciliation endpoint defaults to 50 campaigns, caps each page at
+100, and uses a campaign cursor. It is show- and role-scoped, reports its
+`trusted-download-v1` methodology, and compares trigger-maintained counters
+with durable qualification rows. Supporting indexes cover show targeting,
+created-time pagination, and campaign qualification history.
 
 ## Provider modes
 

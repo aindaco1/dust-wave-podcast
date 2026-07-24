@@ -1,7 +1,5 @@
 import {
-  hmacSha256,
-  sha256Hex,
-  timingSafeEqual
+  sha256Hex
 } from "@dustwave/worker-core/crypto";
 
 import {
@@ -17,6 +15,7 @@ import {
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import { DYNAMIC_AD_MP3_PROFILE } from "./mp3-profile";
+import { readSignedJsonBody } from "./signed-callback";
 import {
   readJsonObject,
   RequestValidationError,
@@ -32,7 +31,6 @@ const READ_ROLES: AdminRole[] = [
 ];
 const REVIEW_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
 const PROCESSOR_MAXIMUM_BODY_BYTES = 200_000;
-const PROCESSOR_SIGNATURE_WINDOW_SECONDS = 5 * 60;
 const POSITION_ORDER = { pre: 0, mid: 1, post: 2 } as const;
 
 type EpisodeSourceRow = {
@@ -1008,86 +1006,30 @@ async function readSignedProcessorBody(
   | { ok: true; body: Record<string, unknown> }
   | { ok: false; response: Response }
 > {
-  if (!env.MEDIA_PROCESSOR_CALLBACK_SECRET) {
+  const signed = await readSignedJsonBody(request, {
+    secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
+    timestampHeader: "x-podcast-processor-timestamp",
+    signatureHeader: "x-podcast-processor-signature",
+    maximumBytes: PROCESSOR_MAXIMUM_BODY_BYTES,
+    bodyName: "Processor evidence",
+    invalidBodyCode: "invalid_processor_body"
+  });
+  if (!signed.ok) {
     return {
       ok: false,
       response: privateJson(
         request,
         env.ALLOWED_ORIGINS,
-        { error: "not_found" },
-        { status: 404 }
+        {
+          error: signed.reason === "secret_missing"
+            ? "not_found"
+            : "invalid_processor_signature"
+        },
+        { status: signed.reason === "secret_missing" ? 404 : 401 }
       )
     };
   }
-  const declaredLength = Number(
-    request.headers.get("content-length") ?? "0"
-  );
-  if (
-    Number.isFinite(declaredLength)
-    && declaredLength > PROCESSOR_MAXIMUM_BODY_BYTES
-  ) {
-    throw new RequestValidationError(
-      "Processor evidence is too large",
-      "body_too_large",
-      413
-    );
-  }
-  const rawBody = await request.text();
-  const rawBodyBytes = new TextEncoder().encode(rawBody).byteLength;
-  if (
-    rawBodyBytes < 2
-    || rawBodyBytes > PROCESSOR_MAXIMUM_BODY_BYTES
-  ) {
-    throw new RequestValidationError(
-      "Processor evidence body is invalid",
-      "invalid_processor_body"
-    );
-  }
-  const timestampValue = request.headers.get(
-    "x-podcast-processor-timestamp"
-  );
-  const timestamp = Number(timestampValue);
-  const signature = request.headers.get(
-    "x-podcast-processor-signature"
-  ) ?? "";
-  if (
-    !Number.isSafeInteger(timestamp)
-    || Math.abs(Math.floor(Date.now() / 1_000) - timestamp)
-      > PROCESSOR_SIGNATURE_WINDOW_SECONDS
-  ) {
-    return {
-      ok: false,
-      response: privateJson(
-        request,
-        env.ALLOWED_ORIGINS,
-        { error: "invalid_processor_signature" },
-        { status: 401 }
-      )
-    };
-  }
-  const expected = await hmacSha256(
-    `${timestamp}.${rawBody}`,
-    env.MEDIA_PROCESSOR_CALLBACK_SECRET,
-    "hex"
-  );
-  if (!timingSafeEqual(signature, expected)) {
-    return {
-      ok: false,
-      response: privateJson(
-        request,
-        env.ALLOWED_ORIGINS,
-        { error: "invalid_processor_signature" },
-        { status: 401 }
-      )
-    };
-  }
-  const value = await Promise.resolve()
-    .then(() => JSON.parse(rawBody) as unknown)
-    .catch(() => null);
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new RequestValidationError("Processor evidence must be a JSON object");
-  }
-  return { ok: true, body: value as Record<string, unknown> };
+  return signed;
 }
 
 function processorReport(value: unknown): Record<string, unknown> {

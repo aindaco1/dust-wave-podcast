@@ -1,8 +1,12 @@
-import { sha256Hex } from "@dustwave/worker-core/crypto";
+import {
+  hmacSha256,
+  sha256Hex
+} from "@dustwave/worker-core/crypto";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   issueAdminStagingAdDecision,
+  recordTrustedAdQualificationCallback,
   recordTrustedDownloadQualification,
   serveStagingAdDecisionAudio
 } from "../src/ad-runtime";
@@ -246,7 +250,152 @@ describe("qualified-impression accounting", () => {
     });
     expect(state.counter).toBe(1);
   });
+
+  it("accepts signed completion evidence and remains idempotent across callback-key rotation", async () => {
+    const state = {
+      recorded: false,
+      counter: 0,
+      cap: 10
+    };
+    const env = {
+      ENVIRONMENT: "staging",
+      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_SIGNING_SECRET: decisionSecret,
+      AD_QUALIFICATION_CALLBACK_SECRET: qualificationSecret,
+      ALLOWED_ORIGINS: "https://dustwave.xyz",
+      DB: qualificationDatabase(state)
+    } as unknown as PodcastEnv;
+    const first = await recordTrustedAdQualificationCallback(
+      await signedQualificationRequest(qualificationSecret),
+      env
+    );
+    const qualified = await first.json() as {
+      qualificationId: string;
+      idempotent: boolean;
+    };
+    expect(first.status).toBe(200);
+    expect(qualified).toMatchObject({
+      qualificationId: expect.stringMatching(/^qualification_[a-f0-9]{48}$/),
+      idempotent: false
+    });
+
+    const rotatedSecret = "rotated-qualification-secret";
+    env.AD_QUALIFICATION_CALLBACK_SECRET = rotatedSecret;
+    const repeated = await recordTrustedAdQualificationCallback(
+      await signedQualificationRequest(rotatedSecret),
+      env
+    );
+    expect(repeated.status).toBe(200);
+    expect(await repeated.json()).toMatchObject({
+      qualificationId: qualified.qualificationId,
+      idempotent: true
+    });
+    expect(state.counter).toBe(1);
+  });
+
+  it("rejects qualification evidence before a database lookup when the signature is invalid", async () => {
+    const env = {
+      ENVIRONMENT: "staging",
+      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_SIGNING_SECRET: decisionSecret,
+      AD_QUALIFICATION_CALLBACK_SECRET: qualificationSecret,
+      ALLOWED_ORIGINS: "https://dustwave.xyz",
+      DB: {
+        prepare() {
+          throw new Error("database must not be read");
+        }
+      }
+    } as unknown as PodcastEnv;
+    const response = await recordTrustedAdQualificationCallback(
+      new Request(
+        "https://feeds.dustwave.xyz/v1/internal/ad-qualifications",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-podcast-qualification-timestamp": String(
+              Math.floor(Date.now() / 1_000)
+            ),
+            "x-podcast-qualification-signature": "a".repeat(64)
+          },
+          body: JSON.stringify({
+            decisionId: "decision_fixture",
+            decisionSlotId: "slot_fixture",
+            creativeBytesServed: 4_000
+          })
+        }
+      ),
+      env
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: "invalid_qualification_signature"
+    });
+
+    const stale = await recordTrustedAdQualificationCallback(
+      await signedQualificationRequest(
+        qualificationSecret,
+        Math.floor(Date.now() / 1_000) - 301
+      ),
+      env
+    );
+    expect(stale.status).toBe(401);
+    expect(await stale.json()).toEqual({
+      error: "invalid_qualification_signature"
+    });
+  });
+
+  it("keeps the qualification callback unavailable in production", async () => {
+    const env = {
+      ENVIRONMENT: "production",
+      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_SIGNING_SECRET: decisionSecret,
+      AD_QUALIFICATION_CALLBACK_SECRET: qualificationSecret,
+      ALLOWED_ORIGINS: "https://dustwave.xyz",
+      DB: {
+        prepare() {
+          throw new Error("database must not be read");
+        }
+      }
+    } as unknown as PodcastEnv;
+    const response = await recordTrustedAdQualificationCallback(
+      await signedQualificationRequest(qualificationSecret),
+      env
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
+  });
 });
+
+async function signedQualificationRequest(
+  secret: string,
+  timestamp = Math.floor(Date.now() / 1_000)
+): Promise<Request> {
+  const body = JSON.stringify({
+    decisionId: "decision_fixture",
+    decisionSlotId: "slot_fixture",
+    creativeBytesServed: 4_000
+  });
+  const signature = await hmacSha256(
+    `${timestamp}.${body}`,
+    secret,
+    "hex"
+  );
+  return new Request(
+    "https://feeds.dustwave.xyz/v1/internal/ad-qualifications",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-podcast-qualification-timestamp": String(timestamp),
+        "x-podcast-qualification-signature": signature
+      },
+      body
+    }
+  );
+}
 
 function issueRequest(): Request {
   return new Request(

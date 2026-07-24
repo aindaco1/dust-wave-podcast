@@ -23,6 +23,7 @@ import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import { DYNAMIC_AD_MP3_PROFILE } from "./mp3-profile";
+import { readSignedJsonBody } from "./signed-callback";
 import {
   compileVirtualMediaManifest,
   serveVirtualMedia,
@@ -31,6 +32,7 @@ import {
 } from "./virtual-media";
 import {
   readJsonObject,
+  positiveInteger,
   RequestValidationError,
   requiredText,
   validIdentifier
@@ -51,6 +53,7 @@ const POSITION_ORDER: Record<AdPosition, number> = {
 };
 const DECISION_LIFETIME_SECONDS = 2 * 60 * 60;
 const QUALIFICATION_GRACE_SECONDS = 24 * 60 * 60;
+const QUALIFICATION_CALLBACK_MAXIMUM_BODY_BYTES = 20_000;
 const SIGNATURE_VERSION = "hmac-sha256-v1";
 
 type RuntimeEpisodeRow = {
@@ -584,8 +587,8 @@ export async function recordTrustedDownloadQualification(
   const recorded = await db.prepare(
     `SELECT id
      FROM ad_impression_qualifications
-     WHERE qualification_key = ?`
-  ).bind(qualificationKey).first<{ id: string }>();
+     WHERE decision_slot_id = ?`
+  ).bind(decisionSlotId).first<{ id: string }>();
   if (recorded) {
     return {
       status: "qualified",
@@ -612,6 +615,66 @@ export async function recordTrustedDownloadQualification(
     };
   }
   throw new Error("Qualification was neither recorded nor blocked by its cap.");
+}
+
+export async function recordTrustedAdQualificationCallback(
+  request: Request,
+  env: PodcastEnv
+): Promise<Response> {
+  if (!stagingDecisionRuntimeEnabled(env)) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "not_found" },
+      { status: 404 }
+    );
+  }
+  const signed = await readSignedJsonBody(request, {
+    secret: env.AD_QUALIFICATION_CALLBACK_SECRET,
+    timestampHeader: "x-podcast-qualification-timestamp",
+    signatureHeader: "x-podcast-qualification-signature",
+    maximumBytes: QUALIFICATION_CALLBACK_MAXIMUM_BODY_BYTES,
+    bodyName: "Qualification evidence",
+    invalidBodyCode: "invalid_qualification_body"
+  });
+  if (!signed.ok) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      {
+        error: signed.reason === "secret_missing"
+          ? "not_found"
+          : "invalid_qualification_signature"
+      },
+      { status: signed.reason === "secret_missing" ? 404 : 401 }
+    );
+  }
+
+  const decisionId = validIdentifier(
+    signed.body.decisionId,
+    "decisionId"
+  );
+  const decisionSlotId = validIdentifier(
+    signed.body.decisionSlotId,
+    "decisionSlotId"
+  );
+  const creativeBytesServed = positiveInteger(
+    signed.body.creativeBytesServed,
+    "creativeBytesServed",
+    1_000_000_000_000
+  );
+  const result = await recordTrustedDownloadQualification(env.DB, {
+    decisionId,
+    decisionSlotId,
+    bytesServed: creativeBytesServed,
+    secret: env.AD_QUALIFICATION_CALLBACK_SECRET as string
+  });
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    accepted: true,
+    decisionId,
+    decisionSlotId,
+    ...result
+  });
 }
 
 async function loadRuntimeEpisode(

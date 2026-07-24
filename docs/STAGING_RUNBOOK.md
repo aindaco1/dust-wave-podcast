@@ -70,6 +70,7 @@ do not expose them. Create a new least-privilege Podcast processor token.
 Required for the isolated signed-decision exercise:
 
 - Worker secret `AD_DECISION_SIGNING_SECRET`
+- Worker secret `AD_QUALIFICATION_CALLBACK_SECRET`
 - optional overlap secret `AD_DECISION_SIGNING_SECRET_PREVIOUS` during rotation
 - staging variable `AD_DECISION_MODE=staging_validate`
 
@@ -80,6 +81,11 @@ short-lived and is not an episode enclosure.
 Rotate by installing the old current value as `..._PREVIOUS`, installing a new
 current value, confirming old and new fixture URLs, waiting at least the
 two-hour decision lifetime, and then deleting the previous secret.
+
+Rotate the independent qualification callback secret only after stopping its
+trusted observer, install the new value on both sides, then restart and verify
+an idempotent retry. Durable one-per-slot identity prevents a rotation retry
+from creating a second qualification.
 
 Required only while the synthetic real-client audio matrix is active:
 
@@ -114,6 +120,10 @@ Verify:
   in one decision epoch returns the same manifest/ETag; changed R2 evidence is
   rejected before headers; duplicate/capped qualifications do not increment a
   campaign counter.
+- bad qualification callback signatures return `401` before D1 lookup; one
+  signed full-creative completion is idempotent across secret rotation; the
+  analyst reconciliation report is show-scoped, bounded, and returns zero
+  counter-to-row differences.
 
 Current isolated staging runtime:
 `https://dust-wave-podcast-staging.jogo.workers.dev`. This address is for

@@ -8,6 +8,9 @@ import {
   updateAdminShow
 } from "./admin";
 import {
+  getAdminAdQualificationReconciliation
+} from "./ad-reporting";
+import {
   exchangeAdminLogin,
   getAdminSession,
   logoutAdmin,
@@ -34,6 +37,7 @@ import {
 } from "./ad-plans";
 import {
   issueAdminStagingAdDecision,
+  recordTrustedAdQualificationCallback,
   serveStagingAdDecisionAudio
 } from "./ad-runtime";
 import { previewAdminAdDecision } from "./ads";
@@ -224,12 +228,24 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   ) {
     return issueAdminStagingAdDecision(request, env);
   }
+  if (
+    url.pathname === "/v1/admin/ads/reconciliation"
+    && method === "GET"
+  ) {
+    return getAdminAdQualificationReconciliation(request, env);
+  }
   if (url.pathname === "/v1/admin/ads/campaigns") {
     if (method === "GET") return listAdminAdCampaigns(request, env);
     if (method === "POST") return createAdminAdCampaign(request, env);
   }
   if (url.pathname === "/v1/webhooks/stripe" && method === "POST") {
     return handleStripeWebhook(request, env);
+  }
+  if (
+    url.pathname === "/v1/internal/ad-qualifications"
+    && method === "POST"
+  ) {
+    return recordTrustedAdQualificationCallback(request, env);
   }
 
   const adminShowEpisodesMatch = url.pathname.match(ADMIN_SHOW_EPISODES_PATH);
@@ -385,6 +401,7 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     || url.pathname.startsWith("/v1/admin")
     || url.pathname.startsWith("/v1/ads")
     || url.pathname.startsWith("/v1/diagnostics")
+    || url.pathname.startsWith("/v1/internal")
     || Boolean(feedMatch)
     || Boolean(mediaMatch)
     || Boolean(adDecisionAudioMatch);
