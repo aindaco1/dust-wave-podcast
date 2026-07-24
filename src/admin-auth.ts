@@ -30,6 +30,22 @@ export interface AdminAuthorization {
   sessionTokenHash: string;
 }
 
+export function hasAdminRoleForShow(
+  identity: AdminIdentity,
+  allowedRoles?: AdminRole[],
+  showId?: string | null
+): boolean {
+  return identity.roles.some(({ role, showId: roleShowId }) =>
+    (!allowedRoles || allowedRoles.includes(role))
+    && (
+      role === "super_admin"
+      || !showId
+      || roleShowId === null
+      || roleShowId === showId
+    )
+  );
+}
+
 function authConfigured(env: PodcastEnv): boolean {
   return Boolean(
     env.ADMIN_EMAIL_LOOKUP_PEPPER
@@ -355,16 +371,7 @@ export async function requireAdmin(
   }
 
   const identity = await loadAdminIdentity(env.DB, session.admin_user_id);
-  const matchingRoles = identity.roles.filter(({ role, showId: roleShowId }) =>
-    (!allowedRoles || allowedRoles.includes(role))
-    && (
-      role === "super_admin"
-      || !showId
-      || roleShowId === null
-      || roleShowId === showId
-    )
-  );
-  if (matchingRoles.length === 0) {
+  if (!hasAdminRoleForShow(identity, allowedRoles, showId)) {
     return {
       ok: false,
       response: privateJson(

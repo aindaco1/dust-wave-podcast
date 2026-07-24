@@ -54,6 +54,7 @@ Login tokens expire after 15 minutes and are single-use. Sessions expire after
 | `POST` | `/v1/admin/uploads/{id}/complete` | producer+ | Verify and complete upload |
 | `DELETE` | `/v1/admin/uploads/{id}` | producer+ | Abort an incomplete upload |
 | `GET` | `/v1/admin/billing/readiness` | super-admin | Non-secret provider/tax readiness |
+| `POST` | `/v1/admin/ads/preview` | analyst+ | Read-only sponsor decision preview |
 
 The publish operation hashes all publication-relevant episode state. Repeating
 the request without a change returns the existing revision. A changed episode
@@ -63,6 +64,29 @@ one status record per configured directory.
 Multipart clients should use 32 MiB parts; the API currently caps each request
 at 100 MiB and each logical media object at 20 GiB. Parts are streamed to R2 and
 never buffered as one Worker request.
+
+### Sponsor decision preview
+
+`POST /v1/admin/ads/preview` also requires the current CSRF token. Its JSON
+body is:
+
+```json
+{
+  "episodeId": "episode_example",
+  "position": "mid",
+  "deviceType": "mobile",
+  "appName": "apple_podcasts",
+  "streamProfile": "mp3-44100-stereo-cbr128-frame-v1",
+  "at": "2026-07-24T12:00:00.000Z"
+}
+```
+
+The response evaluates current D1 campaign/rule/creative rows without creating
+a decision, incrementing a counter, or changing public delivery. It reports
+feature flags, approved-marker and program-segment readiness, an inventory
+fingerprint, the proposed selection or full-file fallback, and explicit
+activation blockers. `runtime_not_connected` remains present until the signed
+manifest, qualification, virtual-audio, privacy, and real-client gates pass.
 
 ## Provider modes
 

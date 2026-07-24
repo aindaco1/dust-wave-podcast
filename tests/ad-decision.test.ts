@@ -95,6 +95,9 @@ describe("dynamic ad decisions", () => {
     const invalidCounters = campaign("invalid-counters", "direct", {
       qualifiedImpressions: -1
     });
+    const inactiveSponsor = campaign("inactive-sponsor", "direct", {
+      sponsorActive: false
+    });
     const mismatchedRule = campaign("mismatched-rule", "direct", {
       rules: [{
         id: "mismatched-rule-target",
@@ -120,6 +123,7 @@ describe("dynamic ad decisions", () => {
           invalidStart,
           invalidKillSwitch,
           invalidCounters,
+          inactiveSponsor,
           mismatchedRule,
           invalidRuleDate
         ],
@@ -217,6 +221,7 @@ function campaign(
   return {
     id,
     campaignType,
+    sponsorActive: campaignType === "direct" ? true : null,
     active: true,
     startsAt: "2026-07-01T00:00:00.000Z",
     endsAt: "2026-08-01T00:00:00.000Z",

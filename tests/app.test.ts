@@ -155,4 +155,18 @@ describe("podcast API", () => {
       expect(await response.json()).toEqual({ error: "unauthorized" });
     }
   });
+
+  it("keeps sponsor previews private without parsing campaign input", async () => {
+    const response = await handleRequest(
+      new Request("https://podcast.example/v1/admin/ads/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ episodeId: "episode_fixture" })
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
 });

@@ -25,6 +25,12 @@ or third-party advertiser settlement.
   selection; and
 - raw IP addresses and full user-agent strings are never returned or persisted.
 
+The authenticated `POST /v1/admin/ads/preview` route loads the current D1
+campaigns, rules, creatives, marker, and program-segment readiness into that
+selector. It accepts only normalized app/device input, writes no decision or
+counter, and always reports `full_file_only` public delivery plus the remaining
+activation blockers.
+
 The schema in migration `0008` records media validation, approved episode
 markers, frame-safe program segments, decision manifests, selected slots, and
 deduplicated qualified impressions. Raw delivery telemetry belongs in

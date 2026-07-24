@@ -13,6 +13,7 @@ import {
   logoutAdmin,
   startAdminLogin
 } from "./admin-auth";
+import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
 import {
@@ -157,6 +158,9 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
   if (url.pathname === "/v1/admin/billing/readiness" && method === "GET") {
     return getBillingReadiness(request, env);
+  }
+  if (url.pathname === "/v1/admin/ads/preview" && method === "POST") {
+    return previewAdminAdDecision(request, env);
   }
   if (url.pathname === "/v1/webhooks/stripe" && method === "POST") {
     return handleStripeWebhook(request, env);

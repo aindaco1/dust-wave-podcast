@@ -35,6 +35,7 @@ export interface AdCreativeCandidate {
 export interface AdCampaignCandidate {
   id: string;
   campaignType: AdCampaignType;
+  sponsorActive?: boolean | null;
   active: boolean;
   startsAt: string;
   endsAt?: string | null;
@@ -288,7 +289,7 @@ export async function buildAdRequestKey(
       input.inventoryFingerprint,
       decisionEpoch,
       input.client.deviceType,
-      normalizeTargetValue(input.client.appName),
+      normalizeAdTargetValue(input.client.appName),
       ephemeralClientHash
     ].join("|"),
     input.secret,
@@ -317,6 +318,10 @@ function eligibleCampaign(
     : null;
   if (
     !now
+    || !campaign.id.trim()
+    || !["house", "direct"].includes(campaign.campaignType)
+    || (campaign.campaignType === "direct" && campaign.sponsorActive !== true)
+    || !["even", "asap", "manual"].includes(campaign.pacingStrategy)
     || !campaign.active
     || !dateWindowIncludes(now, campaign.startsAt, campaign.endsAt)
     || (campaign.killSwitchAt && !killSwitchAt)
@@ -402,13 +407,13 @@ function ruleMatches(
   if (rule.position && rule.position !== context.position) return null;
   if (
     rule.deviceType
-    && normalizeTargetValue(rule.deviceType) !== context.deviceType
+    && normalizeAdTargetValue(rule.deviceType) !== context.deviceType
   ) {
     return null;
   }
   if (
     rule.appName
-    && normalizeTargetValue(rule.appName) !== normalizeTargetValue(context.appName)
+    && normalizeAdTargetValue(rule.appName) !== normalizeAdTargetValue(context.appName)
   ) {
     return null;
   }
@@ -469,7 +474,7 @@ function parseDate(value: string): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
-function normalizeTargetValue(value: string): string {
+export function normalizeAdTargetValue(value: string): string {
   return value
     .normalize("NFKD")
     .replace(/\p{Mark}/gu, "")
