@@ -156,6 +156,23 @@ describe("podcast API", () => {
     }
   });
 
+  it("keeps private-feed creation behind the listener session", async () => {
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/member/shows/opera-en-la-selva/feed",
+        {
+          method: "POST",
+          headers: { origin: "https://dustwave.xyz" }
+        }
+      ),
+      createEnv()
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
   it("keeps sponsor operations private before loading inventory", async () => {
     for (const [path, body] of [
       ["/v1/admin/ads/preview", { episodeId: "episode_fixture" }],

@@ -13,9 +13,10 @@ multi-show-ready.
 - transcript, word-alignment, clip, and YouTube publishing jobs;
 - privacy-conscious first-party analytics.
 
-The current vertical slice implements the public show API, public RSS, private
-R2-backed range delivery, passwordless admin authentication, show and episode
-editing APIs, multipart uploads, one-click idempotent publication
+The current vertical slice implements the public show API, public RSS,
+entitlement-gated private RSS and R2-backed range delivery, passwordless admin
+and listener authentication, one-time private-feed creation and rotation, show
+and episode editing APIs, multipart uploads, one-click idempotent publication
 orchestration, a dry-run GitHub News publisher, a dry-run YouTube adapter, and
 the signed Stripe webhook/readiness boundary. Draft/approval/kill sponsor
 operations, deterministic targeting preview, bounded creative validation, and
@@ -23,8 +24,8 @@ the signed processor/producer-review boundary for frame-aligned episode ad
 plans are implemented without connecting public audio assembly. The bilingual word-alignment
 storage contract and executable launch-quality evaluator are also implemented;
 running a real transcription/alignment adapter and producing its human-reviewed
-benchmark evidence remain gated. Checkout, private premium feeds, dynamic audio
-assembly, clips, and live YouTube/GitHub publishing remain roadmap work.
+benchmark evidence remain gated. Checkout, dynamic audio assembly, clips, and
+live YouTube/GitHub publishing remain roadmap work.
 
 Migration `0012` adds an isolated staging decision exercise: an authenticated
 Producer can persist one deterministic immutable manifest and receive an

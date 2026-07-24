@@ -17,6 +17,10 @@
 - Listener session responses expose only internal identity, show/subscription
   status, computed entitlement, and whether a feed exists. They never expose
   email, Stripe customer/subscription IDs, or private-feed tokens.
+- Private-feed creation and rotation require the listener session, exact site
+  origin, and session-bound CSRF token. A 256-bit bearer value is returned only
+  once; D1 stores an HMAC under an independent pepper and enforces one active
+  token per listener/show. Rotation revokes the old URL in the same D1 batch.
 - Roles are `super_admin`, `admin`, `producer`, and `analyst`, with optional
   show scope. Multiple super-admins are supported.
 - Super-admin management must preserve at least two active super-admins before
@@ -51,9 +55,18 @@
 
 ## Storage and delivery
 
-- R2 buckets remain private. The Worker mediates public and future premium
+- R2 buckets remain private. The Worker mediates public and premium
   access so object URLs cannot bypass entitlement or ad policy.
 - Public media is served only for a due, public-eligible, ready episode.
+- Private RSS and media recheck active, unexpired show entitlement on every
+  request. Due early-access and premium-bonus windows are evaluated in D1;
+  invalid, revoked, cross-show, and expired tokens all fail as the same `404`.
+  Private responses are no-store, omit public CORS, and carry noindex and
+  no-referrer policy.
+- Raw private-feed bearer values are never stored or written by application
+  logs. Cloudflare automatic invocation URL logs are disabled for the Worker;
+  explicit structured logs contain event metadata rather than request URLs.
+  Token `last_used_at` is updated at most hourly to bound D1 writes.
 - Insertable MP3 creatives must be frame-aligned and free of ID3 metadata;
   decision and fallback byte-length declarations are recomputed from their
   signed manifests before delivery.
@@ -103,8 +116,9 @@
 
 ## Before production
 
-- Threat-model private feed tokens, real-time ad decisions, webhook replays,
-  Pool redemption codes, checkout recovery, and transcript/clip file access.
+- Re-run the private-feed threat model and rotation drill alongside real-time
+  ad decisions, webhook replays, Pool redemption codes, checkout recovery, and
+  transcript/clip file access.
 - Verify deployed login/exchange caps and add equivalent limits for uploads,
   publication, and provider callbacks before activation.
 - Add super-admin lifecycle endpoints with two-admin protection and recent-auth

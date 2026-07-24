@@ -66,8 +66,8 @@ iHeartRadio, and Deezer.
 - Start Ópera en la Selva at $5/month or $50/year, no trial.
 - Offer ad-free listening, configurable early access, bonus episodes, and at
   most one free mini-episode per show.
-- Provide a Resend magic-link member page, private feed rotation, and Stripe
-  customer-portal access.
+- Provide a Resend magic-link member page, one-time HMAC-backed private feed
+  creation/rotation, and Stripe customer-portal access.
 - Accept single-use Pool benefit codes for explicitly configured shows and
   benefit periods.
 - Reuse the versioned Store tax calculator and manual Stripe Tax Rates only

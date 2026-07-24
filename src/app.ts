@@ -54,7 +54,7 @@ import {
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "./diagnostics";
-import { servePublicFeed } from "./feed";
+import { servePrivateFeed, servePublicFeed } from "./feed";
 import { json, options, privateJson } from "./http";
 import {
   exchangeListenerLogin,
@@ -62,7 +62,14 @@ import {
   logoutListener,
   startListenerLogin
 } from "./listener-auth";
-import { servePublicEpisodeAudio } from "./media";
+import {
+  servePrivateEpisodeAudio,
+  servePublicEpisodeAudio
+} from "./media";
+import {
+  createListenerPrivateFeed,
+  rotateListenerPrivateFeed
+} from "./private-feeds";
 import { getPublicShow, listPublicShows } from "./shows";
 import { quoteSubscriptionTax } from "./tax-quotes";
 import {
@@ -78,6 +85,14 @@ const SHOW_TAX_QUOTE_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/tax\/quote$/;
 const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
+const PRIVATE_FEED_PATH =
+  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
+const PRIVATE_MEDIA_PATH =
+  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/episodes\/([A-Za-z0-9_-]+)\/audio$/;
+const MEMBER_SHOW_FEED_PATH =
+  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed$/;
+const MEMBER_SHOW_FEED_ROTATE_PATH =
+  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed\/rotate$/;
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
 const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
@@ -188,6 +203,24 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     return servePublicFeed(request, env, feedMatch[1]);
   }
 
+  const privateFeedMatch = url.pathname.match(PRIVATE_FEED_PATH);
+  if (privateFeedMatch && (method === "GET" || method === "HEAD")) {
+    return servePrivateFeed(
+      request,
+      env,
+      privateFeedMatch[1],
+      privateFeedMatch[2]
+    );
+  }
+  const privateMediaMatch = url.pathname.match(PRIVATE_MEDIA_PATH);
+  if (privateMediaMatch && (method === "GET" || method === "HEAD")) {
+    return servePrivateEpisodeAudio(
+      request,
+      env,
+      privateMediaMatch[1],
+      privateMediaMatch[2]
+    );
+  }
   const mediaMatch = url.pathname.match(MEDIA_PATH);
   if (mediaMatch && (method === "GET" || method === "HEAD")) {
     return servePublicEpisodeAudio(request, env, mediaMatch[1]);
@@ -238,6 +271,24 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
   if (url.pathname === "/v1/member/logout" && method === "POST") {
     return logoutListener(request, env);
+  }
+  const memberShowFeedRotateMatch = url.pathname.match(
+    MEMBER_SHOW_FEED_ROTATE_PATH
+  );
+  if (memberShowFeedRotateMatch && method === "POST") {
+    return rotateListenerPrivateFeed(
+      request,
+      env,
+      memberShowFeedRotateMatch[1]
+    );
+  }
+  const memberShowFeedMatch = url.pathname.match(MEMBER_SHOW_FEED_PATH);
+  if (memberShowFeedMatch && method === "POST") {
+    return createListenerPrivateFeed(
+      request,
+      env,
+      memberShowFeedMatch[1]
+    );
   }
   if (url.pathname === "/v1/admin/auth/start" && method === "POST") {
     return startAdminLogin(request, env, await readJsonObject(request));
@@ -464,8 +515,12 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     || url.pathname.startsWith("/v1/ads")
     || url.pathname.startsWith("/v1/diagnostics")
     || url.pathname.startsWith("/v1/internal")
+    || url.pathname.startsWith("/v1/member")
+    || url.pathname.startsWith("/v1/private")
     || Boolean(feedMatch)
     || Boolean(mediaMatch)
+    || Boolean(privateFeedMatch)
+    || Boolean(privateMediaMatch)
     || Boolean(adDecisionAudioMatch);
   return json(
     request,

@@ -46,9 +46,33 @@ enables checkout. A missing assignment or provider mapping fails closed.
 
 Listener login tokens expire after 15 minutes and are single-use. Sessions
 expire after 30 days. Start and exchange have independent atomic rate limits.
-No response contains an email address, provider customer/subscription ID, or
-private-feed token. Account creation, checkout, token rotation, and redemption
-remain separate gated endpoints.
+Session responses never contain an email address, provider
+customer/subscription ID, or private-feed token.
+
+### Premium private feeds
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/member/shows/{show-slug}/feed` | Create the entitled listener's first private feed |
+| `POST` | `/v1/member/shows/{show-slug}/feed/rotate` | Revoke the prior URL and return a replacement |
+| `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/rss.xml` | Entitlement-gated premium RSS |
+| `GET`, `HEAD` | `/v1/private/{token}/episodes/{episode-id}/audio` | Entitlement-gated byte-range audio |
+
+Create and rotate require the listener cookie, allowed site origin, and current
+CSRF token. The raw 256-bit bearer token appears only in the successful
+create/rotate response; D1 stores its HMAC. Create fails when one active feed
+already exists. Rotate revokes the old URL immediately and atomically installs
+one replacement.
+
+The private feed includes due public/free-mini episodes, due early-access
+episodes, and due premium bonuses. A current active subscription is rechecked
+for every RSS and media request. Invalid, revoked, mismatched, expired, and
+unconfigured bearer URLs all return the same `404` shape. Private responses
+are `private, no-store`, omit wildcard CORS, and are marked noindex. Append
+`?download=1` to a private media URL for attachment disposition.
+
+Account creation, checkout, and Pool-code redemption remain separate gated
+endpoints.
 
 ## Passwordless admin authentication
 

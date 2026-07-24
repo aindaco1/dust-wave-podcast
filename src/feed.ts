@@ -1,6 +1,11 @@
 import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { PodcastEnv } from "./env";
+import {
+  hashPrivateFeedToken,
+  privateFeedTokenNeedsTouch,
+  touchPrivateFeedToken
+} from "./private-feeds";
 
 type FeedShow = {
   id: string;
@@ -21,7 +26,7 @@ type FeedEpisode = {
   title: string;
   summary: string;
   guid: string;
-  public_at: string;
+  release_at: string;
   canonical_url: string;
   duration_seconds: number;
   audio_mime_type: string;
@@ -30,6 +35,10 @@ type FeedEpisode = {
   explicit: number;
   season_number: number | null;
   episode_number: number | null;
+};
+
+type PrivateFeedShow = FeedShow & {
+  last_used_at: string | null;
 };
 
 export async function servePublicFeed(
@@ -51,7 +60,8 @@ export async function servePublicFeed(
   const episodes = await env.DB
     .prepare(
       `SELECT
-         id, title, summary, guid, public_at, canonical_url, duration_seconds,
+         id, title, summary, guid, public_at AS release_at,
+         canonical_url, duration_seconds,
          audio_mime_type, audio_bytes, audio_filename, explicit,
          season_number, episode_number
        FROM episodes
@@ -67,10 +77,128 @@ export async function servePublicFeed(
     .bind(show.id)
     .all<FeedEpisode>();
   const feedUrl = `${env.FEED_ORIGIN.replace(/\/$/, "")}/${show.rss_slug}/rss.xml`;
+  return feedResponse(
+    request,
+    renderFeed(
+      show,
+      episodes.results,
+      feedUrl,
+      env,
+      (episode) =>
+        `${env.MEDIA_ORIGIN.replace(/\/$/, "")}/episodes/${episode.id}/audio`
+    ),
+    "public"
+  );
+}
+
+export async function servePrivateFeed(
+  request: Request,
+  env: PodcastEnv,
+  rawToken: string,
+  rssSlug: string
+): Promise<Response> {
+  if (!env.FEED_TOKEN_PEPPER) return xmlError("feed_not_found", 404);
+  const tokenHash = await hashPrivateFeedToken(
+    rawToken,
+    env.FEED_TOKEN_PEPPER
+  );
+  const show = await env.DB
+    .prepare(
+      `SELECT
+         sh.id, sh.slug, sh.title, sh.description, sh.language,
+         sh.artwork_url, sh.canonical_url, sh.rss_slug, sh.author_name,
+         sh.category, sh.explicit, f.last_used_at
+       FROM private_feed_tokens f
+       JOIN subscriptions s
+         ON s.listener_id = f.listener_id
+        AND s.show_id = f.show_id
+       JOIN shows sh ON sh.id = f.show_id
+       WHERE f.token_hash = ?
+         AND f.revoked_at IS NULL
+         AND sh.rss_slug = ?
+         AND sh.status != 'archived'
+         AND s.status = 'active'
+         AND (
+           s.current_period_end IS NULL
+           OR s.current_period_end > datetime('now')
+         )
+       LIMIT 1`
+    )
+    .bind(tokenHash, rssSlug)
+    .first<PrivateFeedShow>();
+  if (!show) return xmlError("feed_not_found", 404);
+
+  const episodes = await env.DB
+    .prepare(
+      `SELECT
+         id, title, summary, guid,
+         CASE
+           WHEN access IN ('early_access', 'premium_bonus')
+             THEN COALESCE(premium_at, public_at)
+           ELSE public_at
+         END AS release_at,
+         canonical_url, duration_seconds, audio_mime_type, audio_bytes,
+         audio_filename, explicit, season_number, episode_number
+       FROM episodes
+       WHERE show_id = ?
+         AND status IN ('scheduled', 'published')
+         AND media_status = 'ready'
+         AND audio_key IS NOT NULL
+         AND guid IS NOT NULL
+         AND (
+           (
+             access IN ('public', 'free_mini')
+             AND public_at <= datetime('now')
+           )
+           OR (
+             access = 'early_access'
+             AND COALESCE(premium_at, public_at) <= datetime('now')
+           )
+           OR (
+             access = 'premium_bonus'
+             AND premium_at <= datetime('now')
+           )
+         )
+       ORDER BY release_at DESC, created_at DESC`
+    )
+    .bind(show.id)
+    .all<FeedEpisode>();
+  if (privateFeedTokenNeedsTouch(show.last_used_at)) {
+    await touchPrivateFeedToken(env.DB, tokenHash);
+  }
+
+  const feedUrl = `${
+    env.FEED_ORIGIN.replace(/\/$/, "")
+  }/v1/private/${rawToken}/${show.rss_slug}/rss.xml`;
+  return feedResponse(
+    request,
+    renderFeed(
+      show,
+      episodes.results,
+      feedUrl,
+      env,
+      (episode) =>
+        `${
+          env.MEDIA_ORIGIN.replace(/\/$/, "")
+        }/v1/private/${rawToken}/episodes/${episode.id}/audio`
+    ),
+    "private"
+  );
+}
+
+function renderFeed(
+  show: FeedShow,
+  episodes: FeedEpisode[],
+  feedUrl: string,
+  env: PodcastEnv,
+  enclosureUrl: (episode: FeedEpisode) => string
+): string {
   const ownerEmail = env.PODCAST_OWNER_EMAIL || "podcasts@dustwave.xyz";
   const authorName = env.PODCAST_AUTHOR_NAME || show.author_name;
-  const items = episodes.results.map((episode) => renderEpisode(episode, env)).join("");
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  const items = episodes
+    .map((episode) => renderEpisode(episode, enclosureUrl(episode)))
+    .join("");
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
   xmlns:atom="http://www.w3.org/2005/Atom"
   xmlns:content="http://purl.org/rss/1.0/modules/content/"
@@ -96,27 +224,37 @@ export async function servePublicFeed(
     ${items}
   </channel>
 </rss>`;
+}
+
+async function feedResponse(
+  request: Request,
+  xml: string,
+  visibility: "public" | "private"
+): Promise<Response> {
   const etag = `"${await sha256Hex(xml)}"`;
+  const headers = feedHeaders(etag, visibility);
   if (request.headers.get("if-none-match") === etag) {
     return new Response(null, {
       status: 304,
-      headers: publicFeedHeaders(etag)
+      headers
     });
   }
   return new Response(request.method === "HEAD" ? null : xml, {
-    headers: publicFeedHeaders(etag)
+    headers
   });
 }
 
-function renderEpisode(episode: FeedEpisode, env: PodcastEnv): string {
-  const enclosureUrl = `${env.MEDIA_ORIGIN.replace(/\/$/, "")}/episodes/${episode.id}/audio`;
+function renderEpisode(
+  episode: FeedEpisode,
+  enclosureUrl: string
+): string {
   return `<item>
       <title>${escapeXml(episode.title)}</title>
       <description>${escapeXml(episode.summary)}</description>
       <content:encoded><![CDATA[${safeCdata(episode.summary)}]]></content:encoded>
       <link>${escapeXml(episode.canonical_url)}</link>
       <guid isPermaLink="false">${escapeXml(episode.guid)}</guid>
-      <pubDate>${new Date(episode.public_at).toUTCString()}</pubDate>
+      <pubDate>${new Date(episode.release_at).toUTCString()}</pubDate>
       <enclosure url="${escapeXml(enclosureUrl)}" length="${episode.audio_bytes}" type="${escapeXml(episode.audio_mime_type)}"/>
       <itunes:duration>${episode.duration_seconds}</itunes:duration>
       <itunes:explicit>${episode.explicit === 1 ? "true" : "false"}</itunes:explicit>
@@ -125,14 +263,25 @@ function renderEpisode(episode: FeedEpisode, env: PodcastEnv): string {
     </item>`;
 }
 
-function publicFeedHeaders(etag: string): Headers {
-  return new Headers({
+function feedHeaders(
+  etag: string,
+  visibility: "public" | "private"
+): Headers {
+  const headers = new Headers({
     "content-type": "application/rss+xml; charset=utf-8",
-    "cache-control": "public, max-age=60, stale-while-revalidate=300",
-    "access-control-allow-origin": "*",
+    "cache-control": visibility === "public"
+      ? "public, max-age=60, stale-while-revalidate=300"
+      : "private, no-store, max-age=0",
     "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
     etag
   });
+  if (visibility === "public") {
+    headers.set("access-control-allow-origin", "*");
+  } else {
+    headers.set("x-robots-tag", "noindex, nofollow, noarchive");
+  }
+  return headers;
 }
 
 function xmlError(code: string, status: number): Response {
@@ -143,7 +292,9 @@ function xmlError(code: string, status: number): Response {
       headers: {
         "content-type": "application/xml; charset=utf-8",
         "cache-control": "no-store",
-        "x-content-type-options": "nosniff"
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer",
+        "x-robots-tag": "noindex, nofollow, noarchive"
       }
     }
   );

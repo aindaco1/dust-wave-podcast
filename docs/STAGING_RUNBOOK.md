@@ -51,7 +51,14 @@ Required for login:
 - `RESEND_API_KEY`
 - `TURNSTILE_SECRET_KEY`
 
+Required for private feeds:
+
+- `FEED_TOKEN_PEPPER`
+
 Admin and listener peppers/session secrets must be independently generated.
+The feed-token pepper must also be independent. Replacing it invalidates every
+issued private URL, so rotate it only during a planned all-feed reissue or an
+incident; normal listener URL replacement uses the rotate endpoint.
 The Resend and Turnstile provider credentials may be shared by the Podcast
 runtime, but listener and admin requests use distinct idempotency namespaces
 and Turnstile actions.
@@ -134,6 +141,14 @@ Verify:
   logout;
 - a small staged audio upload completes, serves a byte range, and downloads;
 - publishing a fixture episode twice returns the same revision;
+- an entitled listener can create one private URL, read due premium RSS, play
+  a byte range, and rotate it; the old feed and media URLs then return the same
+  `404` as an unknown token, while the replacement continues to work;
+- private responses remain no-store/noindex without wildcard CORS, D1 contains
+  only a 64-character token HMAC, and polling within one hour does not advance
+  `last_used_at`;
+- Cloudflare automatic invocation URL logs remain disabled and saved smoke
+  evidence contains no private bearer URL;
 - News and YouTube jobs report `dry-run`;
 - the canonical website remains unchanged;
 - Stripe rejects unsigned and wrong-mode events.
@@ -161,6 +176,8 @@ Verify:
 Current isolated staging runtime:
 `https://dust-wave-podcast-staging.jogo.workers.dev`. This address is for
 engineering evidence only and is not the permanent public feed or media origin.
+The staging `FEED_ORIGIN` and `MEDIA_ORIGIN` intentionally use this hostname so
+copied staging feed/enclosure URLs remain testable without production DNS.
 
 Do not attach `feeds.dustwave.xyz` or `media.dustwave.xyz` during this step.
 
@@ -181,3 +198,6 @@ Record the provider ID, audit event, cleanup result, and mode restoration.
   evidence is captured.
 - Do not delete a public GUID, enclosure identity, or directory feed. Correct
   metadata in a new publication revision.
+- A Worker-code rollback after migration `0020` is safe because the new partial
+  unique index is additive. Do not drop it during rollback; it preserves the
+  one-active-feed invariant.

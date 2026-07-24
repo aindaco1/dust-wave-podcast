@@ -6,7 +6,10 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
+    "logs": {
+      "invocation_logs": false
+    }
   },
   "env": {
     "staging": {
@@ -17,6 +20,7 @@
           "AD_QUALIFICATION_CALLBACK_SECRET",
           "ADMIN_EMAIL_LOOKUP_PEPPER",
           "ADMIN_SESSION_SECRET",
+          "FEED_TOKEN_PEPPER",
           "LISTENER_EMAIL_LOOKUP_PEPPER",
           "LISTENER_SESSION_SECRET",
           "MEDIA_PROCESSOR_CALLBACK_SECRET",
@@ -26,8 +30,8 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "SITE_ORIGIN": "https://dustwave.xyz",
-        "FEED_ORIGIN": "https://feeds.dustwave.xyz",
-        "MEDIA_ORIGIN": "https://media.dustwave.xyz",
+        "FEED_ORIGIN": "https://dust-wave-podcast-staging.jogo.workers.dev",
+        "MEDIA_ORIGIN": "https://dust-wave-podcast-staging.jogo.workers.dev",
         "ALLOWED_ORIGINS": "https://dustwave.xyz,https://www.dustwave.xyz,http://localhost:8080",
         "MEDIA_KEY_PREFIX": "podcasts/",
         "MEDIA_BUCKET_NAME": "dustwave-media-staging",
