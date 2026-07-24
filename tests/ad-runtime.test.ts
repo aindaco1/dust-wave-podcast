@@ -1,5 +1,5 @@
 import { sha256Hex } from "@dustwave/worker-core/crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   issueAdminStagingAdDecision,
@@ -124,6 +124,28 @@ describe("signed staging ad decisions", () => {
       }
     });
     expect(fixture.batches).toHaveLength(1);
+
+    fixture.setDecisionStatus("revoked");
+    const revoked = await serveStagingAdDecisionAudio(
+      new Request(issued.signedUrl),
+      fixture.env,
+      issued.decisionId
+    );
+    expect(revoked.status).toBe(404);
+    fixture.setDecisionStatus("selected");
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1_000 + 1_000);
+      const expired = await serveStagingAdDecisionAudio(
+        new Request(issued.signedUrl),
+        fixture.env,
+        issued.decisionId
+      );
+      expect(expired.status).toBe(401);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects a bad URL signature before looking up a decision", async () => {
@@ -252,6 +274,7 @@ async function runtimeEnvironment(): Promise<{
   env: PodcastEnv;
   batches: Array<Array<{ query: string; values: unknown[] }>>;
   changeObjectEtag: (key: string, etag: string) => void;
+  setDecisionStatus: (status: "selected" | "revoked") => void;
 }> {
   const csrfTokenHash = await sha256Hex(`${sessionSecret}:${csrfToken}`);
   const batches: Array<Array<{ query: string; values: unknown[] }>> = [];
@@ -485,6 +508,10 @@ async function runtimeEnvironment(): Promise<{
       const object = objects[key];
       if (!object) throw new Error(`Unknown fixture object: ${key}`);
       object.etag = etag;
+    },
+    setDecisionStatus(status) {
+      if (!decision) throw new Error("No fixture decision exists.");
+      decision.status = status;
     }
   };
 }
