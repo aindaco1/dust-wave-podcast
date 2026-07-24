@@ -75,6 +75,24 @@ probes emulate request headers only and are explicitly recorded as
 `nativeClientValidation: false`; they do not replace the real application
 matrix.
 
+For the sustained staging gate, upload the generated
+`virtual-midroll.mp3` alongside its three component objects and run:
+
+```sh
+VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN=... npm run load:virtual-audio -- \
+  --origin https://dust-wave-podcast-staging.example.workers.dev \
+  --output /absolute/private/evidence/paired-load.json \
+  --pairs 5000 --concurrency 12
+```
+
+The diagnostic exposes the same 193,932 bytes as a three-object virtual stream
+and a one-object private-R2 baseline under the same ETag. The load gate
+alternates request order, excludes warmups, uses five deterministic range
+patterns including both object boundaries, and compares 5,000 pairs (10,000
+measured requests). It fails at a 0.1% or higher request error rate, any
+content mismatch, or more than 250 ms of added virtual p95 latency. Evidence
+redacts the token path and stores only bounded aggregate/error data.
+
 ## Required fixture set
 
 Generate Dust Wave-owned fixtures for both launch formats:

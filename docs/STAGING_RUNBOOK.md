@@ -96,6 +96,12 @@ never a command argument. The generated JSON redacts the fixture path and
 labels header-level app probes as protocol emulation rather than native-client
 evidence.
 
+Use the same environment-only token with `npm run load:virtual-audio` after
+uploading the generated `virtual-midroll.mp3` baseline. The default 5,000
+paired cases produce 10,000 measured requests across identical virtual and
+preassembled bytes. Remove all four objects and the diagnostic secret
+immediately after saving the redacted evidence.
+
 Use least-privilege staging credentials. Cloudflare does not expose existing
 secret values, so rotate or enter them rather than attempting to copy them from
 Pool or Store.

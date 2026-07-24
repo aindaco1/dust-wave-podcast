@@ -46,10 +46,32 @@ const SYNTHETIC_MIDROLL_MANIFEST: VirtualMediaManifest = {
   ]
 };
 
+const SYNTHETIC_BASELINE_MANIFEST: VirtualMediaManifest = {
+  schemaVersion: "1",
+  id: "synthetic-preassembled-baseline",
+  episodeId: "synthetic-episode",
+  decisionId: "synthetic-direct-ad-decision",
+  etag: '"fe3fd3084f9720103f1a548162f5d707321d991565a54809c29297c784c5c249"',
+  contentType: "audio/mpeg",
+  streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1",
+  validatedAt: "2026-07-23T20:39:00.158Z",
+  segments: [{
+    id: "preassembled-full-file",
+    kind: "program",
+    objectKey: "fixtures/virtual-audio/virtual-midroll.mp3",
+    objectBytes: 193_932,
+    sourceOffset: 0,
+    byteLength: 193_932,
+    contentType: "audio/mpeg",
+    streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1"
+  }]
+};
+
 export async function serveStagingVirtualAudioDiagnostic(
   request: Request,
   env: PodcastEnv,
-  suppliedToken: string
+  suppliedToken: string,
+  variant: "virtual" | "baseline" = "virtual"
 ): Promise<Response> {
   if (
     env.ENVIRONMENT !== "staging"
@@ -58,7 +80,13 @@ export async function serveStagingVirtualAudioDiagnostic(
   ) {
     return diagnosticNotFound();
   }
-  return serveVirtualMedia(request, env.MEDIA_BUCKET, SYNTHETIC_MIDROLL_MANIFEST);
+  return serveVirtualMedia(
+    request,
+    env.MEDIA_BUCKET,
+    variant === "baseline"
+      ? SYNTHETIC_BASELINE_MANIFEST
+      : SYNTHETIC_MIDROLL_MANIFEST
+  );
 }
 
 export function serveStagingVirtualAudioPlayer(
@@ -114,7 +142,8 @@ export function serveStagingVirtualAudioPlayer(
       const supplied = token.value;
       token.value = "";
       audio.src =
-        "/v1/diagnostics/virtual-audio/" + encodeURIComponent(supplied);
+        "/v1/diagnostics/virtual-audio/" + encodeURIComponent(supplied)
+        + "/virtual";
       audio.load();
       report("loading");
       try {

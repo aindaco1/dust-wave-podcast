@@ -23,7 +23,7 @@ if (origin.protocol !== "https:" || origin.pathname !== "/") {
 }
 const outputPath = path.resolve(options.output);
 const diagnosticUrl = new URL(
-  `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}`,
+  `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}/virtual`,
   origin
 );
 const results = [];
@@ -164,7 +164,7 @@ const evidence = {
   schemaVersion: "dust-wave-virtual-audio-protocol-matrix-v1",
   generatedAt: new Date().toISOString(),
   targetOrigin: origin.origin,
-  targetPath: "/v1/diagnostics/virtual-audio/[redacted]",
+  targetPath: "/v1/diagnostics/virtual-audio/[redacted]/virtual",
   fixture: {
     bytes: totalBytes,
     etag,

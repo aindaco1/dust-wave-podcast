@@ -98,7 +98,7 @@ const PROCESSOR_AD_PLAN_COMPLETE_PATH =
 const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
-  /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})$/;
+  /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})(?:\/(virtual|baseline))?$/;
 
 export async function handleRequest(
   request: Request,
@@ -194,7 +194,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     return serveStagingVirtualAudioDiagnostic(
       request,
       env,
-      virtualAudioDiagnosticMatch[1]
+      virtualAudioDiagnosticMatch[1],
+      virtualAudioDiagnosticMatch[2] === "baseline"
+        ? "baseline"
+        : "virtual"
     );
   }
 

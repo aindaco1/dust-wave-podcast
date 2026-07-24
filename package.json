@@ -12,6 +12,7 @@
     "check": "npm run types && npm run typecheck && npm test",
     "fixtures:virtual-audio": "node scripts/generate-virtual-audio-fixtures.mjs",
     "matrix:virtual-audio": "node scripts/run-virtual-audio-protocol-matrix.mjs",
+    "load:virtual-audio": "node scripts/run-virtual-audio-load-gate.mjs",
     "deploy:staging:dry": "wrangler deploy --env staging --dry-run",
     "deploy:production:dry": "wrangler deploy --env production --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --env staging",
