@@ -29,6 +29,27 @@ accountant-approved rate version, and returns integer-cent exclusive or
 inclusive math. It never returns the Stripe Tax Rate ID, stores the address, or
 enables checkout. A missing assignment or provider mapping fails closed.
 
+## Passwordless listener authentication
+
+1. `POST /v1/member/auth/start` with `email`, `preferredLanguage`, and a
+   Turnstile token. Known and unknown addresses receive the same accepted
+   response.
+2. Resend sends a one-time link to
+   `/podcasts/account/#magic-link={token}`.
+3. The browser exchanges only the URL-fragment token at
+   `POST /v1/member/auth/exchange`.
+4. The response sets a `Secure`, `HttpOnly`, `SameSite=Lax` cookie scoped to
+   `/v1/member` and returns a CSRF token for in-memory use.
+5. `GET /v1/member/session` rotates CSRF state and returns only the listener
+   ID plus non-secret subscription/show status.
+6. `POST /v1/member/logout` requires same-origin CSRF and revokes the session.
+
+Listener login tokens expire after 15 minutes and are single-use. Sessions
+expire after 30 days. Start and exchange have independent atomic rate limits.
+No response contains an email address, provider customer/subscription ID, or
+private-feed token. Account creation, checkout, token rotation, and redemption
+remain separate gated endpoints.
+
 ## Passwordless admin authentication
 
 1. `POST /v1/admin/auth/start` with `email`, `preferredLanguage`, and a

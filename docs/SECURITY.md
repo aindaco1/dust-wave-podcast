@@ -2,7 +2,9 @@
 
 ## Authentication and authorization
 
-- Administrator login is passwordless and enumeration-resistant.
+- Administrator and listener login are passwordless and
+  enumeration-resistant. Their lookup peppers, session secrets, cookies,
+  rate-limit tables, Turnstile actions, and URL scopes are independent.
 - Login initiation requires the configured site origin and Turnstile action.
   Atomic D1 buckets cap requests per pseudonymous client and normalized-email
   HMAC while preserving the same accepted response for registered and
@@ -12,6 +14,9 @@
   single-use.
 - The session cookie is `Secure`, `HttpOnly`, `SameSite=Lax`, and path-scoped.
 - Mutations require a same-origin check and a session-bound CSRF token.
+- Listener session responses expose only internal identity, show/subscription
+  status, computed entitlement, and whether a feed exists. They never expose
+  email, Stripe customer/subscription IDs, or private-feed tokens.
 - Roles are `super_admin`, `admin`, `producer`, and `analyst`, with optional
   show scope. Multiple super-admins are supported.
 - Super-admin management must preserve at least two active super-admins before
@@ -78,7 +83,7 @@
 - GitHub and YouTube writes are dry-run by default. Live mode requires
   least-privilege provider credentials and an audited environment change.
 - Resend receives the raw destination only at send time. Delivery failures are
-  logged by internal admin ID, never by email address.
+  logged by internal admin/listener ID, never by email address.
 - Resend calls have an eight-second timeout and a token-hash idempotency key;
   redirects fail closed. Scheduled maintenance removes expired rate buckets,
   consumed login tokens, and revoked/expired sessions after a one-day
@@ -100,8 +105,8 @@
 
 - Threat-model private feed tokens, real-time ad decisions, webhook replays,
   Pool redemption codes, checkout recovery, and transcript/clip file access.
-- Add rate limits for login, exchange, uploads, publication, and provider
-  callbacks.
+- Verify deployed login/exchange caps and add equivalent limits for uploads,
+  publication, and provider callbacks before activation.
 - Add super-admin lifecycle endpoints with two-admin protection and recent-auth
   requirements for destructive or live-provider actions.
 - Validate logs contain no tokens, raw emails, Stripe payload bodies, media

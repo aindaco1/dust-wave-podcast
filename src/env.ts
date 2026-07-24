@@ -13,6 +13,10 @@ export type PodcastEnv = Env & {
   GITHUB_TOKEN?: string;
   GITHUB_WORKFLOW?: string;
   GITHUB_PUBLISH_MODE?: string;
+  LISTENER_AUTH_EXPOSE_LOGIN_LINK?: string;
+  LISTENER_EMAIL_LOOKUP_PEPPER?: string;
+  LISTENER_SESSION_SECRET?: string;
+  LISTENER_TURNSTILE_REQUIRED?: string;
   PODCAST_AUTHOR_NAME?: string;
   PODCAST_EMAIL_FROM?: string;
   PODCAST_OWNER_EMAIL?: string;

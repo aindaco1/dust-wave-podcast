@@ -56,6 +56,12 @@ import {
 } from "./diagnostics";
 import { servePublicFeed } from "./feed";
 import { json, options, privateJson } from "./http";
+import {
+  exchangeListenerLogin,
+  getListenerSession,
+  logoutListener,
+  startListenerLogin
+} from "./listener-auth";
 import { servePublicEpisodeAudio } from "./media";
 import { getPublicShow, listPublicShows } from "./shows";
 import { quoteSubscriptionTax } from "./tax-quotes";
@@ -221,6 +227,18 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     );
   }
 
+  if (url.pathname === "/v1/member/auth/start" && method === "POST") {
+    return startListenerLogin(request, env, await readJsonObject(request));
+  }
+  if (url.pathname === "/v1/member/auth/exchange" && method === "POST") {
+    return exchangeListenerLogin(request, env, await readJsonObject(request));
+  }
+  if (url.pathname === "/v1/member/session" && method === "GET") {
+    return getListenerSession(request, env);
+  }
+  if (url.pathname === "/v1/member/logout" && method === "POST") {
+    return logoutListener(request, env);
+  }
   if (url.pathname === "/v1/admin/auth/start" && method === "POST") {
     return startAdminLogin(request, env, await readJsonObject(request));
   }

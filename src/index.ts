@@ -2,6 +2,7 @@ import { handleRequest } from "./app";
 import { pruneAdminAuthState } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { processPodcastJob, scheduleDuePublications } from "./jobs";
+import { pruneListenerAuthState } from "./listener-auth";
 import { pruneTaxQuoteRateLimits } from "./tax-quotes";
 import type { PodcastJob } from "./types";
 
@@ -56,6 +57,7 @@ export default {
     await Promise.all([
       scheduleDuePublications(env),
       pruneAdminAuthState(env.DB),
+      pruneListenerAuthState(env.DB),
       pruneTaxQuoteRateLimits(env.DB)
     ]);
   }

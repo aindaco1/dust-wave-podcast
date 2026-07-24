@@ -1,6 +1,5 @@
 import type { PodcastEnv } from "./env";
-
-type LoginLanguage = "en" | "es";
+import type { LoginLanguage } from "./passwordless-security";
 
 export async function sendAdminMagicLink(
   env: PodcastEnv,
@@ -16,12 +15,67 @@ export async function sendAdminMagicLink(
     deliveryKey: string;
   }
 ): Promise<{ sent: boolean; providerId?: string }> {
+  return sendMagicLink(env, {
+    audience: "admin",
+    email,
+    loginUrl,
+    language,
+    deliveryKey
+  });
+}
+
+export async function sendListenerMagicLink(
+  env: PodcastEnv,
+  {
+    email,
+    loginUrl,
+    language,
+    deliveryKey
+  }: {
+    email: string;
+    loginUrl: string;
+    language: LoginLanguage;
+    deliveryKey: string;
+  }
+): Promise<{ sent: boolean; providerId?: string }> {
+  return sendMagicLink(env, {
+    audience: "listener",
+    email,
+    loginUrl,
+    language,
+    deliveryKey
+  });
+}
+
+async function sendMagicLink(
+  env: PodcastEnv,
+  {
+    audience,
+    email,
+    loginUrl,
+    language,
+    deliveryKey
+  }: {
+    audience: "admin" | "listener";
+    email: string;
+    loginUrl: string;
+    language: LoginLanguage;
+    deliveryKey: string;
+  }
+): Promise<{ sent: boolean; providerId?: string }> {
   if (!env.RESEND_API_KEY) return { sent: false };
   const spanish = language === "es";
+  const listener = audience === "listener";
   const subject = spanish
-    ? "Tu enlace de acceso a Dust Wave Podcasts"
-    : "Your Dust Wave Podcasts sign-in link";
-  const action = spanish ? "Acceder a Podcasts" : "Sign in to Podcasts";
+    ? listener
+      ? "Tu enlace de escucha de Dust Wave Podcasts"
+      : "Tu enlace de acceso a Dust Wave Podcasts"
+    : listener
+      ? "Your Dust Wave Podcasts listener sign-in link"
+      : "Your Dust Wave Podcasts sign-in link";
+  const action = spanish
+    ? listener ? "Abrir mi cuenta de podcasts" : "Acceder a Podcasts"
+    : listener ? "Open my podcast account" : "Sign in to Podcasts";
   const explanation = spanish
     ? "Este enlace vence en 15 minutos y solo puede usarse una vez."
     : "This link expires in 15 minutes and can only be used once.";
@@ -31,7 +85,7 @@ export async function sendAdminMagicLink(
       headers: {
         authorization: `Bearer ${env.RESEND_API_KEY}`,
         "content-type": "application/json",
-        "idempotency-key": `podcast-admin-login/${deliveryKey}`
+        "idempotency-key": `podcast-${audience}-login/${deliveryKey}`
       },
       body: JSON.stringify({
         from: env.PODCAST_EMAIL_FROM || "Dust Wave Podcasts <podcasts@dustwave.xyz>",

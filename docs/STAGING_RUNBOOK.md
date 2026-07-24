@@ -46,8 +46,15 @@ Required for login:
 
 - `ADMIN_EMAIL_LOOKUP_PEPPER`
 - `ADMIN_SESSION_SECRET`
+- `LISTENER_EMAIL_LOOKUP_PEPPER`
+- `LISTENER_SESSION_SECRET`
 - `RESEND_API_KEY`
 - `TURNSTILE_SECRET_KEY`
+
+Admin and listener peppers/session secrets must be independently generated.
+The Resend and Turnstile provider credentials may be shared by the Podcast
+runtime, but listener and admin requests use distinct idempotency namespaces
+and Turnstile actions.
 
 Required for later provider tests:
 

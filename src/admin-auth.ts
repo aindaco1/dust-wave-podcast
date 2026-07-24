@@ -10,6 +10,13 @@ import { verifyTurnstile } from "@dustwave/worker-core/turnstile";
 
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import {
+  consumePasswordlessRateLimit,
+  isValidEmailAddress,
+  normalizeLoginLanguage,
+  passwordlessClientHash,
+  trustedSiteOrigin
+} from "./passwordless-security";
 import { sendAdminMagicLink } from "./resend";
 import { isTruthy } from "./validation";
 
@@ -63,25 +70,6 @@ function authConfigured(env: PodcastEnv): boolean {
   );
 }
 
-function normalizeLanguage(value: unknown): "en" | "es" {
-  return String(value ?? "").trim().toLowerCase() === "es" ? "es" : "en";
-}
-
-function isValidEmail(value: string): boolean {
-  return value.length <= 254
-    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function trustedOrigin(request: Request, env: PodcastEnv): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return request.headers.get("sec-fetch-site") !== "cross-site";
-  try {
-    return timingSafeEqual(new URL(origin).origin, new URL(env.SITE_ORIGIN).origin);
-  } catch {
-    return false;
-  }
-}
-
 function sessionCookie(token: string, maximumAge = SESSION_TTL_SECONDS): string {
   return [
     `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
@@ -121,7 +109,7 @@ export async function startAdminLogin(
       { status: 503 }
     );
   }
-  if (!trustedOrigin(request, env)) {
+  if (!trustedSiteOrigin(request, env.SITE_ORIGIN)) {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -149,13 +137,18 @@ export async function startAdminLogin(
   }
 
   const email = normalizeEmail(body.email);
-  const clientHash = await authClientHash(request, env);
-  const clientAllowed = await consumeAuthRateLimit(
+  const clientHash = await passwordlessClientHash(
+    request,
+    env.ADMIN_SESSION_SECRET,
+    "podcast-admin-auth-client"
+  );
+  const clientAllowed = await consumePasswordlessRateLimit(
     env.DB,
+    "admin_auth_rate_limit_buckets",
     AUTH_RATE_LIMITS.startClient,
     clientHash
   );
-  if (!isValidEmail(email)) {
+  if (!isValidEmailAddress(email)) {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -165,8 +158,9 @@ export async function startAdminLogin(
   }
 
   const lookupHash = await emailLookupHash(env, email);
-  const emailAllowed = await consumeAuthRateLimit(
+  const emailAllowed = await consumePasswordlessRateLimit(
     env.DB,
+    "admin_auth_rate_limit_buckets",
     AUTH_RATE_LIMITS.startEmail,
     lookupHash
   );
@@ -200,7 +194,7 @@ export async function startAdminLogin(
       .bind(tokenHash, admin.id)
       .run();
 
-    const language = normalizeLanguage(body.preferredLanguage);
+    const language = normalizeLoginLanguage(body.preferredLanguage);
     const loginUrl = `${env.SITE_ORIGIN.replace(/\/$/, "")}/admin/podcasts/#magic-link=${token}`;
     const exposeLink = env.ENVIRONMENT === "staging"
       && isTruthy(env.ADMIN_AUTH_EXPOSE_LOGIN_LINK);
@@ -244,7 +238,7 @@ export async function exchangeAdminLogin(
       { status: 503 }
     );
   }
-  if (!trustedOrigin(request, env)) {
+  if (!trustedSiteOrigin(request, env.SITE_ORIGIN)) {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -252,10 +246,15 @@ export async function exchangeAdminLogin(
       { status: 403 }
     );
   }
-  const clientAllowed = await consumeAuthRateLimit(
+  const clientAllowed = await consumePasswordlessRateLimit(
     env.DB,
+    "admin_auth_rate_limit_buckets",
     AUTH_RATE_LIMITS.exchangeClient,
-    await authClientHash(request, env)
+    await passwordlessClientHash(
+      request,
+      env.ADMIN_SESSION_SECRET,
+      "podcast-admin-auth-client"
+    )
   );
   if (!clientAllowed) {
     return privateJson(
@@ -406,7 +405,7 @@ export async function requireAdmin(
   }
 
   if (requireCsrf) {
-    if (!trustedOrigin(request, env)) {
+    if (!trustedSiteOrigin(request, env.SITE_ORIGIN)) {
       return {
         ok: false,
         response: privateJson(
@@ -477,49 +476,6 @@ export async function pruneAdminAuthState(db: D1Database): Promise<void> {
           OR revoked_at < datetime('now', '-1 day')`
     )
   ]);
-}
-
-async function authClientHash(
-  request: Request,
-  env: PodcastEnv
-): Promise<string> {
-  const clientAddress = request.headers.get("cf-connecting-ip") ?? "unknown";
-  return hmacSha256(
-    `podcast-admin-auth-client:${clientAddress}`,
-    env.ADMIN_SESSION_SECRET || "",
-    "hex"
-  );
-}
-
-async function consumeAuthRateLimit(
-  db: D1Database,
-  limit: {
-    action: "start_client" | "start_email" | "exchange_client";
-    windowSeconds: number;
-    maximum: number;
-  },
-  identityHash: string
-): Promise<boolean> {
-  const currentSeconds = Math.floor(Date.now() / 1_000);
-  const windowStartedAt =
-    Math.floor(currentSeconds / limit.windowSeconds) * limit.windowSeconds;
-  const expiresAt = windowStartedAt + limit.windowSeconds * 2;
-  const bucket = await db
-    .prepare(
-      `INSERT INTO admin_auth_rate_limit_buckets (
-         action, identity_hash, window_started_at, attempt_count, expires_at
-       ) VALUES (?, ?, ?, 1, datetime(?, 'unixepoch'))
-       ON CONFLICT (action, identity_hash, window_started_at)
-       DO UPDATE SET attempt_count = attempt_count + 1
-       RETURNING attempt_count`
-    )
-    .bind(limit.action, identityHash, windowStartedAt, expiresAt)
-    .first<{ attempt_count: number }>();
-  return Boolean(
-    bucket
-    && Number.isInteger(bucket.attempt_count)
-    && bucket.attempt_count <= limit.maximum
-  );
 }
 
 export async function getAdminSession(

@@ -7,6 +7,7 @@ import { hmacSha256 } from "@dustwave/worker-core/crypto";
 
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { trustedSiteOrigin } from "./passwordless-security";
 import {
   readJsonObject,
   RequestValidationError,
@@ -49,7 +50,7 @@ export async function quoteSubscriptionTax(
       { status: 503 }
     );
   }
-  if (!trustedSiteOrigin(request, env)) {
+  if (!trustedSiteOrigin(request, env.SITE_ORIGIN)) {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -237,16 +238,6 @@ function validateDestinationForQuote(destination: TaxDestination): void {
     throw new RequestValidationError(
       "Billing state is required for a US tax quote"
     );
-  }
-}
-
-function trustedSiteOrigin(request: Request, env: PodcastEnv): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return request.headers.get("sec-fetch-site") !== "cross-site";
-  try {
-    return new URL(origin).origin === new URL(env.SITE_ORIGIN).origin;
-  } catch {
-    return false;
   }
 }
 

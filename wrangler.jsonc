@@ -17,6 +17,8 @@
           "AD_QUALIFICATION_CALLBACK_SECRET",
           "ADMIN_EMAIL_LOOKUP_PEPPER",
           "ADMIN_SESSION_SECRET",
+          "LISTENER_EMAIL_LOOKUP_PEPPER",
+          "LISTENER_SESSION_SECRET",
           "MEDIA_PROCESSOR_CALLBACK_SECRET",
           "TAX_QUOTE_HASH_SECRET"
         ]
@@ -41,7 +43,9 @@
         "PODCAST_OWNER_EMAIL": "podcasts@dustwave.xyz",
         "STRIPE_MODE": "test",
         "ADMIN_AUTH_EXPOSE_LOGIN_LINK": "false",
-        "ADMIN_TURNSTILE_REQUIRED": "true"
+        "ADMIN_TURNSTILE_REQUIRED": "true",
+        "LISTENER_AUTH_EXPOSE_LOGIN_LINK": "false",
+        "LISTENER_TURNSTILE_REQUIRED": "true"
       },
       "triggers": {
         "crons": ["*/5 * * * *"]
@@ -108,7 +112,9 @@
         "PODCAST_OWNER_EMAIL": "podcasts@dustwave.xyz",
         "STRIPE_MODE": "test",
         "ADMIN_AUTH_EXPOSE_LOGIN_LINK": "false",
-        "ADMIN_TURNSTILE_REQUIRED": "true"
+        "ADMIN_TURNSTILE_REQUIRED": "true",
+        "LISTENER_AUTH_EXPOSE_LOGIN_LINK": "false",
+        "LISTENER_TURNSTILE_REQUIRED": "true"
       },
       "triggers": {
         "crons": ["*/5 * * * *"]
