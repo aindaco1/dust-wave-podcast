@@ -58,6 +58,8 @@ non-secret human inputs that gate production are kept in
   word-alignment evidence and launch thresholds
 - [`docs/VIRTUAL_AUDIO_GATE.md`](docs/VIRTUAL_AUDIO_GATE.md) — request-time
   audio assembly and real podcast-client evidence gate
+- [`docs/DYNAMIC_ADS_GATE.md`](docs/DYNAMIC_ADS_GATE.md) — deterministic
+  house/direct sponsor decisions, privacy, pacing, and fallback gate
 - [`docs/STAGING_RUNBOOK.md`](docs/STAGING_RUNBOOK.md) — backup, migration,
   deployment, bootstrap, smoke test, and rollback procedure
 
