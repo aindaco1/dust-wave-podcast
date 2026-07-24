@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DYNAMIC_AD_MP3_PROFILE,
+  validateDynamicAdInsertionMp3,
   validateDynamicAdMp3
 } from "../src/mp3-profile";
 
@@ -37,6 +38,9 @@ describe("dynamic ad MP3 profile validation", () => {
     expect(report.id3v2Bytes).toBe(10);
     expect(report.id3v1Bytes).toBe(128);
     expect(report.frameBytes).toBe(834);
+    expect(() => validateDynamicAdInsertionMp3(bytes)).toThrow(
+      "without ID3 metadata"
+    );
   });
 
   it("rejects mono, incompatible bitrate, and truncated frames", () => {

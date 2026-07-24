@@ -42,6 +42,9 @@
 - R2 buckets remain private. The Worker mediates public and future premium
   access so object URLs cannot bypass entitlement or ad policy.
 - Public media is served only for a due, public-eligible, ready episode.
+- Insertable MP3 creatives must be frame-aligned and free of ID3 metadata;
+  decision and fallback byte-length declarations are recomputed from their
+  signed manifests before delivery.
 - Byte ranges are validated and bounded; upload kinds, MIME types, object
   sizes, filenames, and part numbers are allowlisted.
 - CORS reflects only explicit origins. Admin responses are private/no-store and

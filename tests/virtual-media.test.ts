@@ -1,14 +1,64 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildVirtualMediaLengthContract,
   compileVirtualMediaManifest,
   mapVirtualByteRange,
   parseVirtualByteRange,
   serveVirtualMedia,
+  virtualMediaLengthContractMatches,
   type VirtualMediaManifest
 } from "../src/virtual-media";
 
 describe("virtual media assembly", () => {
+  it("records and verifies the exact primary/fallback byte-length contract", () => {
+    const primary = createManifest();
+    const equalFallback = createManifest();
+    equalFallback.id = "fallback-equal";
+    equalFallback.etag = '"fallback-equal"';
+    const equalContract = buildVirtualMediaLengthContract(
+      primary,
+      equalFallback
+    );
+    expect(equalContract).toEqual({
+      schemaVersion: "equal-byte-length-v1",
+      primaryBytes: 22,
+      fallbackBytes: 22,
+      equalByteLength: true
+    });
+    expect(
+      virtualMediaLengthContractMatches(
+        primary,
+        equalFallback,
+        equalContract
+      )
+    ).toBe(true);
+
+    const shortFallback = createManifest();
+    shortFallback.id = "fallback-short";
+    shortFallback.etag = '"fallback-short"';
+    shortFallback.segments = [shortFallback.segments[0]];
+    const shortContract = buildVirtualMediaLengthContract(
+      primary,
+      shortFallback
+    );
+    expect(shortContract).toMatchObject({
+      primaryBytes: 22,
+      fallbackBytes: 8,
+      equalByteLength: false
+    });
+    expect(
+      virtualMediaLengthContractMatches(
+        primary,
+        shortFallback,
+        { ...shortContract, fallbackBytes: 9 }
+      )
+    ).toBe(false);
+    expect(
+      virtualMediaLengthContractMatches(primary, shortFallback, undefined)
+    ).toBe(false);
+  });
+
   it("maps a cross-segment range and merges contiguous windows in one object", () => {
     const manifest = compileVirtualMediaManifest(createManifest());
     const range = {

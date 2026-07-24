@@ -32,7 +32,10 @@ issued decision.
 This contract does not claim that arbitrary MP3 or M4A files can be
 concatenated. The media pipeline must produce frame-boundary program pieces and
 creative assets with the same recorded profile, validate the assembled
-rendition, and retain a full-file fallback.
+rendition, and retain a full-file fallback. Insertable creative objects must
+contain raw MPEG frames only: ID3v2 headers and ID3v1 trailers are rejected
+because metadata bytes inserted between program frames would corrupt the
+virtual stream.
 
 Generate the first deterministic, Dust Wave-owned raw-frame MP3 fixture and
 FFmpeg/FFprobe evidence outside the repository with:
@@ -56,6 +59,21 @@ For browser checks, open `/v1/diagnostics/virtual-audio/player` and enter the
 token into its password field. The no-store, no-referrer, staging-only harness
 keeps the value in page memory, clears the field, and exposes explicit load,
 play, seek, and pause status without putting the token in navigation history.
+
+Run the redacted HTTP protocol matrix with the token supplied only through the
+environment:
+
+```sh
+VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN=... npm run matrix:virtual-audio -- \
+  --origin https://dust-wave-podcast-staging.example.workers.dev \
+  --output /absolute/private/evidence/protocol-matrix.json
+```
+
+The runner verifies full and ranged delivery, resume forms, retries, ETag
+conditionals, invalid ranges, and concurrent reads. Its named podcast-client
+probes emulate request headers only and are explicitly recorded as
+`nativeClientValidation: false`; they do not replace the real application
+matrix.
 
 ## Required fixture set
 
@@ -113,3 +131,11 @@ The request-time path passes only when:
 Until the recorded matrix passes, feed enclosures and downloads continue to
 use validated full-file renditions. The admin may show request-time selection
 as an engineering preview, never as launch-ready inventory.
+
+Every immutable decision records primary and fallback byte counts in an
+`equal-byte-length-v1` contract. The Worker derives and revalidates the
+contract rather than trusting caller input. Unequal staging fixtures remain
+usable for diagnostic fallback evidence but are explicitly not launch-ready.
+Before the permanent enclosure can use request-time selection, each supported
+slot duration needs an approved house/filler rendition whose complete
+assembled byte count exactly matches the sponsor rendition.

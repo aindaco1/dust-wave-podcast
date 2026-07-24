@@ -80,6 +80,18 @@ export function validateDynamicAdMp3(
   };
 }
 
+export function validateDynamicAdInsertionMp3(
+  bytes: Uint8Array
+): Mp3ProfileReport {
+  const report = validateDynamicAdMp3(bytes);
+  if (report.id3v2Bytes !== 0 || report.id3v1Bytes !== 0) {
+    throw new Error(
+      "Dynamic ad insertion audio must contain raw MP3 frames without ID3 metadata."
+    );
+  }
+  return report;
+}
+
 function id3v2Length(bytes: Uint8Array): number {
   if (
     bytes.byteLength < 10

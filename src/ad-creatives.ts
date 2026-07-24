@@ -13,7 +13,7 @@ import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
   DYNAMIC_AD_MP3_PROFILE,
-  validateDynamicAdMp3
+  validateDynamicAdInsertionMp3
 } from "./mp3-profile";
 import {
   positiveInteger,
@@ -344,7 +344,7 @@ export async function validateAdminAdCreative(
   ).bind(creativeId).run();
   await resetCampaignApproval(env.DB, access.creative.campaign_id);
   try {
-    const report = validateDynamicAdMp3(bytes);
+    const report = validateDynamicAdInsertionMp3(bytes);
     if (report.durationMs > 10 * 60 * 1_000) {
       throw new Error("Creative MP3 exceeds the ten-minute duration limit.");
     }

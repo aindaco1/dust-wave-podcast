@@ -25,8 +25,11 @@ import { privateJson } from "./http";
 import { DYNAMIC_AD_MP3_PROFILE } from "./mp3-profile";
 import { readSignedJsonBody } from "./signed-callback";
 import {
+  buildVirtualMediaLengthContract,
   compileVirtualMediaManifest,
   serveVirtualMedia,
+  virtualMediaLengthContractMatches,
+  type VirtualMediaLengthContract,
   type VirtualMediaManifest,
   type VirtualMediaSegment
 } from "./virtual-media";
@@ -112,6 +115,7 @@ type StoredDecisionRow = {
 
 type StoredAdDecisionManifest = VirtualMediaManifest & {
   fallback: VirtualMediaManifest;
+  deliveryLengthContract: VirtualMediaLengthContract;
 };
 
 type QualificationSlotRow = {
@@ -428,6 +432,8 @@ export async function issueAdminStagingAdDecision(
       publicationRevision: episode.publication_revision,
       slotCount: slotDecisions.length,
       totalBytes: compiled.totalBytes,
+      deliveryLengthContract: manifest.deliveryLengthContract,
+      deliveryLengthReady: manifest.deliveryLengthContract.equalByteLength,
       manifestSha256,
       runtimeEnabled: false
     }
@@ -994,7 +1000,7 @@ async function buildDecisionManifest(
       streamProfile
     }]
   };
-  return {
+  const primary: VirtualMediaManifest = {
     schemaVersion: "1",
     id: `manifest_${materialSha256.slice(0, 48)}`,
     episodeId: episode.id,
@@ -1003,7 +1009,11 @@ async function buildDecisionManifest(
     contentType: "audio/mpeg",
     streamProfile,
     validatedAt,
-    segments,
+    segments
+  };
+  return {
+    ...primary,
+    deliveryLengthContract: buildVirtualMediaLengthContract(primary, fallback),
     fallback
   };
 }
@@ -1059,6 +1069,21 @@ async function presentIssuedDecision(
       { status: 409 }
     );
   }
+  const manifest = parseStoredManifest(decision.manifest_json);
+  if (
+    !virtualMediaLengthContractMatches(
+      manifest,
+      manifest.fallback,
+      manifest.deliveryLengthContract
+    )
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "ad_decision_delivery_contract_mismatch" },
+      { status: 409 }
+    );
+  }
   const signature = await signDecision(
     decision.id,
     expires,
@@ -1083,6 +1108,8 @@ async function presentIssuedDecision(
       expiresAt: decision.expires_at,
       manifestSha256: decision.manifest_sha256,
       totalBytes: decision.total_bytes,
+      deliveryLengthContract: manifest.deliveryLengthContract,
+      deliveryLengthReady: manifest.deliveryLengthContract.equalByteLength,
       runtimeEnabled: false,
       publicEnclosureConnected: false,
       flags
@@ -1133,6 +1160,11 @@ async function resolveDecisionDeliveryManifest(
     !manifest.fallback
     || manifest.fallback.decisionId !== manifest.decisionId
     || manifest.fallback.episodeId !== manifest.episodeId
+    || !virtualMediaLengthContractMatches(
+      manifest,
+      manifest.fallback,
+      manifest.deliveryLengthContract
+    )
   ) {
     return null;
   }

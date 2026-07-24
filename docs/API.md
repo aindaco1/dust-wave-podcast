@@ -169,12 +169,20 @@ calls this route and both dynamic-ad feature flags remain false.
 
 Every newly issued staging decision also snapshots one validated full-file
 fallback manifest from the current immutable delivery-audio key, size, and
-ETag. On the signed URL's first `GET` or `HEAD`, the Worker preflights the
-primary virtual manifest. If primary evidence is unavailable, it preflights
-the fallback and atomically commits exactly one `primary` or `fallback`
-delivery variant in D1 before emitting headers. Concurrent first requests use
-the committed winner. Later range/retry requests may never switch variants;
-if the committed objects change, the route fails closed instead of returning
+ETag. The signed manifest records a derived `equal-byte-length-v1` contract
+containing primary bytes, fallback bytes, and their equality result. The
+Worker recomputes that contract from the signed manifests before presenting or
+serving a decision, so a missing or altered declaration fails closed. Staging
+may exercise an unequal full-file fallback, but reports
+`deliveryLengthReady: false`; production activation requires a same-length
+house/filler rendition plus every other documented launch gate.
+
+On the signed URL's first `GET` or `HEAD`, the Worker preflights the primary
+virtual manifest. If primary evidence is unavailable, it preflights the
+fallback and atomically commits exactly one `primary` or `fallback` delivery
+variant in D1 before emitting headers. Concurrent first requests use the
+committed winner. Later range/retry requests may never switch variants; if the
+committed objects change, the route fails closed instead of returning
 different bytes under one signed URL. This staging safety path does not attach
 the permanent enclosure or enable either dynamic-ad feature flag.
 

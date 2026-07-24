@@ -84,6 +84,8 @@ iHeartRadio, and Deezer.
   evidence; deduplicate qualifications and enforce hard caps atomically.
 - Select approved pre-, mid-, and post-roll creative at request time by show,
   episode, position, campaign date, and normalized device/app.
+- Require raw-frame creative audio and an immutable, recomputed equal-byte
+  contract between sponsor and house/filler renditions before activation.
 - Preserve a validated preassembled-file fallback until request-time assembly
   passes compatibility, latency, caching, disclosure, and measurement gates.
 

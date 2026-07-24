@@ -91,6 +91,11 @@ Required only while the synthetic real-client audio matrix is active:
 
 - `VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN`
 
+Supply that token to `npm run matrix:virtual-audio` through the environment,
+never a command argument. The generated JSON redacts the fixture path and
+labels header-level app probes as protocol emulation rather than native-client
+evidence.
+
 Use least-privilege staging credentials. Cloudflare does not expose existing
 secret values, so rotate or enter them rather than attempting to copy them from
 Pool or Store.
@@ -124,6 +129,9 @@ Verify:
   the snapshotted full-file fallback before headers; restoring the ad object
   does not switch that signed URL back to primary, and mutating a committed
   primary fails closed rather than switching mid-download.
+- each issued decision reports its recomputed primary/fallback byte contract;
+  the current unequal full-file diagnostic is `deliveryLengthReady: false`,
+  and a tampered or missing contract fails before delivery.
 - bad qualification callback signatures return `401` before D1 lookup; one
   signed full-creative completion is idempotent across secret rotation; the
   analyst reconciliation report is show-scoped, bounded, and returns zero

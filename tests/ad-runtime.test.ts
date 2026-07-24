@@ -33,6 +33,13 @@ describe("signed staging ad decisions", () => {
       signedUrl: string;
       manifestSha256: string;
       totalBytes: number;
+      deliveryLengthContract: {
+        schemaVersion: string;
+        primaryBytes: number;
+        fallbackBytes: number;
+        equalByteLength: boolean;
+      };
+      deliveryLengthReady: boolean;
       runtimeEnabled: boolean;
       publicEnclosureConnected: boolean;
     };
@@ -42,6 +49,13 @@ describe("signed staging ad decisions", () => {
     expect(issued.idempotent).toBe(false);
     expect(issued.manifestSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(issued.totalBytes).toBe(19);
+    expect(issued.deliveryLengthContract).toEqual({
+      schemaVersion: "equal-byte-length-v1",
+      primaryBytes: 19,
+      fallbackBytes: 11,
+      equalByteLength: false
+    });
+    expect(issued.deliveryLengthReady).toBe(false);
     expect(issued.runtimeEnabled).toBe(false);
     expect(issued.publicEnclosureConnected).toBe(false);
     expect(fixture.batches).toHaveLength(1);
@@ -120,6 +134,13 @@ describe("signed staging ad decisions", () => {
       expiresAt: expect.any(String),
       manifestSha256: issued.manifestSha256,
       totalBytes: 19,
+      deliveryLengthContract: {
+        schemaVersion: "equal-byte-length-v1",
+        primaryBytes: 19,
+        fallbackBytes: 11,
+        equalByteLength: false
+      },
+      deliveryLengthReady: false,
       runtimeEnabled: false,
       publicEnclosureConnected: false,
       flags: {

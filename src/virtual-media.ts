@@ -40,6 +40,13 @@ export interface CompiledVirtualMediaManifest
   totalBytes: number;
 }
 
+export interface VirtualMediaLengthContract {
+  schemaVersion: "equal-byte-length-v1";
+  primaryBytes: number;
+  fallbackBytes: number;
+  equalByteLength: boolean;
+}
+
 export interface VirtualByteRange {
   startsAt: number;
   endsAt: number;
@@ -163,6 +170,44 @@ export function compileVirtualMediaManifest(
     segments,
     totalBytes
   };
+}
+
+export function buildVirtualMediaLengthContract(
+  primary: VirtualMediaManifest,
+  fallback: VirtualMediaManifest
+): VirtualMediaLengthContract {
+  const primaryBytes = compileVirtualMediaManifest(primary).totalBytes;
+  const fallbackBytes = compileVirtualMediaManifest(fallback).totalBytes;
+  return {
+    schemaVersion: "equal-byte-length-v1",
+    primaryBytes,
+    fallbackBytes,
+    equalByteLength: primaryBytes === fallbackBytes
+  };
+}
+
+export function virtualMediaLengthContractMatches(
+  primary: VirtualMediaManifest,
+  fallback: VirtualMediaManifest,
+  contract: VirtualMediaLengthContract | null | undefined
+): boolean {
+  if (
+    !contract
+    || contract.schemaVersion !== "equal-byte-length-v1"
+    || !isSafePositiveInteger(contract.primaryBytes)
+    || !isSafePositiveInteger(contract.fallbackBytes)
+    || typeof contract.equalByteLength !== "boolean"
+  ) {
+    return false;
+  }
+  try {
+    const expected = buildVirtualMediaLengthContract(primary, fallback);
+    return expected.primaryBytes === contract.primaryBytes
+      && expected.fallbackBytes === contract.fallbackBytes
+      && expected.equalByteLength === contract.equalByteLength;
+  } catch {
+    return false;
+  }
 }
 
 export function parseVirtualByteRange(
