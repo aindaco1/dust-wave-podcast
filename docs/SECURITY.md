@@ -70,6 +70,12 @@
 - The staging GitHub processor requires its own least-privilege R2-capable
   Cloudflare token plus the same dedicated callback secret. Pool/Store
   deployment secrets are not copied or exposed.
+- Forced alignment runs outside the public Worker in the pinned
+  `alignment-runner` submodule. It accepts only checksummed, bounded local
+  inputs, prevents path/model-reference traversal, rechecks audio after model
+  execution, imports heavyweight libraries only inside selected adapters, and
+  atomically refuses conflicting result writes. Raw transcripts and audio are
+  not included in GitHub Actions or committed benchmark evidence.
 
 ## Before production
 

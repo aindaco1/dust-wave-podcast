@@ -56,6 +56,19 @@ The Python/model runtime belongs in a pinned GitHub or owner-controlled runner,
 not in the public Worker. The Worker owns job fingerprints, state, policy,
 result validation, and D1/R2 projection.
 
+The owner-controlled runtime is pinned as the `alignment-runner` submodule on
+its `release/0.1.0` branch. Its core CI does not download models. It validates
+bounded checksummed input, rejects input-root and model-reference traversal,
+rechecks audio after inference, projects every adapter result to stable word
+IDs, and writes canonical mode-`0600` evidence with atomic no-overwrite
+semantics. Existing results are reused only when all input and runner
+fingerprints match.
+
+Benchmark integrity is fail-closed: duplicate fixture IDs, duplicate gold
+words, invalid result/audio/transcript digests, repeated or unknown preview
+samples, invalid timing provenance/confidence, and duplicate or unknown
+idempotency checks cannot satisfy H1.
+
 ## Current evidence state
 
 The schema, normalized evaluator, and adversarial unit fixtures are implemented.

@@ -70,7 +70,9 @@ describe("alignment quality gate", () => {
     expect(report.languages.es.goldWordCount).toBeGreaterThanOrEqual(400);
     expect(report.previews).toMatchObject({
       total: 100,
+      submitted: 100,
       accepted: 96,
+      integrityIssueCount: 0,
       passed: true
     });
 
@@ -81,6 +83,41 @@ describe("alignment quality gate", () => {
     expect(failed.passed).toBe(false);
     expect(failed.resourceGatePassed).toBe(false);
     expect(failed.idempotencyGatePassed).toBe(false);
+  });
+
+  it("rejects duplicated benchmark evidence and unknown preview words", () => {
+    const benchmark = createBenchmark();
+    benchmark.fixtures[1] = structuredClone(benchmark.fixtures[0]);
+    benchmark.previewReviews[1] = structuredClone(benchmark.previewReviews[0]);
+    benchmark.previewReviews[2] = {
+      fixtureId: "unknown-fixture",
+      wordId: "unknown-word",
+      acceptedWithoutClipping: true
+    };
+    benchmark.idempotencyChecks[1] = structuredClone(
+      benchmark.idempotencyChecks[0]
+    );
+
+    const report = evaluateAlignmentBenchmark(benchmark);
+
+    expect(report.passed).toBe(false);
+    expect(report.benchmarkIntegrityGatePassed).toBe(false);
+    expect(report.previews.integrityIssueCount).toBeGreaterThanOrEqual(2);
+    expect(report.idempotencyGatePassed).toBe(false);
+    expect(report.languages.en.criteria.uniqueFixtureIds).toBe(false);
+  });
+
+  it("rejects missing timing provenance and invalid confidence", () => {
+    const fixture = createFixture("es", 0, 34);
+    fixture.candidateWords[0].timingOrigin = null;
+    fixture.candidateWords[1].confidence = 1.1;
+
+    const report = evaluateAlignmentFixture(fixture);
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map(({ code }) => code)).toEqual(
+      expect.arrayContaining(["invalid_timing_origin", "invalid_confidence"])
+    );
   });
 });
 
@@ -96,14 +133,18 @@ function createBenchmark(): AlignmentBenchmark {
       model: "fixture-model",
       modelVersion: "1",
       settingsVersion: "1",
-      runnerDigest: "sha256:fixture"
+      runnerDigest: `sha256:${"f".repeat(64)}`
     },
     fixtures,
-    previewReviews: Array.from({ length: 100 }, (_, index) => ({
-      fixtureId: fixtures[index % fixtures.length].fixtureId,
-      wordId: `word-${index}`,
-      acceptedWithoutClipping: index < 96
-    })),
+    previewReviews: Array.from({ length: 100 }, (_, index) => {
+      const fixture = fixtures[index % fixtures.length];
+      const word = fixture.goldWords[Math.floor(index / fixtures.length)];
+      return {
+        fixtureId: fixture.fixtureId,
+        wordId: word.wordId,
+        acceptedWithoutClipping: index < 96
+      };
+    }),
     resourceRuns: (["en", "es"] as const).map((language) => ({
       language,
       inputDurationMinutes: 60,
@@ -140,6 +181,9 @@ function createFixture(
     fixtureId,
     language,
     audioDurationMs: wordCount * 450 + 1_000,
+    sourceAudioSha256: "a".repeat(64),
+    transcriptRevisionSha256: "b".repeat(64),
+    resultManifestSha256: "c".repeat(64),
     goldWords,
     candidateWords: goldWords.map((word) => ({
       wordId: word.wordId,
