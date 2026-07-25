@@ -173,6 +173,30 @@
   atomically refuses conflicting result writes. Raw transcripts and audio are
   not included in GitHub Actions or committed benchmark evidence.
 
+## Transcription boundary
+
+Only a show-scoped Producer/Admin/Super-admin with a credentialed CSRF-bound
+session can queue transcription. Every job snapshots the current approved
+working-master ID, object ETag/size, source SHA-256, explicit English/Spanish
+source language, model, vocabulary, and settings version. The Queue consumer
+rechecks the master pointer, object identity, and byte digest before calling
+Workers AI. A replacement master makes queued/running work stale.
+
+Provider output is untrusted. The Worker bounds the raw response, keeps it
+private in R2, strips control/bidirectional characters and active angle
+brackets from normalized cue text, rejects missing/overlapping/out-of-duration
+segments, and writes immutable digest-tagged JSON, WebVTT, SRT, and plain-text
+objects. It does not import provider word timing or speaker identity. Transcript
+application is optimistic against the snapshotted base revision, so a
+concurrent editor wins and the completed provider result becomes stale rather
+than overwriting reviewed text. Audit metadata contains only IDs, counts,
+versions, and digests.
+
+Direct transcription is limited to a 16 MiB source object because base64
+encoding temporarily multiplies Worker memory. Larger approved masters fail
+closed with `source_requires_chunking`; they must not be downsampled, truncated,
+or split at invented boundaries inside the Worker.
+
 ## Before production
 
 - Re-run the private-feed threat model and rotation drill alongside real-time

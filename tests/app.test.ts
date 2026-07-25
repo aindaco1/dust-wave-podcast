@@ -193,6 +193,7 @@ describe("podcast API", () => {
       "/v1/admin/shows/show_opera_en_la_selva/audio-qc-policy",
       "/v1/admin/shows/show_opera_en_la_selva/episodes",
       "/v1/admin/episodes/episode_fixture/audio-qc",
+      "/v1/admin/episodes/episode_fixture/transcription-jobs",
       "/v1/admin/episodes/episode_fixture/transcripts",
       "/v1/admin/episodes/episode_fixture/clips"
     ]) {
@@ -210,6 +211,15 @@ describe("podcast API", () => {
 
   it("keeps transcript mutations private before loading an episode", async () => {
     for (const [path, method, body] of [
+      [
+        "/v1/admin/episodes/episode_fixture/transcription-jobs",
+        "POST",
+        {
+          requestId: "transcription_request_fixture",
+          expectedWorkingMasterId: "master_fixture",
+          language: "es"
+        }
+      ],
       [
         "/v1/admin/episodes/episode_fixture/transcripts/es",
         "PUT",

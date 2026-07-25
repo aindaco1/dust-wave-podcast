@@ -22,6 +22,7 @@
   "dependencies": {
     "@dustwave/media-core": "file:shared/dust-wave-platform/packages/media-core",
     "@dustwave/tax-core": "file:shared/dust-wave-platform/packages/tax-core",
+    "@dustwave/timed-text": "file:shared/dust-wave-platform/packages/timed-text",
     "@dustwave/worker-core": "file:shared/dust-wave-platform/packages/worker-core"
   },
   "devDependencies": {

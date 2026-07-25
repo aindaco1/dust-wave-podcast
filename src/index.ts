@@ -7,6 +7,7 @@ import {
   pruneSubscriptionBillingRateLimits
 } from "./subscription-checkout";
 import { pruneTaxQuoteRateLimits } from "./tax-quotes";
+import { schedulePendingTranscriptions } from "./transcription-jobs";
 import type { PodcastJob } from "./types";
 
 export default {
@@ -62,7 +63,8 @@ export default {
       pruneAdminAuthState(env.DB),
       pruneListenerAuthState(env.DB),
       pruneSubscriptionBillingRateLimits(env.DB),
-      pruneTaxQuoteRateLimits(env.DB)
+      pruneTaxQuoteRateLimits(env.DB),
+      schedulePendingTranscriptions(env)
     ]);
   }
 } satisfies ExportedHandler<PodcastEnv, PodcastJob>;

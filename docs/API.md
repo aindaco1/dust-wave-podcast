@@ -208,6 +208,8 @@ including under concurrent requests.
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
 | `POST` | `/v1/admin/episodes/{id}/distribution/{rss\|news\|youtube\|email}/retry` | producer+ | Requeue one failed job for the exact current publication revision |
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific enabled/setup state plus a credential-free owner/submission checklist |
+| `GET` | `/v1/admin/episodes/{id}/transcription-jobs` | analyst+ | Current working-master/source-language readiness and up to 20 immutable transcription jobs |
+| `POST` | `/v1/admin/episodes/{id}/transcription-jobs` | producer+ | Idempotently queue the explicit source language against an exact approved working master |
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
@@ -334,7 +336,23 @@ withdrawals and suppression at delivery, use deterministic provider
 idempotency, preserve an unsubscribe path, and pass its own staging promotion
 gate.
 
-### Transcript review
+### Source-language transcription and review
+
+Queue requests require `requestId`, `expectedWorkingMasterId`, and an explicit
+`en` or `es` language matching the episode source language. The server
+re-resolves the current approved master and show settings; the input
+fingerprint binds master SHA-256, language, adapter/model, settings version,
+and normalized vocabulary. Repeating the same fingerprint returns the stored
+job without another provider call; reusing a request ID for different inputs
+returns `409`.
+
+The Queue consumer verifies the R2 object size, ETag, and byte SHA-256 before
+Workers AI. Success writes private immutable provider JSON, timed-text JSON,
+WebVTT, SRT, and plain text, then optimistically creates one `needs_review`
+transcript revision. It imports segment timing only. Word timing and generated
+speaker labels are never created. Sources over 16 MiB record
+`source_requires_chunking` until the separate silence-aware processor is
+connected.
 
 Transcript writes accept `mutationId`, `baseRevision`, and 1–10,000 ordered
 cues within a one-megabyte canonical payload. Each cue has a stable ID, integer

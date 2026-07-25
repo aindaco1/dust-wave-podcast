@@ -209,13 +209,14 @@ export async function createAdminEpisode(
   if (!auth.ok) return auth.response;
   const show = await env.DB
     .prepare(
-      `SELECT slug, early_access_days, free_mini_episode_enabled
+      `SELECT slug, language, early_access_days, free_mini_episode_enabled
        FROM shows
        WHERE id = ? AND status != 'archived'`
     )
     .bind(showId)
     .first<{
       slug: string;
+      language: string;
       early_access_days: number | null;
       free_mini_episode_enabled: number;
     }>();
@@ -232,6 +233,9 @@ export async function createAdminEpisode(
   const title = requiredText(body.title, "title", 240);
   const summary = optionalText(body.summary, "summary", 4_000);
   const contentHtml = optionalText(body.contentHtml, "contentHtml", 100_000);
+  const sourceLanguage = episodeSourceLanguage(
+    body.sourceLanguage ?? show.language
+  );
   const access = requiredText(body.access ?? "public", "access", 30) as EpisodeAccess;
   if (!["public", "early_access", "premium_bonus", "free_mini"].includes(access)) {
     throw new RequestValidationError("episode access is invalid");
@@ -276,8 +280,8 @@ export async function createAdminEpisode(
     .prepare(
       `INSERT INTO episodes (
          id, show_id, slug, title, summary, content_html, access,
-         premium_at, public_at, canonical_url, guid
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         premium_at, public_at, canonical_url, guid, source_language
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       episodeId,
@@ -290,7 +294,8 @@ export async function createAdminEpisode(
       premiumAt,
       publicAt,
       canonicalUrl,
-      `urn:uuid:${uuid}`
+      `urn:uuid:${uuid}`,
+      sourceLanguage
     )
     .run();
   await recordAdminAudit(env.DB, {
@@ -298,7 +303,7 @@ export async function createAdminEpisode(
     action: "episode.created",
     targetType: "episode",
     targetId: episodeId,
-    metadata: { showId, slug, access }
+    metadata: { showId, slug, access, sourceLanguage }
   });
   return privateJson(
     request,
@@ -337,7 +342,7 @@ export async function listAdminEpisodes(
          id, slug, title, summary, content_html, status, access, premium_at,
          public_at, canonical_url, duration_seconds, explicit, media_status,
          audio_filename, audio_bytes, video_source_key, youtube_video_id,
-         publication_revision, created_at, updated_at
+         publication_revision, source_language, created_at, updated_at
        FROM episodes
        WHERE show_id = ?
        ORDER BY
@@ -364,6 +369,7 @@ export async function listAdminEpisodes(
       video_source_key: string | null;
       youtube_video_id: string | null;
       publication_revision: number;
+      source_language: string | null;
       created_at: string;
       updated_at: string;
     }>();
@@ -388,6 +394,7 @@ export async function listAdminEpisodes(
       hasVideoSource: Boolean(episode.video_source_key),
       youtubeVideoId: episode.youtube_video_id,
       publicationRevision: episode.publication_revision,
+      sourceLanguage: episode.source_language,
       createdAt: episode.created_at,
       updatedAt: episode.updated_at
     }))
@@ -461,6 +468,12 @@ export async function updateAdminEpisode(
       throw new RequestValidationError("explicit must be a boolean");
     }
     updates.push({ column: "explicit", value: body.explicit ? 1 : 0 });
+  }
+  if ("sourceLanguage" in body) {
+    updates.push({
+      column: "source_language",
+      value: episodeSourceLanguage(body.sourceLanguage)
+    });
   }
   if (updates.length === 0) {
     throw new RequestValidationError("No supported episode fields were supplied");
@@ -987,4 +1000,12 @@ function makeJob(
     publicationRevision: revision,
     requestedAt: new Date().toISOString()
   };
+}
+
+function episodeSourceLanguage(value: unknown): "en" | "es" {
+  const language = requiredText(value, "sourceLanguage", 2).toLowerCase();
+  if (language !== "en" && language !== "es") {
+    throw new RequestValidationError("sourceLanguage must be en or es");
+  }
+  return language;
 }

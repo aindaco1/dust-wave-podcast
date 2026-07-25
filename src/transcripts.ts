@@ -798,7 +798,7 @@ function etagMatches(header: string | null, etag: string): boolean {
   });
 }
 
-async function stableTranscriptId(
+export async function stableTranscriptId(
   episodeId: string,
   language: string
 ): Promise<string> {

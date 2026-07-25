@@ -145,6 +145,10 @@ import {
   subscriptionCheckoutConfigured
 } from "./tax-quotes";
 import {
+  listAdminEpisodeTranscriptionJobs,
+  queueAdminEpisodeTranscription
+} from "./transcription-jobs";
+import {
   approveAdminEpisodeTranscript,
   listAdminEpisodeTranscripts,
   saveAdminEpisodeTranscript,
@@ -219,6 +223,8 @@ const ADMIN_EPISODE_DISTRIBUTION_DESTINATION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_TRANSCRIPTS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts$/;
+const ADMIN_EPISODE_TRANSCRIPTION_JOBS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcription-jobs$/;
 const ADMIN_EPISODE_TRANSCRIPT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)$/;
 const ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH =
@@ -861,6 +867,25 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       adminEpisodeTranscriptMatch[1],
       adminEpisodeTranscriptMatch[2]
     );
+  }
+  const adminEpisodeTranscriptionJobsMatch = url.pathname.match(
+    ADMIN_EPISODE_TRANSCRIPTION_JOBS_PATH
+  );
+  if (adminEpisodeTranscriptionJobsMatch) {
+    if (method === "GET") {
+      return listAdminEpisodeTranscriptionJobs(
+        request,
+        env,
+        adminEpisodeTranscriptionJobsMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return queueAdminEpisodeTranscription(
+        request,
+        env,
+        adminEpisodeTranscriptionJobsMatch[1]
+      );
+    }
   }
   const adminEpisodeTranscriptsMatch = url.pathname.match(
     ADMIN_EPISODE_TRANSCRIPTS_PATH

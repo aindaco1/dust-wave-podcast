@@ -25,8 +25,10 @@ operations, deterministic targeting preview, bounded creative validation, and
 the signed processor/producer-review boundary for frame-aligned episode ad
 plans are implemented without connecting public audio assembly. The bilingual word-alignment
 storage contract and executable launch-quality evaluator are also implemented;
-running a real transcription/alignment adapter and producing its human-reviewed
-benchmark evidence remain gated. Checkout code remains disabled pending
+the source-language Workers AI transcription adapter is now implemented behind
+an immutable working-master snapshot, Queue recovery, private R2 evidence, and
+versioned transcript review. A real rights-cleared transcription run plus the
+alignment adapter's human-reviewed benchmark evidence remain gated. Checkout remains disabled pending
 accountant-approved tax/provider evidence; dynamic audio assembly, public clip
 distribution, and live YouTube/GitHub publishing remain roadmap work.
 
@@ -43,6 +45,17 @@ due, public/free/early-access episodes with ready media. It emits plain timed
 text with wildcard read-only CORS, short cache validators, and no internal
 transcript/admin identity; premium bonuses and non-public episode states remain
 indistinguishable `404`s. Public clip distribution remains gated.
+
+Source-language transcription accepts an explicit English/Spanish episode
+language and only the current approved working master. The job fingerprint
+binds the master SHA-256, model, language, and versioned settings; duplicate
+inputs reuse one stored job. Provider responses, normalized timed-text JSON,
+WebVTT, SRT, and plain text remain private in R2. Workers AI segment timing is
+normalized through `@dustwave/timed-text`; provider word records and speaker
+guesses are not imported. Direct Worker processing is capped at 16 MiB to
+bound base64 memory. Larger masters fail closed as
+`source_requires_chunking` until the silence-aware FFmpeg chunk processor is
+connected.
 
 The chapter workbench wraps the original normalized `episode_chapters` rows
 with optimistic mutations, immutable revision snapshots, Admin approval, and
