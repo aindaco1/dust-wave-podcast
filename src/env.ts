@@ -25,6 +25,7 @@ export type PodcastEnv = Env & {
   POOL_PODCAST_BRIDGE_SECRET?: string;
   POOL_REDEMPTION_CODE_PEPPER?: string;
   POOL_REDEMPTION_ENABLED?: string;
+  PUBLICATION_GATE_MODE?: string;
   MEDIA_PROCESSOR_CALLBACK_SECRET?: string;
   MEDIA_BUCKET_NAME?: string;
   RESEND_API_KEY?: string;

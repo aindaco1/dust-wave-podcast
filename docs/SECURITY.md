@@ -265,11 +265,24 @@ mode labels, and a content digest. It omits object keys, raw ETags, source
 digests, transcript/chapter/clip text, review notes, job errors, credentials,
 and listener data. The exact publication-fingerprint function is shared with
 Publish so post-schedule content drift becomes stale evidence. Snapshot hashing
-excludes wall-clock time. Missing,
-incomplete, stale, failed, or safety-truncated evidence is never promoted to
-ready. The candidate is deliberately non-enforcing and offers no override;
-connecting it to publication requires a separate recent-auth, reasoned,
-audited, exact-snapshot approval and rollback change.
+excludes wall-clock time. Missing, incomplete, stale, failed, or
+safety-truncated evidence is never promoted to ready.
+
+Publish recognizes `legacy`, `shadow`, and `enforce`, with unknown values
+falling back to legacy. Staging observes exact digest/revision matches in
+shadow without changing the legacy readiness decision; production remains
+legacy. Enforcement rejects missing or stale snapshots and unresolved
+candidate blockers. Its override is limited to a show-scoped Admin or
+Super-admin authenticated within 15 minutes, requires explicit confirmation,
+and stores a normalized private reason separately. General audit metadata
+contains only the reason hash/length, counts, IDs, and evidence versions.
+
+Monotonic episode, show, and global epochs cover every readiness dependency.
+The snapshot double-reads them to avoid torn evidence, and the final episode
+update compares all three. Its immediately following checked `changes()` guard
+aborts the entire D1 batch on conflict, preventing partial jobs, directory
+state, News publication, override, or audit writes. Show/global epochs avoid
+O(all historical episodes) invalidation when show or directory setup changes.
 
 ## Publication-intent and News-teaser boundary
 

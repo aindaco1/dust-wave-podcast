@@ -25,6 +25,43 @@ export async function readJsonObject(
   return value as Record<string, unknown>;
 }
 
+export async function readOptionalJsonObject(
+  request: Request,
+  maximumBytes = 10_000
+): Promise<Record<string, unknown>> {
+  const declaredLength = Number.parseInt(
+    request.headers.get("content-length") ?? "0",
+    10
+  );
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+    throw new RequestValidationError(
+      "Request body is too large",
+      "body_too_large",
+      413
+    );
+  }
+  const text = await request.text();
+  if (!text.trim()) return {};
+  if (new TextEncoder().encode(text).byteLength > maximumBytes) {
+    throw new RequestValidationError(
+      "Request body is too large",
+      "body_too_large",
+      413
+    );
+  }
+  const value = (() => {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return null;
+    }
+  })();
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RequestValidationError("A JSON object is required");
+  }
+  return value as Record<string, unknown>;
+}
+
 export function requiredText(
   value: unknown,
   field: string,

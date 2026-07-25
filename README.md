@@ -63,8 +63,12 @@ target changes. A separate read-only publication snapshot now combines the
 unchanged legacy Publish prerequisites with strict launch-candidate evidence
 for timing, bilingual transcripts, word alignment, chapters, every current
 review target, clip/ad freshness, News, RSS, YouTube applicability, and the
-10+ directory checklist. Its digest is stable for the same evidence, but the
-candidate result remains explicitly non-enforcing with no override.
+10+ directory checklist. Its digest is stable for the same evidence. A
+three-mode publication gate now keeps production on legacy checks, compares
+the exact snapshot without blocking in staging shadow mode, and can later
+enforce it through a configuration-only rollback switch. Enforcement supports
+only a recently authenticated, show-scoped Admin/Super-admin override with a
+private bounded reason and content-free audit metadata.
 
 The first clip-factory boundary now turns an approved transcript cue range
 into a versioned 9:16, 1:1, or 16:9 `captioned-waveform-v1` recipe. Producer

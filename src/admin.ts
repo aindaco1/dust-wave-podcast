@@ -1,16 +1,35 @@
-import { requireAdmin } from "./admin-auth";
-import { recordAdminAudit } from "./audit";
+import { sha256Hex } from "@dustwave/worker-core/crypto";
+
+import {
+  hasAdminRoleForShow,
+  requireAdmin,
+  requireRecentAdminAuthentication
+} from "./admin-auth";
+import { prepareAdminAudit, recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
   publicationFingerprint,
   publicationPrerequisiteFailures
 } from "./publication-contract";
+import {
+  assessPublicationGate,
+  assertPublicationOverrideConfirmation,
+  publicationGateMode,
+  readPublicationGateRequest,
+  type PublicationGateAssessment,
+  type PublicationGateRequest
+} from "./publication-gate";
 import { planEpisodePublication } from "./publication-intent";
+import {
+  buildEpisodePublicationReadiness,
+  type PublicationReadinessSnapshot
+} from "./publication-readiness";
 import type { EpisodeAccess, EpisodeStatus, PodcastJob, ShowStatus } from "./types";
 import {
   optionalText,
   readJsonObject,
+  readOptionalJsonObject,
   RequestValidationError,
   requiredText,
   validDateTime,
@@ -478,9 +497,18 @@ export async function publishAdminEpisode(
          e.audio_bytes, e.duration_seconds, e.public_at, e.canonical_url,
          e.media_status, e.status, e.access, e.content_html, e.explicit,
          e.video_source_key, e.publication_revision, e.publication_fingerprint,
+         e.publication_evidence_version,
+         show_evidence.version AS show_evidence_version,
+         (
+           SELECT version
+           FROM publication_global_evidence_versions
+           WHERE id = 'distribution'
+         ) AS global_evidence_version,
          s.slug AS show_slug
        FROM episodes e
        JOIN shows s ON s.id = e.show_id
+       JOIN publication_show_evidence_versions show_evidence
+         ON show_evidence.show_id = e.show_id
        WHERE e.id = ?`
     )
     .bind(episodeId)
@@ -503,6 +531,9 @@ export async function publishAdminEpisode(
       video_source_key: string | null;
       publication_revision: number;
       publication_fingerprint: string | null;
+      publication_evidence_version: number;
+      show_evidence_version: number;
+      global_evidence_version: number;
       show_slug: string;
     }>();
   if (!episode) {
@@ -589,10 +620,93 @@ export async function publishAdminEpisode(
         publicAt,
         publicationRevision: episode.publication_revision,
         distributionTargets: destinations.results.length,
-        idempotent: true
+        idempotent: true,
+        publicationGate: {
+          mode: publicationGateMode(env.PUBLICATION_GATE_MODE),
+          snapshotMatched: null,
+          candidateReady: null,
+          overridden: false,
+          bypassed: "idempotent"
+        }
       },
       { status: 200 }
     );
+  }
+  const gateMode = publicationGateMode(env.PUBLICATION_GATE_MODE);
+  let gateRequest: PublicationGateRequest = {
+    snapshotDigest: null,
+    basePublicationRevision: null,
+    override: null
+  };
+  let gateSnapshot: PublicationReadinessSnapshot | null = null;
+  let gateAssessment: PublicationGateAssessment = {
+    mode: gateMode,
+    snapshotMatched: null,
+    candidateReady: false,
+    overridden: false
+  };
+  let overrideReasonSha256: string | null = null;
+  if (gateMode !== "legacy") {
+    gateRequest = readPublicationGateRequest(
+      await readOptionalJsonObject(request)
+    );
+    gateSnapshot = await buildEpisodePublicationReadiness(env, episodeId);
+    if (!gateSnapshot) {
+      return privateJson(
+        request,
+        env.ALLOWED_ORIGINS,
+        { error: "episode_not_found" },
+        { status: 404 }
+      );
+    }
+    const overrideAuthorized = hasAdminRoleForShow(
+      auth.authorization.identity,
+      ["super_admin", "admin"],
+      episode.show_id
+    );
+    gateAssessment = assessPublicationGate({
+      mode: gateMode,
+      requestedSnapshotDigest: gateRequest.snapshotDigest,
+      requestedPublicationRevision: gateRequest.basePublicationRevision,
+      actualSnapshotDigest: gateSnapshot.snapshotDigest,
+      actualPublicationRevision: gateSnapshot.publicationRevision,
+      candidateReady: gateSnapshot.candidateGate.ready,
+      blockerCount: gateSnapshot.candidateGate.blockerCount,
+      warningCount: gateSnapshot.candidateGate.warningCount,
+      overrideRequested: Boolean(gateRequest.override),
+      overrideAuthorized
+    });
+    const initialEvidenceMatchesSnapshot =
+      episode.publication_evidence_version === gateSnapshot.evidenceVersion
+      && episode.show_evidence_version === gateSnapshot.showEvidenceVersion
+      && episode.global_evidence_version === gateSnapshot.globalEvidenceVersion;
+    if (!initialEvidenceMatchesSnapshot) {
+      if (gateMode === "enforce") {
+        throw new RequestValidationError(
+          "Publication evidence changed. Refresh readiness and retry.",
+          "publication_snapshot_stale",
+          409
+        );
+      }
+      gateAssessment = {
+        ...gateAssessment,
+        snapshotMatched: false
+      };
+    }
+    if (gateAssessment.overridden && gateRequest.override) {
+      assertPublicationOverrideConfirmation(gateRequest.override.confirmation);
+      const recentError = await requireRecentAdminAuthentication(
+        request,
+        env,
+        auth.authorization.identity.id
+      );
+      if (recentError) return recentError;
+      overrideReasonSha256 = await sha256Hex([
+        "publication-override:v1",
+        gateRequest.override.id,
+        gateRequest.override.reason
+      ].join(":"));
+    }
   }
   const revision = episode.publication_revision + 1;
   const publicationPlan = planEpisodePublication({
@@ -608,6 +722,8 @@ export async function publishAdminEpisode(
       revision
     )
   }));
+  const publicationGuardId =
+    `publication_guard_${crypto.randomUUID().replace(/-/g, "")}`;
   const statements = [
     env.DB.prepare(
       `UPDATE episodes
@@ -619,7 +735,18 @@ export async function publishAdminEpisode(
          updated_at = datetime('now')
        WHERE id = ?
          AND publication_revision = ?
-         AND COALESCE(publication_fingerprint, '') = COALESCE(?, '')`
+         AND COALESCE(publication_fingerprint, '') = COALESCE(?, '')
+         AND publication_evidence_version = ?
+         AND (
+           SELECT version
+           FROM publication_show_evidence_versions
+           WHERE show_id = episodes.show_id
+         ) = ?
+         AND (
+           SELECT version
+           FROM publication_global_evidence_versions
+           WHERE id = 'distribution'
+         ) = ?`
     ).bind(
       status,
       publicAt,
@@ -627,8 +754,15 @@ export async function publishAdminEpisode(
       fingerprint,
       episodeId,
       episode.publication_revision,
-      episode.publication_fingerprint
+      episode.publication_fingerprint,
+      episode.publication_evidence_version,
+      episode.show_evidence_version,
+      episode.global_evidence_version
     ),
+    env.DB.prepare(
+      `INSERT INTO publication_batch_guards (id, update_succeeded)
+       VALUES (?, changes())`
+    ).bind(publicationGuardId),
     ...queueJobs.map(({ intent, job }) =>
     env.DB.prepare(
       `INSERT OR IGNORE INTO distribution_jobs (
@@ -681,38 +815,106 @@ export async function publishAdminEpisode(
       )
     );
   }
-  const results = await env.DB.batch(statements);
-  if ((results[0]?.meta?.changes ?? 0) !== 1) {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      {
-        error: "publication_conflict",
-        message: "The episode changed while it was being published. Reload and retry."
-      },
-      { status: 409 }
+  if (
+    gateAssessment.overridden
+    && gateRequest.override
+    && gateSnapshot
+    && overrideReasonSha256
+  ) {
+    statements.push(
+      env.DB.prepare(
+         `INSERT INTO publication_gate_overrides (
+           id, episode_id, base_publication_revision,
+           publication_evidence_version, show_evidence_version,
+           global_evidence_version, snapshot_digest, blocker_count,
+           warning_count, reason_text, reason_sha256, admin_user_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        gateRequest.override.id,
+        episodeId,
+        gateSnapshot.publicationRevision,
+        gateSnapshot.evidenceVersion,
+        gateSnapshot.showEvidenceVersion,
+        gateSnapshot.globalEvidenceVersion,
+        gateSnapshot.snapshotDigest,
+        gateSnapshot.candidateGate.blockerCount,
+        gateSnapshot.candidateGate.warningCount,
+        gateRequest.override.reason,
+        overrideReasonSha256,
+        auth.authorization.identity.id
+      )
     );
+  }
+  statements.push(
+    prepareAdminAudit(env.DB, {
+      adminUserId: auth.authorization.identity.id,
+      action: status === "published" ? "episode.published" : "episode.scheduled",
+      targetType: "episode",
+      targetId: episodeId,
+      metadata: {
+        revision,
+        publicAt,
+        directories: destinations.results.length,
+        rootDestinations: publicationPlan.intents.map(
+          ({ destination }) => destination
+        ),
+        newsMode: publicationPlan.newsMode,
+        publicationGate: {
+          mode: gateMode,
+          snapshotMatched: gateAssessment.snapshotMatched,
+          candidateReady: gateSnapshot?.candidateGate.ready ?? null,
+          overridden: gateAssessment.overridden,
+          evidenceVersions: gateSnapshot
+            ? {
+                episode: gateSnapshot.evidenceVersion,
+                show: gateSnapshot.showEvidenceVersion,
+                global: gateSnapshot.globalEvidenceVersion
+              }
+            : null,
+          blockerCount: gateSnapshot?.candidateGate.blockerCount ?? null,
+          warningCount: gateSnapshot?.candidateGate.warningCount ?? null,
+          overrideId: gateRequest.override?.id ?? null,
+          overrideReasonSha256,
+          overrideReasonLength: gateRequest.override?.reason.length ?? null
+        }
+      }
+    }),
+    env.DB.prepare(
+      `DELETE FROM publication_batch_guards
+       WHERE id = ?`
+    ).bind(publicationGuardId)
+  );
+  let results: D1Result<unknown>[];
+  try {
+    results = await env.DB.batch(statements);
+  } catch (error) {
+    const message = String(error);
+    if (
+      message.includes("publication_batch_guards")
+      || message.includes("update_succeeded")
+    ) {
+      return publicationConflictResponse(request, env);
+    }
+    if (
+      message.includes("publication_gate_overrides")
+      && message.includes("UNIQUE")
+    ) {
+      throw new RequestValidationError(
+        "That publication override identifier was already used",
+        "publication_override_id_conflict",
+        409
+      );
+    }
+    throw error;
+  }
+  if ((results[0]?.meta?.changes ?? 0) !== 1) {
+    return publicationConflictResponse(request, env);
   }
   if (new Date(scheduledAt).getTime() <= Date.now()) {
     for (const { job } of queueJobs) {
       await env.JOBS.send(job);
     }
   }
-  await recordAdminAudit(env.DB, {
-    adminUserId: auth.authorization.identity.id,
-    action: status === "published" ? "episode.published" : "episode.scheduled",
-    targetType: "episode",
-    targetId: episodeId,
-    metadata: {
-      revision,
-      publicAt,
-      directories: destinations.results.length,
-      rootDestinations: publicationPlan.intents.map(
-        ({ destination }) => destination
-      ),
-      newsMode: publicationPlan.newsMode
-    }
-  });
   return privateJson(
     request,
     env.ALLOWED_ORIGINS,
@@ -721,9 +923,30 @@ export async function publishAdminEpisode(
       status,
       publicAt,
       publicationRevision: revision,
-      distributionTargets: destinations.results.length
+      distributionTargets: destinations.results.length,
+      publicationGate: {
+        mode: gateMode,
+        snapshotMatched: gateAssessment.snapshotMatched,
+        candidateReady: gateSnapshot?.candidateGate.ready ?? null,
+        overridden: gateAssessment.overridden
+      }
     },
     { status: 202 }
+  );
+}
+
+function publicationConflictResponse(
+  request: Request,
+  env: PodcastEnv
+): Response {
+  return privateJson(
+    request,
+    env.ALLOWED_ORIGINS,
+    {
+      error: "publication_conflict",
+      message: "The episode changed while it was being published. Reload and retry."
+    },
+    { status: 409 }
   );
 }
 

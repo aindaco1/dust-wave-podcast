@@ -1,5 +1,6 @@
 import { sha256Hex } from "@dustwave/worker-core/crypto";
 
+import { hasAdminRoleForShow } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
@@ -13,10 +14,14 @@ import {
   type EpisodePublicationPlan
 } from "./publication-intent";
 import {
+  publicationGateMode
+} from "./publication-gate";
+import {
   getProductionReviewReadiness,
   type ProductionReviewReadiness
 } from "./production-reviews";
 import type { EpisodeAccess } from "./types";
+import { RequestValidationError } from "./validation";
 
 const READ_ROLES = [
   "super_admin",
@@ -47,6 +52,9 @@ type EpisodeReadinessRow = {
   video_source_key: string | null;
   publication_revision: number;
   publication_fingerprint: string | null;
+  publication_evidence_version: number;
+  show_evidence_version: number;
+  global_evidence_version: number;
   dynamic_ads_enabled: number;
   show_status: string;
   show_slug: string;
@@ -141,6 +149,29 @@ export type PublicationReadinessInput = {
   youtubePublishMode: string;
 };
 
+export type PublicationReadinessSnapshot = {
+  snapshotSchemaVersion: 1;
+  episodeId: string;
+  publicationRevision: number;
+  evidenceVersion: number;
+  showEvidenceVersion: number;
+  globalEvidenceVersion: number;
+  snapshotDigest: string;
+  generatedAt: string;
+  legacyGate: {
+    ready: boolean;
+    missing: string[];
+  };
+  candidateGate: {
+    ready: boolean;
+    blockerCount: number;
+    warningCount: number;
+    publishingEnforced: boolean;
+    overrideAvailable: boolean;
+  };
+  nodes: PublicationReadinessNode[];
+};
+
 export async function getAdminEpisodePublicationReadiness(
   request: Request,
   env: PodcastEnv,
@@ -154,24 +185,8 @@ export async function getAdminEpisodePublicationReadiness(
   );
   if (access instanceof Response) return access;
   const episodeId = access.episode.id;
-  const episode = await env.DB.prepare(
-    `SELECT
-       e.id, e.show_id, e.status, e.access, e.explicit, e.title, e.summary,
-       e.content_html,
-       e.guid, e.canonical_url, e.public_at, e.premium_at, e.audio_key,
-       e.audio_mime_type, e.audio_bytes, e.audio_etag, e.duration_seconds,
-       e.media_status, e.video_source_key, e.publication_revision,
-       e.publication_fingerprint, e.dynamic_ads_enabled,
-       s.status AS show_status, s.slug AS show_slug,
-       s.language AS show_language, s.rss_slug AS show_rss_slug,
-       s.youtube_channel_url AS show_youtube_channel_url,
-       s.premium_enabled AS show_premium_enabled,
-       s.dynamic_ads_enabled AS show_dynamic_ads_enabled
-     FROM episodes e
-     JOIN shows s ON s.id = e.show_id
-     WHERE e.id = ?`
-  ).bind(episodeId).first<EpisodeReadinessRow>();
-  if (!episode) {
+  const snapshot = await buildEpisodePublicationReadiness(env, episodeId);
+  if (!snapshot) {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -179,6 +194,99 @@ export async function getAdminEpisodePublicationReadiness(
       { status: 404 }
     );
   }
+  const mode = publicationGateMode(env.PUBLICATION_GATE_MODE);
+  const overrideAvailable = mode === "enforce"
+    && hasAdminRoleForShow(
+      access.authorization.identity,
+      ["super_admin", "admin"],
+      access.episode.showId
+    );
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    ...snapshot,
+    publicationGateMode: mode,
+    candidateGate: {
+      ...snapshot.candidateGate,
+      publishingEnforced: mode === "enforce",
+      overrideAvailable
+    }
+  });
+}
+
+export async function buildEpisodePublicationReadiness(
+  env: PodcastEnv,
+  episodeId: string
+): Promise<PublicationReadinessSnapshot | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const snapshot = await loadEpisodePublicationReadiness(env, episodeId);
+    if (!snapshot) return null;
+    const stable = await env.DB.prepare(
+      `SELECT
+         episode.publication_revision,
+         episode.publication_evidence_version,
+         show_evidence.version AS show_evidence_version,
+         (
+           SELECT version
+           FROM publication_global_evidence_versions
+           WHERE id = 'distribution'
+         ) AS global_evidence_version
+       FROM episodes episode
+       JOIN publication_show_evidence_versions show_evidence
+         ON show_evidence.show_id = episode.show_id
+       WHERE episode.id = ?`
+    ).bind(episodeId).first<{
+      publication_revision: number;
+      publication_evidence_version: number;
+      show_evidence_version: number;
+      global_evidence_version: number;
+    }>();
+    if (!stable) return null;
+    if (
+      stable.publication_revision === snapshot.publicationRevision
+      && stable.publication_evidence_version === snapshot.evidenceVersion
+      && stable.show_evidence_version === snapshot.showEvidenceVersion
+      && stable.global_evidence_version === snapshot.globalEvidenceVersion
+    ) {
+      return snapshot;
+    }
+  }
+  throw new RequestValidationError(
+    "Publication evidence is changing. Retry after current edits finish.",
+    "publication_snapshot_busy",
+    409
+  );
+}
+
+async function loadEpisodePublicationReadiness(
+  env: PodcastEnv,
+  episodeId: string
+): Promise<PublicationReadinessSnapshot | null> {
+  const episode = await env.DB.prepare(
+    `SELECT
+       e.id, e.show_id, e.status, e.access, e.explicit, e.title, e.summary,
+       e.content_html,
+       e.guid, e.canonical_url, e.public_at, e.premium_at, e.audio_key,
+       e.audio_mime_type, e.audio_bytes, e.audio_etag, e.duration_seconds,
+       e.media_status, e.video_source_key, e.publication_revision,
+       e.publication_fingerprint, e.publication_evidence_version,
+       e.dynamic_ads_enabled,
+       show_evidence.version AS show_evidence_version,
+       (
+         SELECT version
+         FROM publication_global_evidence_versions
+         WHERE id = 'distribution'
+       ) AS global_evidence_version,
+       s.status AS show_status, s.slug AS show_slug,
+       s.language AS show_language, s.rss_slug AS show_rss_slug,
+       s.youtube_channel_url AS show_youtube_channel_url,
+       s.premium_enabled AS show_premium_enabled,
+       s.dynamic_ads_enabled AS show_dynamic_ads_enabled
+     FROM episodes e
+     JOIN shows s ON s.id = e.show_id
+     JOIN publication_show_evidence_versions show_evidence
+       ON show_evidence.show_id = e.show_id
+     WHERE e.id = ?`
+  ).bind(episodeId).first<EpisodeReadinessRow>();
+  if (!episode) return null;
 
   const [
     transcripts,
@@ -339,18 +447,31 @@ export async function getAdminEpisodePublicationReadiness(
   };
   const evaluated = evaluatePublicationReadiness(input);
   const snapshotDigest = await sha256Hex(JSON.stringify({
+    snapshotSchemaVersion: 1,
     episodeId,
     publicationRevision: episode.publication_revision,
+    evidenceVersion: episode.publication_evidence_version,
+    showEvidenceVersion: episode.show_evidence_version,
+    globalEvidenceVersion: episode.global_evidence_version,
     legacyGate: evaluated.legacyGate,
+    candidateGate: {
+      ready: evaluated.candidateGate.ready,
+      blockerCount: evaluated.candidateGate.blockerCount,
+      warningCount: evaluated.candidateGate.warningCount
+    },
     nodes: evaluated.nodes
   }));
-  return privateJson(request, env.ALLOWED_ORIGINS, {
+  return {
+    snapshotSchemaVersion: 1,
     episodeId,
     publicationRevision: episode.publication_revision,
+    evidenceVersion: episode.publication_evidence_version,
+    showEvidenceVersion: episode.show_evidence_version,
+    globalEvidenceVersion: episode.global_evidence_version,
     snapshotDigest,
     generatedAt: new Date().toISOString(),
     ...evaluated
-  });
+  };
 }
 
 export function evaluatePublicationReadiness(
@@ -364,8 +485,8 @@ export function evaluatePublicationReadiness(
     ready: boolean;
     blockerCount: number;
     warningCount: number;
-    publishingEnforced: false;
-    overrideAvailable: false;
+    publishingEnforced: boolean;
+    overrideAvailable: boolean;
   };
   nodes: PublicationReadinessNode[];
 } {

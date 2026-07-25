@@ -107,7 +107,13 @@ Confirm readiness counts only current targets, publish enforcement remains
 false, comment text never enters audit metadata, unauthorized/CSRF-cross-origin
 writes fail before mutation, and foreign keys remain clean.
 
-For the read-only publication-readiness slice, no migration is expected.
+For migration `0034`, verify the episode evidence column; show/global evidence
+epoch tables; private override table/index; empty checked batch-guard table;
+and all episode dependency triggers. Confirm one episode dependency increments
+only its episode epoch, show metadata/setup increments only its show epoch, and
+a global directory edit increments only the global epoch. Replay migrations
+from zero and keep `PRAGMA foreign_key_check` empty.
+
 Using an isolated fully reviewed fixture, confirm
 `GET /v1/admin/episodes/{id}/readiness` returns 14 ordered nodes, the existing
 legacy Publish checks pass unchanged, every current review target is counted,
@@ -123,8 +129,20 @@ current-revision root job, disable directory owner setup, and exercise
 audio-only and `premium_bonus` access. Confirm the corresponding nodes become
 stale/pending/failed/not-applicable, the snapshot digest changes, raw keys,
 digests, review bodies, and job errors are absent, and neither a queue nor an
-external provider is touched. `publishingEnforced` and `overrideAvailable`
-must remain false, and the existing Publish contract must remain unchanged.
+external provider is touched. In staging shadow, confirm
+`publishingEnforced`/`overrideAvailable` remain false, a fresh digest/revision
+reports `snapshotMatched: true`, a missing or stale snapshot reports false
+without blocking a legacy-ready fixture, and no override row is created.
+
+In an isolated local or disposable staging database, temporarily exercise
+`enforce`: a Producer cannot override; an Admin override needs recent
+authentication, exact confirmation, a valid operation ID, and 1–500 safe
+characters. Confirm the private table has the full reason while the audit event
+has only hash/length/count/version metadata. Mutate episode, show, and global
+evidence between snapshot and Publish and confirm `409`, zero queued/site/
+directory/override/audit rows, and an empty guard table. Restore staging to
+`shadow` immediately after this controlled test. Do not change production from
+`legacy`.
 
 For the public transcript projection, use an isolated published/due/public
 episode with ready media and one immutable approved English or Spanish

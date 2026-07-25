@@ -193,8 +193,8 @@ including under concurrent requests.
 | `GET` | `/v1/admin/shows/{id}/clips` | analyst+ | Bounded, filterable cross-episode private clip library |
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
-| `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |
-| `GET` | `/v1/admin/episodes/{id}/readiness` | analyst+ | Read-only exact-evidence snapshot of legacy Publish checks and the non-enforcing launch candidate |
+| `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent snapshot-aware publish/schedule; blocker override requires recently authenticated admin+ |
+| `GET` | `/v1/admin/episodes/{id}/readiness` | analyst+ | Stable exact-evidence snapshot plus the environment's `legacy`, `shadow`, or `enforce` gate projection |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
@@ -416,18 +416,38 @@ Each node has a stable ID/group, `ready|missing|pending|stale|failed|
 not_applicable` status, `blocker|warning|info` severity, plain summary, and
 non-secret evidence. Audio object keys, transcript/chapter/recipe digests,
 review text, job errors, credentials, and listener data are not returned. The
-top-level `snapshotDigest` is SHA-256 over the publication revision, legacy
-gate, and ordered node evidence; `generatedAt` is excluded, so identical
-evidence produces an identical digest.
+top-level `snapshotDigest` is SHA-256 over schema version 1, the publication
+revision, monotonic episode/show/global evidence versions, the legacy and
+candidate results, and ordered node evidence. `generatedAt` is excluded, so
+identical evidence produces an identical digest. The Worker reads the versions
+again after composing the graph and retries a changing snapshot up to three
+times before returning `publication_snapshot_busy`.
 
 `candidateGate.ready` means no blocker node is unresolved. It is an
-explanation, not authorization: `publishingEnforced` and `overrideAvailable`
-are both false. The endpoint performs only D1 reads and never heads R2, calls a
-provider, queues work, mutates a review, or changes Publish behavior. Current
-release jobs replace preflight contract state only for the exact
-`publicationRevision`. The shared planner identifies a premium bonus News node
-as a media-free `premium_teaser`; it makes YouTube not applicable for that
-access mode and for audio-only episodes.
+explanation in `legacy` and `shadow`; `publishingEnforced` becomes true only in
+`enforce`. `overrideAvailable` is true only for a show-scoped Admin or
+Super-admin in enforcement mode. The endpoint performs only D1 reads and never
+heads R2, calls a provider, queues work, mutates a review, or changes
+publication state. Current release jobs replace preflight contract state only
+for the exact `publicationRevision`. The shared planner identifies a premium
+bonus News node as a media-free `premium_teaser`; it makes YouTube not
+applicable for that access mode and for audio-only episodes.
+
+For non-idempotent Publish, `shadow` and `enforce` clients send the fresh
+`snapshotDigest` and `basePublicationRevision`. Shadow records whether they
+match but preserves the legacy readiness decision. Enforcement rejects a
+missing/stale snapshot and unresolved candidate blockers. An Admin or
+Super-admin may override blockers only with a fresh snapshot, a newly issued
+operation ID, the literal confirmation `PUBLISH_WITH_BLOCKERS`, a normalized
+1–500 character private reason, and a login within the preceding 15 minutes.
+The full reason is stored only in `publication_gate_overrides`; the general
+audit log receives its hash/length and evidence counts, never its text.
+
+Every mode uses monotonic episode/show/global evidence versions in the final
+conditional update. A checked D1 batch guard converts a zero-row update into a
+transaction failure, so a conflict cannot commit jobs, directory rows, a site
+publication, an override, or an audit event. Unknown gate configuration fails
+safely to `legacy`; staging is `shadow` and production remains `legacy`.
 
 ### Clip recipes and private render evidence
 

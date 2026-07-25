@@ -158,9 +158,12 @@ iHeartRadio, and Deezer.
   Publish prerequisites while explaining strict launch-candidate state across
   release timing, bilingual transcript/alignment, chapters, every current
   review target, clip/ad freshness, News/RSS/YouTube, and directory setup.
-  Preserve stable evidence hashing, no external I/O, no override, and
-  non-enforcement until the exact-snapshot publication gate is separately
-  designed and tested.
+  Preserve stable evidence hashing and no external I/O.
+- Keep the implemented exact-snapshot gate behind `legacy|shadow|enforce`:
+  staging observes digest/revision matches in shadow; production remains
+  legacy. Bind the final D1 batch to monotonic episode/show/global evidence,
+  abort every side effect on conflict, and allow only a recently authenticated
+  show Admin/Super-admin to store a bounded private override reason.
 - Keep Publish, readiness, and contract tests on one root-publication planner.
   RSS and canonical News apply to every episode; YouTube applies only to a
   video-bearing non-premium-bonus episode. Publish premium bonuses through the
