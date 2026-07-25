@@ -9,7 +9,10 @@ import {
 } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
-import { readSignedJsonBody } from "./signed-callback";
+import {
+  readSignedJsonBody,
+  verifySignedText
+} from "./signed-callback";
 import {
   normalizeTranscriptCues,
   type TranscriptCue
@@ -37,10 +40,22 @@ const TEMPLATE_IDS = new Set(["captioned-waveform-v1"]);
 const MINIMUM_CLIP_DURATION_MS = 1_000;
 const MAXIMUM_CLIP_DURATION_MS = 180_000;
 const PROCESSOR_MAXIMUM_BODY_BYTES = 100_000;
-const MAXIMUM_OUTPUT_BYTES = 500 * 1024 * 1024;
+const MAXIMUM_OUTPUT_BYTES = 95 * 1024 * 1024;
+const PROCESSOR_UPLOAD_PAYLOAD_HEADER =
+  "x-podcast-processor-upload-payload";
 
 type AspectRatio = keyof typeof ASPECT_DIMENSIONS;
 type BoundaryMode = "segment" | "word";
+
+type ClipProcessorManifestBody = Record<string, unknown> & {
+  source: {
+    bucketName: string;
+    objectKey: string;
+    objectBytes: number;
+    etag: string;
+    mimeType: "audio/mpeg";
+  };
+};
 
 type ClipRecipe = {
   schemaVersion: 1;
@@ -435,6 +450,14 @@ export async function queueAdminClipRender(
   env: PodcastEnv,
   clipIdValue: string
 ): Promise<Response> {
+  if (env.ENVIRONMENT !== "staging") {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "not_found" },
+      { status: 404 }
+    );
+  }
   const access = await authorizeClip(
     request,
     env,
@@ -467,11 +490,21 @@ export async function queueAdminClipRender(
     }
     const manifest = await buildClipProcessorManifest(
       env,
-      new URL(request.url).origin,
       renderId,
       access.clip.id,
       expectedRevision
     );
+    if (manifest.sha256 !== priorById.processor_manifest_sha256) {
+      return clipConflict(
+        request,
+        env,
+        "clip_render_manifest_mismatch",
+        {
+          storedManifestSha256: priorById.processor_manifest_sha256,
+          rebuiltManifestSha256: manifest.sha256
+        }
+      );
+    }
     return privateJson(request, env.ALLOWED_ORIGINS, {
       render: presentRender(priorById),
       processorManifest: {
@@ -495,7 +528,6 @@ export async function queueAdminClipRender(
 
   const manifest = await buildClipProcessorManifest(
     env,
-    new URL(request.url).origin,
     renderId,
     access.clip.id,
     expectedRevision
@@ -571,6 +603,296 @@ export async function queueAdminClipRender(
     },
     { status: 202 }
   );
+}
+
+export async function getClipRenderProcessorManifest(
+  request: Request,
+  env: PodcastEnv,
+  renderIdValue: string
+): Promise<Response> {
+  if (env.ENVIRONMENT !== "staging") {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "not_found" },
+      { status: 404 }
+    );
+  }
+  const renderId = validIdentifier(renderIdValue, "renderId");
+  const signed = await readSignedJsonBody(request, {
+    secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
+    timestampHeader: "x-podcast-processor-timestamp",
+    signatureHeader: "x-podcast-processor-signature",
+    maximumBytes: 10_000,
+    bodyName: "Clip processor manifest request",
+    invalidBodyCode: "invalid_clip_processor_request"
+  });
+  if (!signed.ok) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      {
+        error: signed.reason === "secret_missing"
+          ? "not_found"
+          : "invalid_processor_signature"
+      },
+      { status: signed.reason === "secret_missing" ? 404 : 401 }
+    );
+  }
+  if (
+    signed.body.renderId !== renderId
+    || signed.body.action !== "manifest"
+  ) {
+    throw new RequestValidationError(
+      "The manifest request does not match its URL or action"
+    );
+  }
+  const render = await loadClipRender(env.DB, renderId);
+  if (!render) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "clip_render_not_found" },
+      { status: 404 }
+    );
+  }
+  const manifest = await buildClipProcessorManifest(
+    env,
+    render.id,
+    render.clip_id,
+    render.clip_revision
+  );
+  if (manifest.sha256 !== render.processor_manifest_sha256) {
+    return clipConflict(
+      request,
+      env,
+      "clip_render_manifest_mismatch",
+      {
+        storedManifestSha256: render.processor_manifest_sha256,
+        rebuiltManifestSha256: manifest.sha256
+      }
+    );
+  }
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    processorManifest: {
+      ...manifest.body,
+      manifestSha256: manifest.sha256
+    }
+  });
+}
+
+export async function getClipRenderProcessorSource(
+  request: Request,
+  env: PodcastEnv,
+  renderIdValue: string
+): Promise<Response> {
+  if (env.ENVIRONMENT !== "staging") {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "not_found" },
+      { status: 404 }
+    );
+  }
+  const renderId = validIdentifier(renderIdValue, "renderId");
+  const signed = await readSignedJsonBody(request, {
+    secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
+    timestampHeader: "x-podcast-processor-timestamp",
+    signatureHeader: "x-podcast-processor-signature",
+    maximumBytes: 10_000,
+    bodyName: "Clip processor source request",
+    invalidBodyCode: "invalid_clip_processor_request"
+  });
+  if (!signed.ok) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      {
+        error: signed.reason === "secret_missing"
+          ? "not_found"
+          : "invalid_processor_signature"
+      },
+      { status: signed.reason === "secret_missing" ? 404 : 401 }
+    );
+  }
+  if (
+    signed.body.renderId !== renderId
+    || signed.body.action !== "source"
+  ) {
+    throw new RequestValidationError(
+      "The source request does not match its URL or action"
+    );
+  }
+  const render = await loadClipRender(env.DB, renderId);
+  if (!render) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "clip_render_not_found" },
+      { status: 404 }
+    );
+  }
+  const manifest = await buildClipProcessorManifest(
+    env,
+    render.id,
+    render.clip_id,
+    render.clip_revision
+  );
+  if (manifest.sha256 !== render.processor_manifest_sha256) {
+    return clipConflict(
+      request,
+      env,
+      "clip_render_manifest_mismatch",
+      {
+        storedManifestSha256: render.processor_manifest_sha256,
+        rebuiltManifestSha256: manifest.sha256
+      }
+    );
+  }
+  const source = await env.MEDIA_BUCKET.get(
+    manifest.body.source.objectKey,
+    {
+      onlyIf: new Headers({
+        "if-match": manifest.body.source.etag
+      })
+    }
+  );
+  if (
+    !source
+    || !("body" in source)
+    || source.size !== manifest.body.source.objectBytes
+    || source.httpEtag !== manifest.body.source.etag
+    || source.httpMetadata?.contentType !== "audio/mpeg"
+  ) {
+    return clipConflict(
+      request,
+      env,
+      "clip_render_source_mismatch"
+    );
+  }
+  const headers = new Headers();
+  source.writeHttpMetadata(headers);
+  headers.set("content-type", "audio/mpeg");
+  headers.set("content-length", String(source.size));
+  headers.set("etag", source.httpEtag);
+  headers.set("cache-control", "private, no-store, max-age=0");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("x-robots-tag", "noindex, nofollow, noarchive");
+  return new Response(source.body, { status: 200, headers });
+}
+
+export async function uploadClipRenderProcessorOutput(
+  request: Request,
+  env: PodcastEnv,
+  renderIdValue: string
+): Promise<Response> {
+  if (env.ENVIRONMENT !== "staging") {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "not_found" },
+      { status: 404 }
+    );
+  }
+  const renderId = validIdentifier(renderIdValue, "renderId");
+  if (!env.MEDIA_PROCESSOR_CALLBACK_SECRET) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "not_found" },
+      { status: 404 }
+    );
+  }
+  const encodedPayload =
+    request.headers.get(PROCESSOR_UPLOAD_PAYLOAD_HEADER) ?? "";
+  if (
+    !encodedPayload
+    || encodedPayload.length > 2_000
+    || !/^[A-Za-z0-9_-]+$/.test(encodedPayload)
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "invalid_processor_signature" },
+      { status: 401 }
+    );
+  }
+  const signed = await verifySignedText(request, {
+    secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
+    timestampHeader: "x-podcast-processor-timestamp",
+    signatureHeader: "x-podcast-processor-signature",
+    message: encodedPayload
+  });
+  if (!signed.ok) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "invalid_processor_signature" },
+      { status: 401 }
+    );
+  }
+  const payload = parseClipUploadPayload(encodedPayload);
+  if (payload.renderId !== renderId) {
+    throw new RequestValidationError(
+      "The output upload does not match its URL"
+    );
+  }
+  const contentLength = Number(request.headers.get("content-length"));
+  if (
+    request.headers.get("content-type") !== "video/mp4"
+    || contentLength !== payload.objectBytes
+    || !request.body
+  ) {
+    throw new RequestValidationError(
+      "The output upload body does not match its signed payload"
+    );
+  }
+  const render = await loadClipRender(env.DB, renderId);
+  if (!render) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "clip_render_not_found" },
+      { status: 404 }
+    );
+  }
+  if (payload.manifestSha256 !== render.processor_manifest_sha256) {
+    return clipConflict(request, env, "clip_render_manifest_mismatch");
+  }
+  const stored = await env.MEDIA_BUCKET.put(
+    render.output_object_key,
+    request.body,
+    {
+      httpMetadata: { contentType: "video/mp4" },
+      customMetadata: {
+        sha256: payload.sha256,
+        "render-manifest-sha256": payload.manifestSha256
+      },
+      sha256: payload.sha256
+    }
+  );
+  if (
+    !stored
+    || stored.size !== payload.objectBytes
+    || stored.httpMetadata?.contentType !== "video/mp4"
+    || stored.checksums.toJSON().sha256 !== payload.sha256
+    || stored.customMetadata?.sha256 !== payload.sha256
+    || stored.customMetadata?.["render-manifest-sha256"]
+      !== payload.manifestSha256
+  ) {
+    return clipConflict(request, env, "clip_render_object_mismatch");
+  }
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    object: {
+      objectKey: stored.key,
+      objectBytes: stored.size,
+      sha256: payload.sha256,
+      mimeType: "video/mp4",
+      manifestSha256: payload.manifestSha256
+    },
+    checksumVerified: true
+  });
 }
 
 export async function completeClipRender(
@@ -706,6 +1028,7 @@ export async function completeClipRender(
     !outputObject
     || outputObject.size !== output.objectBytes
     || outputObject.httpMetadata?.contentType !== "video/mp4"
+    || outputObject.checksums.toJSON().sha256 !== output.sha256
     || outputObject.customMetadata?.sha256 !== output.sha256
     || outputObject.customMetadata?.["render-manifest-sha256"]
       !== render.processor_manifest_sha256
@@ -896,12 +1219,11 @@ async function buildClipRecipe(
 
 async function buildClipProcessorManifest(
   env: PodcastEnv,
-  requestOrigin: string,
   renderId: string,
   clipId: string,
   clipRevision: number
 ): Promise<{
-  body: Record<string, unknown>;
+  body: ClipProcessorManifestBody;
   sha256: string;
 }> {
   const revision = await loadClipRevision(
@@ -1003,7 +1325,7 @@ async function buildClipProcessorManifest(
     clipRevision,
     renderId
   );
-  const body = {
+  const body: ClipProcessorManifestBody = {
     schemaVersion: "clip-render-v1",
     renderId,
     clipId,
@@ -1039,7 +1361,8 @@ async function buildClipProcessorManifest(
       ]
     },
     callbackUrl:
-      `${requestOrigin}/v1/processor/clip-renders/${renderId}/complete`
+      `${new URL(env.FEED_ORIGIN).origin}`
+      + `/v1/processor/clip-renders/${renderId}/complete`
   };
   return {
     body,
@@ -1475,6 +1798,59 @@ function validateClipOutput(
     width,
     height,
     durationMs
+  };
+}
+
+function parseClipUploadPayload(value: string): {
+  renderId: string;
+  manifestSha256: string;
+  objectBytes: number;
+  sha256: string;
+} {
+  let decoded: unknown;
+  try {
+    const base64 = value
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(value.length / 4) * 4, "=");
+    decoded = JSON.parse(atob(base64)) as unknown;
+  } catch {
+    throw new RequestValidationError(
+      "The signed output upload payload is invalid"
+    );
+  }
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new RequestValidationError(
+      "The signed output upload payload is invalid"
+    );
+  }
+  const payload = decoded as Record<string, unknown>;
+  const renderId = validIdentifier(payload.renderId, "renderId");
+  const manifestSha256 = requiredText(
+    payload.manifestSha256,
+    "manifestSha256",
+    64
+  );
+  const objectBytes = positiveInteger(
+    payload.objectBytes,
+    "objectBytes",
+    MAXIMUM_OUTPUT_BYTES
+  );
+  const sha256 = requiredText(payload.sha256, "sha256", 64);
+  if (
+    payload.action !== "upload"
+    || !/^[a-f0-9]{64}$/.test(manifestSha256)
+    || !/^[a-f0-9]{64}$/.test(sha256)
+  ) {
+    throw new RequestValidationError(
+      "The signed output upload payload is invalid"
+    );
+  }
+  return {
+    renderId,
+    manifestSha256,
+    objectBytes,
+    sha256
   };
 }
 

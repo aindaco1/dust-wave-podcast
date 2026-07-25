@@ -133,9 +133,11 @@
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.
-- The staging GitHub processor requires its own least-privilege R2-capable
-  Cloudflare token plus the same dedicated callback secret. Pool/Store
-  deployment secrets are not copied or exposed.
+- The ad-plan staging processor requires its own least-privilege R2-capable
+  Cloudflare token. The clip processor deliberately receives no R2 credential:
+  it uses purpose-bound signed source/output routes that stream through the
+  Worker's private R2 binding. Both processors use the dedicated staging
+  callback secret; Pool/Store deployment secrets are not copied or exposed.
 - Forced alignment runs outside the public Worker in the pinned
   `alignment-runner` submodule. It accepts only checksummed, bounded local
   inputs, prevents path/model-reference traversal, rechecks audio after model
@@ -180,9 +182,23 @@ non-interpolated word boundary records. Recipe and render audits contain
 digests, dimensions, language, boundary mode, and duration—never caption text.
 
 Render requests are one-per-clip-revision and produce a predetermined private
-R2 key plus a checksummed processor manifest. The callback is staging-only,
-HMAC/timestamp authenticated before D1 access, body-bounded, and replay-safe.
-Ready state requires exact MP4 dimensions/duration, byte count, and R2 custom
-metadata matching both the output and manifest digests. A callback for a stale
-revision may preserve historical evidence but cannot change the current clip.
-There is no public clip route or YouTube action in this slice.
+R2 key plus a checksummed processor manifest at the canonical configured
+origin. Purpose-bound manifest and source JSON requests are staging-only,
+HMAC/timestamp authenticated before D1, and body-bounded. Source delivery uses
+an R2 conditional read against the snapshotted ETag and a private, no-store
+stream.
+
+Output uploads carry a signed base64url descriptor, exact Content-Length, and
+a maximum of 95 MiB so they remain below Cloudflare's 100 MB Free/Pro request
+limit. The Worker streams the body directly to R2 with native SHA-256
+verification and fixed content/custom metadata; the processor never receives
+an R2 credential. Captions are rasterized without a shell, cue count/density
+and total caption bytes are bounded, and GitHub artifacts exclude source,
+manifest, caption, and MP4 files. Action dependencies are pinned to full
+commit SHAs and the processor secret is scoped only to signing steps.
+
+The completion callback is replay-safe. Ready state re-heads R2 and requires
+exact MP4 dimensions/duration, byte count, native checksum, and custom metadata
+matching both output and manifest digests. A callback for a stale revision may
+preserve historical evidence but cannot change the current clip. There is no
+public clip route or YouTube action in this slice.

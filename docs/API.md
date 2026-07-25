@@ -236,8 +236,27 @@ with non-interpolated provenance in the selected cues.
 expected clip revision. It rechecks that source audio and the currently
 approved transcript still match the recipe, then returns a
 `clip-render-v1` manifest containing bounded relative caption cues, output
-dimensions/safe areas, a private content-addressed R2 key, and a staging
-callback URL. The manifest SHA-256 is persisted before processing.
+dimensions/safe areas, a private revision/render-specific R2 key, and a staging
+callback URL. The manifest SHA-256 is persisted before processing. Callback
+identity uses the configured canonical staging `FEED_ORIGIN`, not a request
+host, so retries rebuild the same digest.
+
+The staging processor surface is private and purpose-bound:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/clip-renders/{renderId}/manifest` | Return the persisted render's rebuilt manifest after an HMAC-signed `manifest` request |
+| `POST` | `/v1/processor/clip-renders/{renderId}/source` | Stream only the manifest-pinned private MP3 after an HMAC-signed `source` request |
+| `PUT` | `/v1/processor/clip-renders/{renderId}/output` | Stream a signed, bounded MP4 into private R2 with native SHA-256 verification |
+| `POST` | `/v1/processor/clip-renders/{renderId}/complete` | Commit bounded failed or ready evidence idempotently |
+
+Manifest/source/complete signatures bind
+`{timestamp}.{exact request body}`. Output uploads sign a compact base64url
+descriptor containing the action, render ID, manifest digest, byte count, and
+SHA-256; the MP4 body must have that exact declared length. Authentication and
+bounded header validation happen before D1, the source is conditionally read
+at the snapshotted ETag, and the upload uses the Worker's R2 binding rather
+than exposing R2 credentials to the renderer.
 
 The signed staging callback is
 `POST /v1/processor/clip-renders/{renderId}/complete` using the same timestamp

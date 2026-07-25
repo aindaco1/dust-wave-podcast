@@ -50,7 +50,7 @@ iHeartRadio, and Deezer.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
   speaker labels, Admin approval, and matching-alignment readiness. Public
-  transcript projection and the render processor remain gated follow-ups.
+  transcript projection remains a gated follow-up.
 - Process source audio, validate delivery files, extract duration/loudness, and
   generate player peaks.
 - Transcribe Spanish and English, expose confidence, and block approval unless
@@ -60,8 +60,11 @@ iHeartRadio, and Deezer.
   infrastructure, with templates and safe-area previews.
 - The first clip contract now versions approved-transcript cue selections,
   locks word cuts behind matching passed alignment, and accepts only signed
-  checksummed private-R2 MP4 evidence. The FFmpeg workflow, admin preview,
-  Marketing download, and private/unlisted Shorts path remain gated follow-ups.
+  checksummed private-R2 MP4 evidence. The deterministic staging FFmpeg
+  workflow now renders and fully decodes all three aspect ratios, with
+  purpose-bound Worker streams and native R2 SHA-256 verification. A remote
+  workflow run, admin ready preview, Marketing download, and private/unlisted
+  Shorts path remain gated follow-ups.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
 - Publish audio-only or native-video episodes to the configurable YouTube

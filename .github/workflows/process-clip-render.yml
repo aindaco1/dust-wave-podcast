@@ -1,0 +1,238 @@
+name: Process staging Podcast clip render
+
+on:
+  workflow_dispatch:
+    inputs:
+      render_id:
+        description: Queued clip-render ID from the isolated staging admin
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-clip-${{ inputs.render_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: podcast-staging
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Validate render request
+        id: request
+        env:
+          RENDER_ID: ${{ inputs.render_id }}
+        run: node scripts/prepare-clip-render-request.mjs
+
+      - name: Sign private manifest request
+        id: manifest_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/clip-render/manifest-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Fetch private checksummed manifest
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.manifest_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.manifest_signature.outputs.timestamp }}
+          MANIFEST_URL: ${{ steps.request.outputs.manifest_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/clip-render/manifest-request.json \
+            --output work/clip-render/manifest-response.json \
+            "$MANIFEST_URL"
+
+      - name: Validate isolated-staging manifest
+        id: clip
+        run: >-
+          node scripts/prepare-clip-render-workflow.mjs
+          work/clip-render/manifest-response.json
+
+      - name: Sign private source request
+        id: source_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/clip-render/source-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream immutable private source
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.source_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.source_signature.outputs.timestamp }}
+          SOURCE_URL: ${{ steps.request.outputs.source_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 600 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/clip-render/source-request.json \
+            --output work/clip-render/source.mp3 \
+            "$SOURCE_URL"
+
+      - name: Verify immutable source snapshot
+        run: >-
+          node scripts/verify-clip-source.mjs
+          work/clip-render/manifest.json
+          work/clip-render/source.mp3
+
+      - name: Verify media tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes imagemagick fonts-dejavu-core
+          ffmpeg -version
+          ffprobe -version
+          convert -version
+
+      - name: Render and fully decode captioned waveform
+        run: >-
+          node scripts/build-captioned-waveform-clip.mjs
+          --manifest work/clip-render/manifest.json
+          --source work/clip-render/source.mp3
+          --output work/clip-render/output
+          --callback-body work/clip-render/callback.json
+
+      - name: Validate private upload contract
+        id: upload
+        run: >-
+          node scripts/prepare-clip-upload.mjs
+          work/clip-render/manifest.json
+          work/clip-render/callback.json
+
+      - name: Sign private upload descriptor
+        id: upload_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/clip-render/upload-payload.txt
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream checksummed private MP4
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.upload_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.upload_signature.outputs.timestamp }}
+          UPLOAD_PAYLOAD: ${{ steps.upload.outputs.upload_payload }}
+          UPLOAD_URL: ${{ steps.request.outputs.output_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 600 \
+            --retry 2 \
+            --request PUT \
+            --header "content-type: video/mp4" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --header "x-podcast-processor-upload-payload: $UPLOAD_PAYLOAD" \
+            --upload-file work/clip-render/output/clip.mp4 \
+            --output work/clip-render/upload-response.json \
+            "$UPLOAD_URL"
+
+      - name: Verify output checksum and metadata
+        id: ready
+        run: |
+          node scripts/verify-clip-output.mjs \
+            work/clip-render/callback.json \
+            work/clip-render/upload-response.json
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sign success evidence
+        if: ${{ success() }}
+        id: success_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/clip-render/callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit ready evidence
+        if: ${{ success() }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.success_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.success_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.clip.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/clip-render/callback.json \
+            "$CALLBACK_URL"
+
+      - name: Build bounded failure evidence
+        if: ${{ failure() && steps.clip.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        run: >-
+          node scripts/build-clip-failure-callback.mjs
+          work/clip-render/manifest.json
+          work/clip-render/failure-callback.json
+
+      - name: Sign failure evidence
+        if: ${{ failure() && steps.clip.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        id: failure_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/clip-render/failure-callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit failure evidence
+        if: ${{ failure() && steps.clip.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.failure_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.failure_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.clip.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/clip-render/failure-callback.json \
+            "$CALLBACK_URL"
+
+      - name: Retain non-secret processing report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: clip-render-report
+          path: |
+            work/clip-render/callback.json
+            work/clip-render/failure-callback.json
+            work/clip-render/upload-response.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -143,6 +143,28 @@ Required for the isolated ad-plan processor:
 Do not copy Pool/Store GitHub secret values; GitHub and Cloudflare intentionally
 do not expose them. Create a new least-privilege Podcast processor token.
 
+Required for the isolated clip-render processor:
+
+- Worker secret `MEDIA_PROCESSOR_CALLBACK_SECRET`
+- Podcast `podcast-staging` GitHub environment secret
+  `MEDIA_PROCESSOR_CALLBACK_SECRET` with the same staging-only value
+
+The clip workflow does not need a Cloudflare API token, account ID, or R2
+access key. Its purpose-bound source and output routes stream through the
+staging Worker's private R2 binding. The workflow file must exist on the
+default branch before GitHub accepts a manual dispatch. Then queue one render
+in the authenticated clip workbench and run:
+
+```sh
+gh workflow run process-clip-render.yml \
+  --ref main \
+  -f render_id=clip_render_example
+```
+
+Confirm the report artifact contains only callback/failure/upload evidence,
+never the source MP3, manifest/captions, raster frames, or MP4. Follow
+`CLIP_RENDER_GATE.md` for the acceptance and rollback matrix.
+
 Required for the isolated signed-decision exercise:
 
 - Worker secret `AD_DECISION_SIGNING_SECRET`
@@ -220,6 +242,10 @@ Verify:
 - unsigned ad-plan processor callbacks return `401` before D1 lookup; a
   reviewed fixture workflow produces private frame-aligned segments, moves the
   plan only to `needs_review`, and requires an authenticated producer approval.
+- unsigned clip manifest/source/output/complete requests return `401` before
+  D1 lookup; one queued staging render streams the immutable source, produces
+  and fully decodes the expected aspect, stores matching native/custom R2
+  checksums, reaches `ready`, and returns `idempotent: true` on callback replay.
 - bad ad-decision signatures return `401` before D1 lookup; repeated issuance
   in one decision epoch returns the same manifest/ETag; changed R2 evidence is
   rejected before headers; duplicate/capped qualifications do not increment a

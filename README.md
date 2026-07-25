@@ -27,8 +27,8 @@ plans are implemented without connecting public audio assembly. The bilingual wo
 storage contract and executable launch-quality evaluator are also implemented;
 running a real transcription/alignment adapter and producing its human-reviewed
 benchmark evidence remain gated. Checkout code remains disabled pending
-accountant-approved tax/provider evidence; dynamic audio assembly, clips, and
-live YouTube/GitHub publishing remain roadmap work.
+accountant-approved tax/provider evidence; dynamic audio assembly, public clip
+distribution, and live YouTube/GitHub publishing remain roadmap work.
 
 The transcript review workbench stores versioned English/Spanish cue records,
 uses optimistic revisions and idempotency keys, and keeps word-linked controls
@@ -37,16 +37,22 @@ edits always return an approved transcript to review; Admin/Super-admin
 approval requires every visible speaker label to be explicitly confirmed.
 Caption text uses the shared timed-text editor representation and the Worker
 independently rejects HTML, invalid/overlapping timing, stale revisions, and
-out-of-bounds cues. Clip rendering remains a separate gated processor slice.
+out-of-bounds cues. Public transcript and clip distribution remain gated.
 
 The first clip-factory boundary now turns an approved transcript cue range
 into a versioned 9:16, 1:1, or 16:9 `captioned-waveform-v1` recipe. Producer
 writes are optimistic/idempotent and snapshot the exact transcript plus source
 audio; word boundaries remain unavailable without a matching passed alignment.
-A render request returns a checksummed private processor manifest, and the
-staging-only signed callback accepts ready evidence only when MP4
-dimensions/duration and private-R2 checksum metadata match that manifest.
-This does not yet claim that an FFmpeg render or YouTube Shorts upload ran.
+A render request returns a checksummed private processor manifest. The pinned
+staging GitHub workflow retrieves the exact source through a signed streaming
+Worker route, produces deterministic H.264/AAC MP4s with FFmpeg and
+ImageMagick-rasterized captions, fully decodes them, and streams the result
+back through the Worker with an R2-verified SHA-256. The callback accepts ready
+evidence only when MP4 dimensions/duration and private-R2 checksum metadata
+match that manifest. The complete source/render/upload/callback path has passed
+the local Worker+D1+R2 runtime gate; the remote GitHub workflow still requires
+the reviewed workflow to exist on the default branch and a queued staging
+render. No public clip or YouTube Shorts upload is enabled.
 
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member
@@ -69,6 +75,12 @@ gh workflow run process-ad-plan.yml \
 
 The manifest is downloaded from the authenticated Episode workbench. The
 workflow can only target the isolated staging bucket and staging callback.
+
+The clip processor needs only the existing staging-only
+`MEDIA_PROCESSOR_CALLBACK_SECRET` in the Worker and the `podcast-staging`
+GitHub environment. It does not receive R2 credentials: signed source and
+output routes stream through the Worker's private R2 binding. See
+[`docs/CLIP_RENDER_GATE.md`](docs/CLIP_RENDER_GATE.md).
 
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.
@@ -103,6 +115,8 @@ non-secret human inputs that gate production are kept in
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries and secret handling
 - [`docs/ALIGNMENT_GATE.md`](docs/ALIGNMENT_GATE.md) — English/Spanish
   word-alignment evidence and launch thresholds
+- [`docs/CLIP_RENDER_GATE.md`](docs/CLIP_RENDER_GATE.md) — staging clip
+  processor trust boundary, execution, evidence, and rollback
 - [`docs/VIRTUAL_AUDIO_GATE.md`](docs/VIRTUAL_AUDIO_GATE.md) — request-time
   audio assembly and real podcast-client evidence gate
 - [`docs/DYNAMIC_ADS_GATE.md`](docs/DYNAMIC_ADS_GATE.md) — deterministic

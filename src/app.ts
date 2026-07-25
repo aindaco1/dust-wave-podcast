@@ -52,9 +52,12 @@ import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
 import {
   completeClipRender,
+  getClipRenderProcessorManifest,
+  getClipRenderProcessorSource,
   listAdminEpisodeClips,
   queueAdminClipRender,
-  saveAdminEpisodeClip
+  saveAdminEpisodeClip,
+  uploadClipRenderProcessorOutput
 } from "./clips";
 import {
   serveStagingVirtualAudioDiagnostic,
@@ -168,6 +171,12 @@ const PROCESSOR_AD_PLAN_COMPLETE_PATH =
   /^\/v1\/processor\/ad-plans\/([A-Za-z0-9_-]+)\/complete$/;
 const PROCESSOR_CLIP_RENDER_COMPLETE_PATH =
   /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/complete$/;
+const PROCESSOR_CLIP_RENDER_MANIFEST_PATH =
+  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/manifest$/;
+const PROCESSOR_CLIP_RENDER_SOURCE_PATH =
+  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/source$/;
+const PROCESSOR_CLIP_RENDER_OUTPUT_PATH =
+  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/output$/;
 const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
@@ -645,6 +654,36 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       processorClipRenderCompleteMatch[1]
+    );
+  }
+  const processorClipRenderManifestMatch = url.pathname.match(
+    PROCESSOR_CLIP_RENDER_MANIFEST_PATH
+  );
+  if (processorClipRenderManifestMatch && method === "POST") {
+    return getClipRenderProcessorManifest(
+      request,
+      env,
+      processorClipRenderManifestMatch[1]
+    );
+  }
+  const processorClipRenderSourceMatch = url.pathname.match(
+    PROCESSOR_CLIP_RENDER_SOURCE_PATH
+  );
+  if (processorClipRenderSourceMatch && method === "POST") {
+    return getClipRenderProcessorSource(
+      request,
+      env,
+      processorClipRenderSourceMatch[1]
+    );
+  }
+  const processorClipRenderOutputMatch = url.pathname.match(
+    PROCESSOR_CLIP_RENDER_OUTPUT_PATH
+  );
+  if (processorClipRenderOutputMatch && method === "PUT") {
+    return uploadClipRenderProcessorOutput(
+      request,
+      env,
+      processorClipRenderOutputMatch[1]
     );
   }
 

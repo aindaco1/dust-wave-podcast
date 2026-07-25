@@ -17,6 +17,62 @@ export type SignedJsonBodyResult =
       reason: "secret_missing" | "invalid_signature";
     };
 
+export type SignedTextResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "secret_missing" | "invalid_signature";
+    };
+
+export async function verifySignedText(
+  request: Request,
+  {
+    secret,
+    timestampHeader,
+    signatureHeader,
+    message,
+    signatureWindowSeconds = 5 * 60,
+    now = new Date()
+  }: {
+    secret?: string;
+    timestampHeader: string;
+    signatureHeader: string;
+    message: string;
+    signatureWindowSeconds?: number;
+    now?: Date;
+  }
+): Promise<SignedTextResult> {
+  if (!secret) return { ok: false, reason: "secret_missing" };
+  if (
+    !Number.isSafeInteger(signatureWindowSeconds)
+    || signatureWindowSeconds < 1
+    || !Number.isFinite(now.getTime())
+    || typeof message !== "string"
+    || !message
+  ) {
+    throw new TypeError("Signed message configuration is invalid");
+  }
+  const timestamp = Number(request.headers.get(timestampHeader));
+  const signature = request.headers.get(signatureHeader) ?? "";
+  if (
+    !Number.isSafeInteger(timestamp)
+    || timestamp < 1
+    || !/^[a-f0-9]{64}$/.test(signature)
+    || Math.abs(Math.floor(now.getTime() / 1_000) - timestamp)
+      > signatureWindowSeconds
+  ) {
+    return { ok: false, reason: "invalid_signature" };
+  }
+  const expected = await hmacSha256(
+    `${timestamp}.${message}`,
+    secret,
+    "hex"
+  );
+  return timingSafeEqual(signature, expected)
+    ? { ok: true }
+    : { ok: false, reason: "invalid_signature" };
+}
+
 export async function readSignedJsonBody(
   request: Request,
   {
@@ -89,25 +145,15 @@ export async function readSignedJsonBody(
     );
   }
 
-  const timestamp = Number(request.headers.get(timestampHeader));
-  const signature = request.headers.get(signatureHeader) ?? "";
-  if (
-    !Number.isSafeInteger(timestamp)
-    || timestamp < 1
-    || !/^[a-f0-9]{64}$/.test(signature)
-    || Math.abs(Math.floor(now.getTime() / 1_000) - timestamp)
-      > signatureWindowSeconds
-  ) {
-    return { ok: false, reason: "invalid_signature" };
-  }
-  const expected = await hmacSha256(
-    `${timestamp}.${rawBody}`,
+  const signed = await verifySignedText(request, {
     secret,
-    "hex"
-  );
-  if (!timingSafeEqual(signature, expected)) {
-    return { ok: false, reason: "invalid_signature" };
-  }
+    timestampHeader,
+    signatureHeader,
+    message: rawBody,
+    signatureWindowSeconds,
+    now
+  });
+  if (!signed.ok) return signed;
 
   const value = await Promise.resolve()
     .then(() => JSON.parse(rawBody) as unknown)

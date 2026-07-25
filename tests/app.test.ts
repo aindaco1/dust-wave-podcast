@@ -240,26 +240,53 @@ describe("podcast API", () => {
     }
   });
 
-  it("rejects unsigned clip processor evidence before D1 lookup", async () => {
-    const response = await handleRequest(
-      new Request(
-        "https://podcast.example/v1/processor/clip-renders/render_fixture/complete",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ renderId: "render_fixture" })
-        }
-      ),
-      createEnv({
-        ENVIRONMENT: "staging",
-        MEDIA_PROCESSOR_CALLBACK_SECRET: "processor_secret_fixture"
-      })
-    );
+  it("rejects unsigned clip processor reads and evidence before D1 lookup", async () => {
+    for (const [suffix, method, contentType, body] of [
+      [
+        "manifest",
+        "POST",
+        "application/json",
+        JSON.stringify({ renderId: "render_fixture", action: "manifest" })
+      ],
+      [
+        "source",
+        "POST",
+        "application/json",
+        JSON.stringify({ renderId: "render_fixture", action: "source" })
+      ],
+      [
+        "output",
+        "PUT",
+        "video/mp4",
+        "not-a-real-mp4"
+      ],
+      [
+        "complete",
+        "POST",
+        "application/json",
+        JSON.stringify({ renderId: "render_fixture" })
+      ]
+    ] as const) {
+      const response = await handleRequest(
+        new Request(
+          `https://podcast.example/v1/processor/clip-renders/render_fixture/${suffix}`,
+          {
+            method,
+            headers: { "content-type": contentType },
+            body
+          }
+        ),
+        createEnv({
+          ENVIRONMENT: "staging",
+          MEDIA_PROCESSOR_CALLBACK_SECRET: "processor_secret_fixture"
+        })
+      );
 
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({
-      error: "invalid_processor_signature"
-    });
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        error: "invalid_processor_signature"
+      });
+    }
   });
 
   it("keeps private-feed creation behind the listener session", async () => {
