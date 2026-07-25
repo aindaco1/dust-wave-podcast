@@ -79,6 +79,9 @@ gh workflow run process-clip-render.yml \
 - replaying the same completion returns `idempotent: true`;
 - GitHub logs/artifacts contain no transcript text, source/output media,
   provider credential, or private object URL.
+- ready preview/download requires show-scoped admin authorization, revalidates
+  D1 and R2 checksum/manifest evidence, and serves only private no-store,
+  noindex, single-range MP4 responses without exposing the object key.
 
 Local runtime evidence on July 25, 2026 passed the complete
 Worker+D1+R2 source/render/upload/callback path for a 12-second 9:16 fixture:

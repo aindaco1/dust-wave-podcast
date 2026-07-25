@@ -57,6 +57,7 @@ import {
   listAdminEpisodeClips,
   queueAdminClipRender,
   saveAdminEpisodeClip,
+  serveAdminClipRenderMedia,
   uploadClipRenderProcessorOutput
 } from "./clips";
 import {
@@ -144,6 +145,8 @@ const ADMIN_EPISODE_CLIP_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/([A-Za-z0-9_-]+)$/;
 const ADMIN_CLIP_RENDER_PATH =
   /^\/v1\/admin\/clips\/([A-Za-z0-9_-]+)\/render$/;
+const ADMIN_CLIP_RENDER_MEDIA_PATH =
+  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/media$/;
 const ADMIN_EPISODE_AD_PLAN_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
 const ADMIN_UPLOAD_PART_PATH =
@@ -524,6 +527,19 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       adminClipRenderMatch[1]
+    );
+  }
+  const adminClipRenderMediaMatch = url.pathname.match(
+    ADMIN_CLIP_RENDER_MEDIA_PATH
+  );
+  if (
+    adminClipRenderMediaMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveAdminClipRenderMedia(
+      request,
+      env,
+      adminClipRenderMediaMatch[1]
     );
   }
   const adminEpisodeAdPlanMatch = url.pathname.match(

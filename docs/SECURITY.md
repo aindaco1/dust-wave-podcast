@@ -78,6 +78,12 @@
   sizes, filenames, and part numbers are allowlisted.
 - CORS reflects only explicit origins. Admin responses are private/no-store and
   marked noindex.
+- Ready clip preview/download remains under the path-scoped admin session.
+  Every request rechecks show-scoped Analyst-or-higher access and exact D1/R2
+  byte, MIME, native checksum, custom checksum, and manifest evidence before
+  serving one bounded MP4 range. The response exposes no private object key,
+  reflects credentialed CORS only to an allowlisted admin origin, and remains
+  private/no-store/noindex.
 
 ## Provider boundaries
 

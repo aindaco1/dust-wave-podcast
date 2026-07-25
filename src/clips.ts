@@ -8,7 +8,14 @@ import {
   type AdminRole
 } from "./admin-auth";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateCorsHeaders,
+  privateJson
+} from "./http";
+import {
+  requestedMediaRange,
+  safeDownloadFilename
+} from "./media-range";
 import {
   readSignedJsonBody,
   verifySignedText
@@ -166,6 +173,11 @@ type ClipRenderRow = {
   failure_code: string | null;
   requested_at: string;
   completed_at: string | null;
+};
+
+type ClipRenderMediaRow = ClipRenderRow & {
+  show_id: string;
+  clip_title: string;
 };
 
 type ApprovedTranscriptRow = {
@@ -603,6 +615,108 @@ export async function queueAdminClipRender(
     },
     { status: 202 }
   );
+}
+
+export async function serveAdminClipRenderMedia(
+  request: Request,
+  env: PodcastEnv,
+  renderIdValue: string
+): Promise<Response> {
+  const renderId = validIdentifier(renderIdValue, "renderId");
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: READ_ROLES
+  });
+  if (!auth.ok) return auth.response;
+  const render = await loadClipRenderMedia(env.DB, renderId);
+  if (
+    !render
+    || !hasAdminRoleForShow(
+      auth.authorization.identity,
+      READ_ROLES,
+      render.show_id
+    )
+    || render.status !== "ready"
+    || render.output_mime_type !== "video/mp4"
+    || !render.output_object_bytes
+    || !render.output_sha256
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "clip_render_not_found" },
+      { status: 404 }
+    );
+  }
+  const objectHead = await env.MEDIA_BUCKET.head(render.output_object_key);
+  if (
+    !objectHead
+    || objectHead.size !== render.output_object_bytes
+    || objectHead.httpMetadata?.contentType !== "video/mp4"
+    || objectHead.checksums.toJSON().sha256 !== render.output_sha256
+    || objectHead.customMetadata?.sha256 !== render.output_sha256
+    || objectHead.customMetadata?.["render-manifest-sha256"]
+      !== render.processor_manifest_sha256
+  ) {
+    return clipConflict(request, env, "clip_render_object_mismatch");
+  }
+  const headers = clipMediaHeaders(
+    request,
+    env,
+    objectHead.httpEtag
+  );
+  if (new URL(request.url).searchParams.get("download") === "1") {
+    headers.set(
+      "content-disposition",
+      `attachment; filename="${safeDownloadFilename(
+        `${render.clip_title}-${render.id}.mp4`
+      )}"`
+    );
+  } else {
+    headers.set("content-disposition", "inline");
+  }
+  if (request.headers.get("if-none-match") === objectHead.httpEtag) {
+    return new Response(null, { status: 304, headers });
+  }
+  if (request.method === "HEAD") {
+    headers.set("content-length", String(render.output_object_bytes));
+    return new Response(null, { headers });
+  }
+  const range = requestedMediaRange(
+    request,
+    render.output_object_bytes,
+    objectHead.httpEtag
+  );
+  if (range === "invalid") {
+    headers.set("content-range", `bytes */${render.output_object_bytes}`);
+    return new Response(null, { status: 416, headers });
+  }
+  const object = await env.MEDIA_BUCKET.get(render.output_object_key, {
+    ...(range ? { range } : {}),
+    onlyIf: new Headers({ "if-match": objectHead.httpEtag })
+  });
+  if (
+    !object
+    || !("body" in object)
+    || object.size !== render.output_object_bytes
+    || object.httpEtag !== objectHead.httpEtag
+  ) {
+    return clipConflict(request, env, "clip_render_object_mismatch");
+  }
+  if (range && object.range && "offset" in object.range) {
+    const offset = object.range.offset ?? 0;
+    const length = object.range.length ?? object.size - offset;
+    headers.set("content-length", String(length));
+    headers.set(
+      "content-range",
+      `bytes ${offset}-${offset + length - 1}/${render.output_object_bytes}`
+    );
+  } else {
+    headers.set("content-length", String(render.output_object_bytes));
+  }
+  return new Response(object.body, {
+    status: range ? 206 : 200,
+    headers
+  });
 }
 
 export async function getClipRenderProcessorManifest(
@@ -1493,6 +1607,49 @@ async function loadClipRender(
   ).bind(renderId).first<ClipRenderRow>();
 }
 
+async function loadClipRenderMedia(
+  db: D1Database,
+  renderId: string
+): Promise<ClipRenderMediaRow | null> {
+  return db.prepare(
+    `SELECT
+       r.id, r.clip_id, r.clip_revision, r.recipe_sha256,
+       r.processor_manifest_sha256, r.output_object_key, r.status,
+       r.output_object_bytes, r.output_sha256, r.output_mime_type,
+       r.output_width, r.output_height, r.output_duration_ms,
+       r.processor_version, r.failure_code, r.requested_at, r.completed_at,
+       e.show_id, c.title AS clip_title
+     FROM clip_renders r
+     JOIN clips c ON c.id = r.clip_id
+     JOIN episodes e ON e.id = c.episode_id
+     WHERE r.id = ?`
+  ).bind(renderId).first<ClipRenderMediaRow>();
+}
+
+function clipMediaHeaders(
+  request: Request,
+  env: PodcastEnv,
+  etag: string
+): Headers {
+  const headers = new Headers({
+    ...privateCorsHeaders(request, env.ALLOWED_ORIGINS),
+    "content-type": "video/mp4",
+    "accept-ranges": "bytes",
+    "cache-control": "private, no-store, max-age=0",
+    "content-security-policy": "default-src 'none'; sandbox",
+    "cross-origin-resource-policy": "same-site",
+    etag,
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+    "x-robots-tag": "noindex, nofollow, noarchive"
+  });
+  headers.set(
+    "access-control-expose-headers",
+    "accept-ranges,content-disposition,content-length,content-range,etag"
+  );
+  return headers;
+}
+
 async function loadApprovedTranscript(
   db: D1Database,
   episodeId: string,
@@ -1709,7 +1866,10 @@ function presentClip(row: ClipRow): Record<string, unknown> {
           processorVersion: row.render_processor_version,
           failureCode: row.render_failure_code,
           requestedAt: row.render_requested_at,
-          completedAt: row.render_completed_at
+          completedAt: row.render_completed_at,
+          ...(row.render_status === "ready"
+            ? clipRenderMediaPaths(row.render_id)
+            : {})
         }
       : null,
     createdAt: row.created_at,
@@ -1734,7 +1894,20 @@ function presentRender(row: ClipRenderRow): Record<string, unknown> {
     processorVersion: row.processor_version,
     failureCode: row.failure_code,
     requestedAt: row.requested_at,
-    completedAt: row.completed_at
+    completedAt: row.completed_at,
+    ...(row.status === "ready" ? clipRenderMediaPaths(row.id) : {})
+  };
+}
+
+function clipRenderMediaPaths(renderId: string): {
+  mediaPath: string;
+  downloadPath: string;
+} {
+  const mediaPath =
+    `/v1/admin/clip-renders/${encodeURIComponent(renderId)}/media`;
+  return {
+    mediaPath,
+    downloadPath: `${mediaPath}?download=1`
   };
 }
 

@@ -241,6 +241,15 @@ callback URL. The manifest SHA-256 is persisted before processing. Callback
 identity uses the configured canonical staging `FEED_ORIGIN`, not a request
 host, so retries rebuild the same digest.
 
+Ready output stays private. `GET` and `HEAD`
+`/v1/admin/clip-renders/{renderId}/media` require an active Analyst-or-higher
+admin session with access to the render's show. The route rechecks ready D1
+evidence plus R2 byte count, MIME type, native SHA-256, custom SHA-256, and
+manifest digest before returning headers. It supports one bounded byte range,
+ETag/If-Range/If-None-Match, credentialed allowlisted CORS for the admin
+player, and `?download=1` attachment delivery. Responses are private,
+no-store, noindex, and never expose the R2 key.
+
 The staging processor surface is private and purpose-bound:
 
 | Method | Path | Purpose |

@@ -62,9 +62,10 @@ iHeartRadio, and Deezer.
   locks word cuts behind matching passed alignment, and accepts only signed
   checksummed private-R2 MP4 evidence. The deterministic staging FFmpeg
   workflow now renders and fully decodes all three aspect ratios, with
-  purpose-bound Worker streams and native R2 SHA-256 verification. A remote
-  workflow run, admin ready preview, Marketing download, and private/unlisted
-  Shorts path remain gated follow-ups.
+  purpose-bound Worker streams and native R2 SHA-256 verification. Ready
+  outputs now have an authenticated, show-scoped, range-safe admin preview and
+  MP4 download path. A remote workflow run, Marketing library, and
+  private/unlisted Shorts path remain gated follow-ups.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
 - Publish audio-only or native-video episodes to the configurable YouTube

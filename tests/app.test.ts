@@ -328,4 +328,44 @@ describe("podcast API", () => {
       expect(await response.json()).toEqual({ error: "unauthorized" });
     }
   });
+
+  it("keeps ready clip media private before render or R2 lookup", async () => {
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/admin/clip-renders/render_fixture/media"
+      ),
+      createEnv()
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("allows credentialed conditional range requests from the site origin", async () => {
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/admin/clip-renders/render_fixture/media",
+        {
+          method: "OPTIONS",
+          headers: {
+            origin: "https://dustwave.xyz",
+            "access-control-request-method": "GET",
+            "access-control-request-headers": "range,if-range"
+          }
+        }
+      ),
+      createEnv()
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin"))
+      .toBe("https://dustwave.xyz");
+    expect(response.headers.get("access-control-allow-credentials"))
+      .toBe("true");
+    expect(response.headers.get("access-control-allow-headers"))
+      .toContain("if-range");
+    expect(response.headers.get("access-control-allow-headers"))
+      .toContain("range");
+  });
 });

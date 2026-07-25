@@ -4,6 +4,10 @@ import {
   privateFeedTokenNeedsTouch,
   touchPrivateFeedToken
 } from "./private-feeds";
+import {
+  requestedMediaRange,
+  safeDownloadFilename
+} from "./media-range";
 
 type MediaEpisode = {
   audio_key: string;
@@ -123,7 +127,11 @@ async function serveEpisodeAudio(
     return new Response(null, { headers });
   }
 
-  const range = parseRange(request.headers.get("range"), episode.audio_bytes);
+  const range = requestedMediaRange(
+    request,
+    episode.audio_bytes,
+    episode.audio_etag
+  );
   if (range === "invalid") {
     return new Response(null, {
       status: 416,
@@ -164,34 +172,6 @@ async function serveEpisodeAudio(
     status: range ? 206 : 200,
     headers
   });
-}
-
-function parseRange(header: string | null, totalBytes: number): R2Range | "invalid" | null {
-  if (!header) return null;
-  const match = header.match(/^bytes=(\d*)-(\d*)$/);
-  if (!match) return "invalid";
-  const [, rawStart, rawEnd] = match;
-  if (!rawStart && !rawEnd) return "invalid";
-  if (!rawStart) {
-    const suffix = Number(rawEnd);
-    if (!Number.isSafeInteger(suffix) || suffix <= 0) return "invalid";
-    return { suffix: Math.min(suffix, totalBytes) };
-  }
-  const start = Number(rawStart);
-  const end = rawEnd ? Number(rawEnd) : totalBytes - 1;
-  if (
-    !Number.isSafeInteger(start)
-    || !Number.isSafeInteger(end)
-    || start < 0
-    || start >= totalBytes
-    || end < start
-  ) {
-    return "invalid";
-  }
-  return {
-    offset: start,
-    length: Math.min(end, totalBytes - 1) - start + 1
-  };
 }
 
 function mediaHeaders(
@@ -243,8 +223,4 @@ function mediaError(code: string, status: number): Response {
       "x-robots-tag": "noindex, nofollow, noarchive"
     }
   });
-}
-
-function safeDownloadFilename(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 180);
 }

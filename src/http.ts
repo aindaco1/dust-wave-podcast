@@ -26,11 +26,18 @@ function corsHeaders(
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS",
     "access-control-allow-headers":
-      "content-type,x-podcast-csrf,x-podcast-upload-bytes,x-turnstile-token",
+      "content-type,if-none-match,if-range,range,x-podcast-csrf,x-podcast-upload-bytes,x-turnstile-token",
     "access-control-max-age": "86400",
     ...(credentials ? { "access-control-allow-credentials": "true" } : {}),
     vary: "Origin"
   };
+}
+
+export function privateCorsHeaders(
+  request: Request,
+  allowedOrigins: string
+): HeadersInit {
+  return corsHeaders(request, allowedOrigins, { credentials: true });
 }
 
 export function json(
@@ -56,7 +63,7 @@ export function privateJson(
 ): Response {
   const headers = new Headers({
     ...JSON_HEADERS,
-    ...corsHeaders(request, allowedOrigins, { credentials: true }),
+    ...privateCorsHeaders(request, allowedOrigins),
     ...init.headers
   });
   headers.set("cache-control", "private, no-store, max-age=0");
