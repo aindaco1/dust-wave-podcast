@@ -153,7 +153,9 @@
   the private R2 body, verifies returned channel/privacy, and fails closed if
   the mode is restored before consumption.
 - Resend receives the raw destination only at send time. Delivery failures are
-  logged by internal admin/listener ID, never by email address.
+  logged by internal admin/listener ID, a closed local failure code, and the
+  numeric provider HTTP status when available—never by email address,
+  provider response body, exception text, or login URL.
 - Resend calls have an eight-second timeout and a token-hash idempotency key;
   redirects fail closed. Scheduled maintenance removes expired rate buckets,
   consumed login tokens, and revoked/expired sessions after a one-day

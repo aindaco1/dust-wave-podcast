@@ -509,6 +509,15 @@ key. The same separation applies to the Turnstile widget secret. Public
 Turnstile test keys are not acceptable on the Internet-accessible staging
 Worker.
 
+Validate a new Resend key against Resend's designated delivered-test address
+before installing it, using a hidden environment or interactive prompt rather
+than a command argument. The Worker records only a closed delivery failure
+code and numeric provider status; it never logs the provider response body,
+destination, login URL, or exception text. Keep login fail-closed until a real
+staging Turnstile widget and matching secret are installed. A dummy Turnstile
+pair is suitable for local/automated tests only, not the public `workers.dev`
+deployment.
+
 ## 5. Deploy and smoke test
 
 ```sh

@@ -211,7 +211,9 @@ export async function startAdminLogin(
         console.error(JSON.stringify({
           level: "error",
           event: "admin_login_delivery_failed",
-          adminUserId: admin.id
+          adminUserId: admin.id,
+          failureCode: delivery.failureCode ?? "provider_unavailable",
+          providerStatus: delivery.providerStatus ?? null
         }));
       }
     }

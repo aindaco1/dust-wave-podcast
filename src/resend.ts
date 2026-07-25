@@ -1,6 +1,17 @@
 import type { PodcastEnv } from "./env";
 import type { LoginLanguage } from "./passwordless-security";
 
+export type MagicLinkDelivery = {
+  sent: boolean;
+  providerId?: string;
+  providerStatus?: number;
+  failureCode?:
+    | "not_configured"
+    | "provider_rejected"
+    | "provider_timeout"
+    | "provider_unavailable";
+};
+
 export async function sendAdminMagicLink(
   env: PodcastEnv,
   {
@@ -14,7 +25,7 @@ export async function sendAdminMagicLink(
     language: LoginLanguage;
     deliveryKey: string;
   }
-): Promise<{ sent: boolean; providerId?: string }> {
+): Promise<MagicLinkDelivery> {
   return sendMagicLink(env, {
     audience: "admin",
     email,
@@ -37,7 +48,7 @@ export async function sendListenerMagicLink(
     language: LoginLanguage;
     deliveryKey: string;
   }
-): Promise<{ sent: boolean; providerId?: string }> {
+): Promise<MagicLinkDelivery> {
   return sendMagicLink(env, {
     audience: "listener",
     email,
@@ -62,8 +73,10 @@ async function sendMagicLink(
     language: LoginLanguage;
     deliveryKey: string;
   }
-): Promise<{ sent: boolean; providerId?: string }> {
-  if (!env.RESEND_API_KEY) return { sent: false };
+): Promise<MagicLinkDelivery> {
+  if (!env.RESEND_API_KEY) {
+    return { sent: false, failureCode: "not_configured" };
+  }
   const spanish = language === "es";
   const listener = audience === "listener";
   const subject = spanish
@@ -97,13 +110,29 @@ async function sendMagicLink(
       redirect: "error",
       signal: AbortSignal.timeout(8_000)
     });
-    const payload = await response.json().catch(() => ({})) as { id?: string };
-    return {
-      sent: response.ok,
-      ...(response.ok && payload.id ? { providerId: payload.id } : {})
+    const payload = await response.json().catch(() => ({})) as {
+      id?: string;
     };
-  } catch {
-    return { sent: false };
+    if (!response.ok) {
+      return {
+        sent: false,
+        providerStatus: response.status,
+        failureCode: "provider_rejected"
+      };
+    }
+    return {
+      sent: true,
+      ...(payload.id ? { providerId: payload.id } : {})
+    };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    return {
+      sent: false,
+      failureCode:
+        name === "AbortError" || name === "TimeoutError"
+          ? "provider_timeout"
+          : "provider_unavailable"
+    };
   }
 }
 

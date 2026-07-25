@@ -233,7 +233,9 @@ export async function startListenerLogin(
         console.error(JSON.stringify({
           level: "error",
           event: "listener_login_delivery_failed",
-          listenerId: listener.id
+          listenerId: listener.id,
+          failureCode: delivery.failureCode ?? "provider_unavailable",
+          providerStatus: delivery.providerStatus ?? null
         }));
       }
     }
