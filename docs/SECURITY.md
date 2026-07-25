@@ -271,6 +271,25 @@ ready. The candidate is deliberately non-enforcing and offers no override;
 connecting it to publication requires a separate recent-auth, reasoned,
 audited, exact-snapshot approval and rollback change.
 
+## Publication-intent and News-teaser boundary
+
+Publish, readiness, and tests use one pure planner for root applicability.
+Every episode plans RSS and News. YouTube exists only for a video-bearing
+non-premium-bonus episode, so inapplicable jobs are absent rather than
+immediately succeeding as dry-run placeholders.
+
+The GitHub publication document is a versioned discriminated union. A
+`premium_teaser` is constructed from a positive allowlist of public fields and
+has no media-shaped optional branch: audio/enclosure/download URLs, byte/MIME
+metadata, duration, transcript/chapter endpoints, private tokens, and premium
+timing are structurally absent. The website validator rejects unsupported
+versions, unknown modes, and any forbidden teaser field before building.
+Canonical/show/embed templates branch on `pageMode`; teaser rendering does not
+instantiate the shared player or load its scripts, transcript/chapter clients,
+or media/connect CSP origins. Dynamic text remains autoescaped, and podcast
+JSON-LD uses a shared serializer that escapes HTML-significant characters
+before the JSON is placed in a script element.
+
 ## Clip-render boundary
 
 Clip recipes are private, show-scoped, CSRF-protected Producer+ revisions.

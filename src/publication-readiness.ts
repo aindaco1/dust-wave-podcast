@@ -8,9 +8,15 @@ import {
   publicationPrerequisiteFailures
 } from "./publication-contract";
 import {
+  hasPublicationDestination,
+  planEpisodePublication,
+  type EpisodePublicationPlan
+} from "./publication-intent";
+import {
   getProductionReviewReadiness,
   type ProductionReviewReadiness
 } from "./production-reviews";
+import type { EpisodeAccess } from "./types";
 
 const READ_ROLES = [
   "super_admin",
@@ -23,7 +29,7 @@ type EpisodeReadinessRow = {
   id: string;
   show_id: string;
   status: string;
-  access: string;
+  access: EpisodeAccess;
   explicit: number;
   title: string;
   summary: string;
@@ -364,6 +370,10 @@ export function evaluatePublicationReadiness(
   nodes: PublicationReadinessNode[];
 } {
   const { episode } = input;
+  const publicationPlan = planEpisodePublication({
+    access: episode.access,
+    videoSourceKey: episode.video_source_key
+  });
   const missing = publicationPrerequisiteFailures({
     title: episode.title,
     summary: episode.summary,
@@ -385,9 +395,19 @@ export function evaluatePublicationReadiness(
     reviewNode(input.reviews),
     clipNode(input.clips),
     adNode(episode, input.adPlan),
-    newsNode(episode, input.jobs, input.githubPublishMode),
+    newsNode(
+      episode,
+      input.jobs,
+      input.githubPublishMode,
+      publicationPlan
+    ),
     rssNode(episode, input.jobs),
-    youtubeNode(episode, input.jobs, input.youtubePublishMode),
+    youtubeNode(
+      episode,
+      input.jobs,
+      input.youtubePublishMode,
+      publicationPlan
+    ),
     directoryNode(input.directories)
   ];
   const blockerCount = nodes.filter(isUnreadyBlocker).length;
@@ -799,25 +819,12 @@ function adNode(
 function newsNode(
   episode: EpisodeReadinessRow,
   jobs: ReleaseJobRow[],
-  mode: string
+  mode: string,
+  publicationPlan: EpisodePublicationPlan
 ): PublicationReadinessNode {
-  if (episode.access === "premium_bonus") {
-    return node({
-      id: "distribution.news",
-      group: "distribution",
-      label: "Canonical News page",
-      status: "missing",
-      severity: "blocker",
-      summary: "The premium-bonus teaser snapshot is not connected to the News publisher yet.",
-      evidence: {
-        access: episode.access,
-        canonicalUrlReady: isHttpsUrl(episode.canonical_url),
-        mode
-      }
-    });
-  }
   const release = releaseEvidence(jobs, "news");
   const contractReady = isHttpsUrl(episode.canonical_url);
+  const isTeaser = publicationPlan.newsMode === "premium_teaser";
   return node({
     id: "distribution.news",
     group: "distribution",
@@ -826,11 +833,14 @@ function newsNode(
     severity: "blocker",
     summary: release?.summary ?? (
       contractReady
-        ? "The canonical News snapshot contract is ready for publication."
+        ? isTeaser
+          ? "The canonical premium teaser is media-free by contract."
+          : "The canonical News snapshot contract is ready for publication."
         : "A canonical HTTPS News page is required."
     ),
     evidence: {
       mode,
+      pageMode: publicationPlan.newsMode,
       publicationRevision: release?.publicationRevision ?? null,
       jobStatus: release?.jobStatus ?? "not_created",
       siteStatus: release?.siteStatus ?? "not_created"
@@ -868,28 +878,25 @@ function rssNode(
 function youtubeNode(
   episode: EpisodeReadinessRow,
   jobs: ReleaseJobRow[],
-  mode: string
+  mode: string,
+  publicationPlan: EpisodePublicationPlan
 ): PublicationReadinessNode {
-  if (episode.access === "premium_bonus") {
+  if (!hasPublicationDestination(publicationPlan, "youtube")) {
+    const premiumBonus = episode.access === "premium_bonus";
     return node({
       id: "distribution.youtube",
       group: "distribution",
       label: "YouTube release",
       status: "not_applicable",
       severity: "info",
-      summary: "Premium-only bonus episodes do not publish to YouTube.",
-      evidence: { access: episode.access, mode }
-    });
-  }
-  if (!episode.video_source_key) {
-    return node({
-      id: "distribution.youtube",
-      group: "distribution",
-      label: "YouTube release",
-      status: "not_applicable",
-      severity: "info",
-      summary: "This is an audio-only episode, so no YouTube upload is expected.",
-      evidence: { hasVideoSource: false, mode }
+      summary: premiumBonus
+        ? "Premium-only bonus episodes do not publish to YouTube."
+        : "This is an audio-only episode, so no YouTube upload is expected.",
+      evidence: {
+        access: episode.access,
+        hasVideoSource: Boolean(episode.video_source_key),
+        mode
+      }
     });
   }
   const release = releaseEvidence(jobs, "youtube");

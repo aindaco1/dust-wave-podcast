@@ -64,7 +64,7 @@ describe("publication readiness graph", () => {
     ]));
   });
 
-  it("fails closed on stale ads, failed release evidence, and bonus News gaps", () => {
+  it("fails closed on stale ads and failed release evidence without inventing bonus media", () => {
     const input = readyInput();
     input.episode.access = "premium_bonus";
     input.episode.public_at = "2026-08-01T12:00:00.000Z";
@@ -106,7 +106,8 @@ describe("publication readiness graph", () => {
       }),
       expect.objectContaining({
         id: "distribution.news",
-        status: "missing"
+        status: "ready",
+        evidence: expect.objectContaining({ pageMode: "premium_teaser" })
       }),
       expect.objectContaining({
         id: "distribution.rss",

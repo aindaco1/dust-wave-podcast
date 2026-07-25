@@ -369,6 +369,13 @@ Verify:
 - Cloudflare automatic invocation URL logs remain disabled and saved smoke
   evidence contains no private bearer URL;
 - News and YouTube jobs report `dry-run`;
+- a public audio-only publication creates RSS and News jobs but no YouTube job;
+  a public video publication adds YouTube; and a premium-bonus publication
+  creates RSS plus a versioned `premium_teaser` News snapshot with no media,
+  download, transcript, chapter, duration, token, or premium-time fields;
+- the premium teaser canonical page, show card, and noindex embed render a
+  subscription CTA without an audio element, player/transcript/chapter script,
+  associated-media JSON-LD, or episode media origin;
 - a Producer can prepare one immutable private/unlisted Shorts draft for a
   current ready clip; recent-super-admin approval records `dry_run`, issues no
   Google request, and a `public` value is rejected;

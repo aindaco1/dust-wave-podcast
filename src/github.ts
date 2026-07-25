@@ -1,4 +1,9 @@
 import type { PodcastEnv } from "./env";
+import {
+  planEpisodePublication,
+  type NewsPublicationMode
+} from "./publication-intent";
+import type { EpisodeAccess } from "./types";
 
 const PUBLICATION_DATA_PATH = "src/_data/podcastEpisodePublications.json";
 
@@ -14,6 +19,7 @@ type PublicationEpisode = {
   slug: string;
   title: string;
   summary: string;
+  access: EpisodeAccess;
   public_at: string;
   canonical_url: string;
   duration_seconds: number;
@@ -21,6 +27,35 @@ type PublicationEpisode = {
   audio_bytes: number;
   publication_revision: number;
 };
+
+export type EpisodeNewsPublication = {
+  publicationSchemaVersion: 1;
+  pageMode: NewsPublicationMode;
+  id: string;
+  showSlug: string;
+  slug: string;
+  title: string;
+  summary: string;
+  publicAt: string;
+  url: string;
+  canonicalUrl: string;
+  subscribeUrl: string;
+  publicationRevision: number;
+} & (
+  | {
+      pageMode: "full_episode";
+      duration: number;
+      audioUrl: string;
+      downloadUrl: string;
+      audioMimeType: string;
+      audioBytes: number;
+      transcriptUrl: string;
+      chapterUrl: string;
+    }
+  | {
+      pageMode: "premium_teaser";
+    }
+);
 
 export async function publishEpisodeNewsSnapshot(
   env: PodcastEnv,
@@ -30,7 +65,8 @@ export async function publishEpisodeNewsSnapshot(
   const episode = await env.DB
     .prepare(
       `SELECT
-         e.id, s.slug AS show_slug, e.slug, e.title, e.summary, e.public_at,
+         e.id, s.slug AS show_slug, e.slug, e.title, e.summary, e.access,
+         e.public_at,
          e.canonical_url, e.duration_seconds, e.audio_mime_type, e.audio_bytes,
          e.publication_revision
        FROM episodes e
@@ -38,7 +74,7 @@ export async function publishEpisodeNewsSnapshot(
        WHERE e.id = ?
          AND e.status = 'published'
          AND e.public_at <= datetime('now')
-         AND e.access IN ('public', 'early_access', 'free_mini')
+         AND e.access IN ('public', 'early_access', 'premium_bonus', 'free_mini')
          AND e.media_status = 'ready'`
     )
     .bind(episodeId)
@@ -53,28 +89,10 @@ export async function publishEpisodeNewsSnapshot(
 
   const current = await getPublicationFile(env);
   const publications = current.publications.filter(({ id }) => id !== episode.id);
-  publications.push({
-    id: episode.id,
-    showSlug: episode.show_slug,
-    slug: episode.slug,
-    title: episode.title,
-    summary: episode.summary,
-    publicAt: episode.public_at,
-    url: new URL(episode.canonical_url).pathname,
-    canonicalUrl: episode.canonical_url,
-    duration: episode.duration_seconds,
-    audioUrl: `${env.MEDIA_ORIGIN.replace(/\/$/, "")}/episodes/${episode.id}/audio`,
-    downloadUrl: `${env.MEDIA_ORIGIN.replace(/\/$/, "")}/episodes/${episode.id}/audio?download=1`,
-    audioMimeType: episode.audio_mime_type,
-    audioBytes: episode.audio_bytes,
-    transcriptUrl:
-      `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/`
-      + `${episode.show_slug}/episodes/${episode.slug}/transcripts`,
-    chapterUrl:
-      `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/`
-      + `${episode.show_slug}/episodes/${episode.slug}/chapters.json`,
-    publicationRevision: episode.publication_revision
-  });
+  publications.push(buildEpisodeNewsPublication(episode, {
+    mediaOrigin: env.MEDIA_ORIGIN,
+    feedOrigin: env.FEED_ORIGIN
+  }));
   publications.sort((left, right) =>
     String(right.publicAt).localeCompare(String(left.publicAt))
   );
@@ -86,6 +104,56 @@ export async function publishEpisodeNewsSnapshot(
     `Publish podcast episode ${episode.show_slug}/${episode.slug}`
   );
   return { published: true, dryRun: false, commitSha: result.commitSha };
+}
+
+export function buildEpisodeNewsPublication(
+  episode: PublicationEpisode,
+  origins: {
+    mediaOrigin: string;
+    feedOrigin: string;
+  }
+): EpisodeNewsPublication {
+  const plan = planEpisodePublication({
+    access: episode.access,
+    videoSourceKey: null
+  });
+  const common = {
+    publicationSchemaVersion: 1 as const,
+    pageMode: plan.newsMode,
+    id: episode.id,
+    showSlug: episode.show_slug,
+    slug: episode.slug,
+    title: episode.title,
+    summary: episode.summary,
+    publicAt: episode.public_at,
+    url: new URL(episode.canonical_url).pathname,
+    canonicalUrl: episode.canonical_url,
+    subscribeUrl: `/podcasts/${episode.show_slug}/#podcast-membership`,
+    publicationRevision: episode.publication_revision
+  };
+  if (plan.newsMode === "premium_teaser") {
+    return {
+      ...common,
+      pageMode: "premium_teaser"
+    };
+  }
+  return {
+    ...common,
+    pageMode: "full_episode",
+    duration: episode.duration_seconds,
+    audioUrl:
+      `${origins.mediaOrigin.replace(/\/$/, "")}/episodes/${episode.id}/audio`,
+    downloadUrl:
+      `${origins.mediaOrigin.replace(/\/$/, "")}/episodes/${episode.id}/audio?download=1`,
+    audioMimeType: episode.audio_mime_type,
+    audioBytes: episode.audio_bytes,
+    transcriptUrl:
+      `${origins.feedOrigin.replace(/\/$/, "")}/v1/shows/`
+      + `${episode.show_slug}/episodes/${episode.slug}/transcripts`,
+    chapterUrl:
+      `${origins.feedOrigin.replace(/\/$/, "")}/v1/shows/`
+      + `${episode.show_slug}/episodes/${episode.slug}/chapters.json`
+  };
 }
 
 async function getPublicationFile(

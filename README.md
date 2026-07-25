@@ -126,6 +126,13 @@ output routes stream through the Worker's private R2 binding. See
 
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.
+Publish and readiness now share one pure root-publication planner: RSS and News
+always apply; YouTube applies only to a video-bearing, non-premium-bonus
+episode. The versioned News snapshot is discriminated as `full_episode` or
+`premium_teaser`. A teaser contains public identity, title, summary, canonical
+and subscription links, public release time, and publication revision only;
+it cannot carry an enclosure, download, transcript, chapters, duration,
+private-feed token, or premium-release time.
 
 The 11-platform directory registry is now show-scoped. One reviewed publish
 action updates the canonical feed/News/YouTube job graph and creates monitored

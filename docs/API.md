@@ -290,6 +290,21 @@ prevent concurrent duplicate provider work, while Cron safely requeues a
 `running` lease that has not finished after 15 minutes. Migration `0029` keeps
 that bounded stale-lease scan on a partial running-job index.
 
+`POST /v1/admin/episodes/{id}/publish` derives its root jobs from the same pure
+intent planner used by readiness and contract tests. Every accepted episode
+gets RSS and canonical News work. YouTube work exists only when the episode has
+a native video source and is not `premium_bonus`; audio-only and premium-only
+episodes do not create a placeholder YouTube job. The plan is recorded in
+content-minimized audit metadata.
+
+News snapshots use `publicationSchemaVersion: 1` and a required `pageMode`.
+`full_episode` includes the public media/download/transcript/chapter contract.
+`premium_teaser` is a separate structural variant containing only public
+episode/show identity, title, summary, public release time, canonical and
+subscription links, and publication revision. Media URLs, MIME/byte metadata,
+duration, transcript/chapter endpoints, private tokens, and premium timing are
+absent rather than null or hidden.
+
 Multipart clients should use 32 MiB parts; the API currently caps each request
 at 100 MiB and each logical media object at 20 GiB. Parts are streamed to R2 and
 never buffered as one Worker request.
@@ -410,9 +425,9 @@ explanation, not authorization: `publishingEnforced` and `overrideAvailable`
 are both false. The endpoint performs only D1 reads and never heads R2, calls a
 provider, queues work, mutates a review, or changes Publish behavior. Current
 release jobs replace preflight contract state only for the exact
-`publicationRevision`. Premium bonuses explicitly show the missing News teaser
-publisher and make YouTube not applicable; audio-only episodes likewise make
-YouTube not applicable.
+`publicationRevision`. The shared planner identifies a premium bonus News node
+as a media-free `premium_teaser`; it makes YouTube not applicable for that
+access mode and for audio-only episodes.
 
 ### Clip recipes and private render evidence
 

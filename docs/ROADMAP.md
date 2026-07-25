@@ -161,6 +161,12 @@ iHeartRadio, and Deezer.
   Preserve stable evidence hashing, no external I/O, no override, and
   non-enforcement until the exact-snapshot publication gate is separately
   designed and tested.
+- Keep Publish, readiness, and contract tests on one root-publication planner.
+  RSS and canonical News apply to every episode; YouTube applies only to a
+  video-bearing non-premium-bonus episode. Publish premium bonuses through the
+  versioned media-free News teaser contract and render the same discriminator
+  on the canonical page, show aggregate, and noindex embed without player,
+  enclosure, transcript, chapter, duration, token, or premium-time leakage.
 
 ### Post-launch
 

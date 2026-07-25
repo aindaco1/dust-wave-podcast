@@ -6,6 +6,7 @@ import {
   publicationFingerprint,
   publicationPrerequisiteFailures
 } from "./publication-contract";
+import { planEpisodePublication } from "./publication-intent";
 import type { EpisodeAccess, EpisodeStatus, PodcastJob, ShowStatus } from "./types";
 import {
   optionalText,
@@ -594,11 +595,19 @@ export async function publishAdminEpisode(
     );
   }
   const revision = episode.publication_revision + 1;
-  const queueJobs: PodcastJob[] = [
-    makeJob("publish-rss", episode.show_id, episodeId, revision),
-    makeJob("publish-news", episode.show_id, episodeId, revision),
-    makeJob("publish-youtube", episode.show_id, episodeId, revision)
-  ];
+  const publicationPlan = planEpisodePublication({
+    access: episode.access,
+    videoSourceKey: episode.video_source_key
+  });
+  const queueJobs = publicationPlan.intents.map((intent) => ({
+    intent,
+    job: makeJob(
+      intent.jobType,
+      episode.show_id,
+      episodeId,
+      revision
+    )
+  }));
   const statements = [
     env.DB.prepare(
       `UPDATE episodes
@@ -620,7 +629,7 @@ export async function publishAdminEpisode(
       episode.publication_revision,
       episode.publication_fingerprint
     ),
-    ...queueJobs.map((job) =>
+    ...queueJobs.map(({ intent, job }) =>
     env.DB.prepare(
       `INSERT OR IGNORE INTO distribution_jobs (
          id, episode_id, destination, status, scheduled_at,
@@ -629,11 +638,7 @@ export async function publishAdminEpisode(
     ).bind(
       job.id,
       episodeId,
-      job.type === "publish-rss"
-        ? "rss"
-        : job.type === "publish-news"
-          ? "news"
-          : "youtube",
+      intent.destination,
       scheduledAt,
       revision,
       `${job.type}:${episodeId}:${revision}`
@@ -689,7 +694,7 @@ export async function publishAdminEpisode(
     );
   }
   if (new Date(scheduledAt).getTime() <= Date.now()) {
-    for (const job of queueJobs) {
+    for (const { job } of queueJobs) {
       await env.JOBS.send(job);
     }
   }
@@ -698,7 +703,15 @@ export async function publishAdminEpisode(
     action: status === "published" ? "episode.published" : "episode.scheduled",
     targetType: "episode",
     targetId: episodeId,
-    metadata: { revision, publicAt, destinations: destinations.results.length }
+    metadata: {
+      revision,
+      publicAt,
+      directories: destinations.results.length,
+      rootDestinations: publicationPlan.intents.map(
+        ({ destination }) => destination
+      ),
+      newsMode: publicationPlan.newsMode
+    }
   });
   return privateJson(
     request,
