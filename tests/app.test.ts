@@ -156,7 +156,8 @@ describe("podcast API", () => {
     for (const path of [
       "/v1/admin/shows",
       "/v1/admin/shows/show_opera_en_la_selva/episodes",
-      "/v1/admin/episodes/episode_fixture/transcripts"
+      "/v1/admin/episodes/episode_fixture/transcripts",
+      "/v1/admin/episodes/episode_fixture/clips"
     ]) {
       const response = await handleRequest(
         new Request(`https://podcast.example${path}`),
@@ -198,6 +199,67 @@ describe("podcast API", () => {
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ error: "unauthorized" });
     }
+  });
+
+  it("keeps clip revisions and render requests private before D1 or R2", async () => {
+    for (const [path, method, body] of [
+      [
+        "/v1/admin/episodes/episode_fixture/clips/clip_fixture",
+        "PUT",
+        {
+          mutationId: "clip_mutation_fixture",
+          baseRevision: 0,
+          title: "Fixture",
+          captionLanguage: "es",
+          aspectRatio: "9:16",
+          boundaryMode: "segment",
+          startCueId: "cue_001",
+          endCueId: "cue_001"
+        }
+      ],
+      [
+        "/v1/admin/clips/clip_fixture/render",
+        "POST",
+        { renderId: "clip_render_fixture", expectedRevision: 1 }
+      ]
+    ] as const) {
+      const response = await handleRequest(
+        new Request(`https://podcast.example${path}`, {
+          method,
+          headers: {
+            origin: "https://dustwave.xyz",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(body)
+        }),
+        createEnv()
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("rejects unsigned clip processor evidence before D1 lookup", async () => {
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/processor/clip-renders/render_fixture/complete",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ renderId: "render_fixture" })
+        }
+      ),
+      createEnv({
+        ENVIRONMENT: "staging",
+        MEDIA_PROCESSOR_CALLBACK_SECRET: "processor_secret_fixture"
+      })
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: "invalid_processor_signature"
+    });
   });
 
   it("keeps private-feed creation behind the listener session", async () => {

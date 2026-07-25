@@ -39,6 +39,15 @@ Caption text uses the shared timed-text editor representation and the Worker
 independently rejects HTML, invalid/overlapping timing, stale revisions, and
 out-of-bounds cues. Clip rendering remains a separate gated processor slice.
 
+The first clip-factory boundary now turns an approved transcript cue range
+into a versioned 9:16, 1:1, or 16:9 `captioned-waveform-v1` recipe. Producer
+writes are optimistic/idempotent and snapshot the exact transcript plus source
+audio; word boundaries remain unavailable without a matching passed alignment.
+A render request returns a checksummed private processor manifest, and the
+staging-only signed callback accepts ready evidence only when MP4
+dimensions/duration and private-R2 checksum metadata match that manifest.
+This does not yet claim that an FFmpeg render or YouTube Shorts upload ran.
+
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member
 site. The bridge is disabled in every environment by default.

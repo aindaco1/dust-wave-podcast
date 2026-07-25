@@ -2,12 +2,8 @@ import {
   sha256Hex
 } from "@dustwave/worker-core/crypto";
 
-import {
-  hasAdminRoleForShow,
-  requireAdmin,
-  type AdminAuthorization,
-  type AdminRole
-} from "./admin-auth";
+import type { AdminRole } from "./admin-auth";
+import { authorizeAdminEpisode } from "./admin-episode-access";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
@@ -40,15 +36,6 @@ export type TranscriptCue = {
   textMarkdown: string;
 };
 
-type EpisodeAuthorization = {
-  authorization: AdminAuthorization;
-  episode: {
-    id: string;
-    showId: string;
-    durationSeconds: number | null;
-  };
-};
-
 type TranscriptRow = {
   id: string;
   language: string;
@@ -75,7 +62,7 @@ export async function listAdminEpisodeTranscripts(
   env: PodcastEnv,
   episodeIdValue: string
 ): Promise<Response> {
-  const authorized = await authorizeEpisode(
+  const authorized = await authorizeAdminEpisode(
     request,
     env,
     episodeIdValue,
@@ -100,12 +87,12 @@ export async function saveAdminEpisodeTranscript(
   episodeIdValue: string,
   languageValue: string
 ): Promise<Response> {
-  const authorized = await authorizeEpisode(
+  const authorized = await authorizeAdminEpisode(
     request,
     env,
     episodeIdValue,
     EDIT_ROLES,
-    true
+    { requireCsrf: true }
   );
   if (authorized instanceof Response) return authorized;
   const language = validTranscriptLanguage(languageValue);
@@ -313,12 +300,12 @@ export async function approveAdminEpisodeTranscript(
   episodeIdValue: string,
   languageValue: string
 ): Promise<Response> {
-  const authorized = await authorizeEpisode(
+  const authorized = await authorizeAdminEpisode(
     request,
     env,
     episodeIdValue,
     APPROVE_ROLES,
-    true
+    { requireCsrf: true }
   );
   if (authorized instanceof Response) return authorized;
   const language = validTranscriptLanguage(languageValue);
@@ -629,56 +616,6 @@ function parseTranscriptContent(
     schemaVersion: 1,
     language,
     cues: []
-  };
-}
-
-async function authorizeEpisode(
-  request: Request,
-  env: PodcastEnv,
-  episodeIdValue: string,
-  roles: AdminRole[],
-  requireCsrf = false
-): Promise<EpisodeAuthorization | Response> {
-  const episodeId = validIdentifier(episodeIdValue, "episodeId");
-  const auth = await requireAdmin(request, env, {
-    allowedRoles: roles,
-    requireCsrf
-  });
-  if (!auth.ok) return auth.response;
-  const episode = await env.DB
-    .prepare(
-      `SELECT id, show_id, duration_seconds
-       FROM episodes
-       WHERE id = ?`
-    )
-    .bind(episodeId)
-    .first<{
-      id: string;
-      show_id: string;
-      duration_seconds: number | null;
-    }>();
-  if (
-    !episode
-    || !hasAdminRoleForShow(
-      auth.authorization.identity,
-      roles,
-      episode.show_id
-    )
-  ) {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "episode_not_found" },
-      { status: 404 }
-    );
-  }
-  return {
-    authorization: auth.authorization,
-    episode: {
-      id: episode.id,
-      showId: episode.show_id,
-      durationSeconds: episode.duration_seconds
-    }
   };
 }
 

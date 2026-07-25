@@ -51,6 +51,12 @@ import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
 import {
+  completeClipRender,
+  listAdminEpisodeClips,
+  queueAdminClipRender,
+  saveAdminEpisodeClip
+} from "./clips";
+import {
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "./diagnostics";
@@ -129,6 +135,12 @@ const ADMIN_EPISODE_TRANSCRIPT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)$/;
 const ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)\/approve$/;
+const ADMIN_EPISODE_CLIPS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips$/;
+const ADMIN_EPISODE_CLIP_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/([A-Za-z0-9_-]+)$/;
+const ADMIN_CLIP_RENDER_PATH =
+  /^\/v1\/admin\/clips\/([A-Za-z0-9_-]+)\/render$/;
 const ADMIN_EPISODE_AD_PLAN_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
 const ADMIN_UPLOAD_PART_PATH =
@@ -154,6 +166,8 @@ const ADMIN_AD_PLAN_REJECT_PATH =
   /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/reject$/;
 const PROCESSOR_AD_PLAN_COMPLETE_PATH =
   /^\/v1\/processor\/ad-plans\/([A-Za-z0-9_-]+)\/complete$/;
+const PROCESSOR_CLIP_RENDER_COMPLETE_PATH =
+  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/complete$/;
 const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
@@ -472,6 +486,37 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       adminEpisodeTranscriptsMatch[1]
     );
   }
+  const adminEpisodeClipMatch = url.pathname.match(
+    ADMIN_EPISODE_CLIP_PATH
+  );
+  if (adminEpisodeClipMatch && method === "PUT") {
+    return saveAdminEpisodeClip(
+      request,
+      env,
+      adminEpisodeClipMatch[1],
+      adminEpisodeClipMatch[2]
+    );
+  }
+  const adminEpisodeClipsMatch = url.pathname.match(
+    ADMIN_EPISODE_CLIPS_PATH
+  );
+  if (adminEpisodeClipsMatch && method === "GET") {
+    return listAdminEpisodeClips(
+      request,
+      env,
+      adminEpisodeClipsMatch[1]
+    );
+  }
+  const adminClipRenderMatch = url.pathname.match(
+    ADMIN_CLIP_RENDER_PATH
+  );
+  if (adminClipRenderMatch && method === "POST") {
+    return queueAdminClipRender(
+      request,
+      env,
+      adminClipRenderMatch[1]
+    );
+  }
   const adminEpisodeAdPlanMatch = url.pathname.match(
     ADMIN_EPISODE_AD_PLAN_PATH
   );
@@ -590,6 +635,16 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       processorAdPlanCompleteMatch[1]
+    );
+  }
+  const processorClipRenderCompleteMatch = url.pathname.match(
+    PROCESSOR_CLIP_RENDER_COMPLETE_PATH
+  );
+  if (processorClipRenderCompleteMatch && method === "POST") {
+    return completeClipRender(
+      request,
+      env,
+      processorClipRenderCompleteMatch[1]
     );
   }
 

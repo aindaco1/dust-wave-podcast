@@ -169,3 +169,20 @@ payload at one megabyte, enforces
 monotonic in-duration timing, and supersedes mismatched alignment evidence.
 Only Admin/Super-admin may approve a revision, and approval fails while any
 non-empty speaker label is unconfirmed.
+
+## Clip-render boundary
+
+Clip recipes are private, show-scoped, CSRF-protected Producer+ revisions.
+They snapshot the exact approved transcript digest/revision and source-audio
+key/bytes/ETag, derive segment boundaries from stable cue IDs, cap duration,
+and keep word cuts unavailable without a matching passed alignment and real
+non-interpolated word boundary records. Recipe and render audits contain
+digests, dimensions, language, boundary mode, and duration—never caption text.
+
+Render requests are one-per-clip-revision and produce a predetermined private
+R2 key plus a checksummed processor manifest. The callback is staging-only,
+HMAC/timestamp authenticated before D1 access, body-bounded, and replay-safe.
+Ready state requires exact MP4 dimensions/duration, byte count, and R2 custom
+metadata matching both the output and manifest digests. A callback for a stale
+revision may preserve historical evidence but cannot change the current clip.
+There is no public clip route or YouTube action in this slice.

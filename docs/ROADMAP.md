@@ -58,6 +58,10 @@ iHeartRadio, and Deezer.
   override.
 - Generate captioned clips and audiograms locally or on existing Cloudflare
   infrastructure, with templates and safe-area previews.
+- The first clip contract now versions approved-transcript cue selections,
+  locks word cuts behind matching passed alignment, and accepts only signed
+  checksummed private-R2 MP4 evidence. The FFmpeg workflow, admin preview,
+  Marketing download, and private/unlisted Shorts path remain gated follow-ups.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
 - Publish audio-only or native-video episodes to the configurable YouTube

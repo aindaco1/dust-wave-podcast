@@ -161,6 +161,9 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
+| `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
+| `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
+| `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
 | `GET` | `/v1/admin/distribution` | analyst+ | Directory registry |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Per-episode destination state |
 | `POST` | `/v1/admin/uploads` | producer+ | Start R2 multipart upload |
@@ -217,6 +220,34 @@ response exposes `alignment.wordControlsEnabled` only when a matching
 alignment revision has status `passed` and contains aligned/editor-adjusted
 word rows; otherwise the cue editor remains usable while word navigation and
 word-accurate cuts stay locked.
+
+### Clip recipes and private render evidence
+
+Clip recipes reference an exact approved transcript revision and immutable
+delivery-audio key/byte/ETag snapshot. The client supplies stable clip and
+mutation IDs, an optimistic base revision, title, language, aspect ratio,
+template, and start/end cue IDs. The Worker derives segment timing from those
+cues; it does not trust client milliseconds. Ranges must be 1–180 seconds
+inside the reviewed episode. Word-boundary requests additionally require
+matching passed alignment evidence and aligned/editor-adjusted boundary words
+with non-interpolated provenance in the selected cues.
+
+`POST /v1/admin/clips/{clipId}/render` accepts a stable render ID and exact
+expected clip revision. It rechecks that source audio and the currently
+approved transcript still match the recipe, then returns a
+`clip-render-v1` manifest containing bounded relative caption cues, output
+dimensions/safe areas, a private content-addressed R2 key, and a staging
+callback URL. The manifest SHA-256 is persisted before processing.
+
+The signed staging callback is
+`POST /v1/processor/clip-renders/{renderId}/complete` using the same timestamp
+and HMAC headers as the isolated media processor. Failure evidence is bounded
+and replay-safe. Successful evidence must match the render/manifest identity,
+exact 1080×1920, 1080×1080, or 1920×1080 dimensions, recipe duration within
+250 ms, `video/mp4`, the predetermined R2 key, byte count, and private R2
+custom metadata for both output SHA-256 and render-manifest SHA-256. An old
+revision may retain historical evidence but cannot mark a newer clip ready.
+No public URL or YouTube upload is produced by this boundary.
 
 ### Sponsor decision preview
 
