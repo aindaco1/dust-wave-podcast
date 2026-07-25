@@ -155,7 +155,8 @@ describe("podcast API", () => {
   it("keeps admin routes private without a session", async () => {
     for (const path of [
       "/v1/admin/shows",
-      "/v1/admin/shows/show_opera_en_la_selva/episodes"
+      "/v1/admin/shows/show_opera_en_la_selva/episodes",
+      "/v1/admin/episodes/episode_fixture/transcripts"
     ]) {
       const response = await handleRequest(
         new Request(`https://podcast.example${path}`),
@@ -165,6 +166,36 @@ describe("podcast API", () => {
       expect(response.status).toBe(401);
       expect(response.headers.get("cache-control")).toContain("private");
       expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("keeps transcript mutations private before loading an episode", async () => {
+    for (const [path, method, body] of [
+      [
+        "/v1/admin/episodes/episode_fixture/transcripts/es",
+        "PUT",
+        { mutationId: "mutation_fixture", baseRevision: 0, cues: [] }
+      ],
+      [
+        "/v1/admin/episodes/episode_fixture/transcripts/es/approve",
+        "POST",
+        { approvalId: "approval_fixture", expectedRevision: 1 }
+      ]
+    ] as const) {
+      const response = await handleRequest(
+        new Request(`https://podcast.example${path}`, {
+          method,
+          headers: {
+            origin: "https://dustwave.xyz",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(body)
+        }),
+        createEnv()
+      );
+
+      expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ error: "unauthorized" });
     }
   });

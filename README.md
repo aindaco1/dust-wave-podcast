@@ -30,6 +30,15 @@ benchmark evidence remain gated. Checkout code remains disabled pending
 accountant-approved tax/provider evidence; dynamic audio assembly, clips, and
 live YouTube/GitHub publishing remain roadmap work.
 
+The transcript review workbench stores versioned English/Spanish cue records,
+uses optimistic revisions and idempotency keys, and keeps word-linked controls
+off unless a matching alignment revision passed the launch gate. Producer
+edits always return an approved transcript to review; Admin/Super-admin
+approval requires every visible speaker label to be explicitly confirmed.
+Caption text uses the shared timed-text editor representation and the Worker
+independently rejects HTML, invalid/overlapping timing, stale revisions, and
+out-of-bounds cues. Clip rendering remains a separate gated processor slice.
+
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member
 site. The bridge is disabled in every environment by default.

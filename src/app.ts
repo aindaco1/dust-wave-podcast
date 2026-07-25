@@ -84,6 +84,11 @@ import {
   subscriptionCheckoutConfigured
 } from "./tax-quotes";
 import {
+  approveAdminEpisodeTranscript,
+  listAdminEpisodeTranscripts,
+  saveAdminEpisodeTranscript
+} from "./transcripts";
+import {
   abortMultipartUpload,
   completeMultipartUpload,
   createMultipartUpload,
@@ -118,6 +123,12 @@ const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
+const ADMIN_EPISODE_TRANSCRIPTS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts$/;
+const ADMIN_EPISODE_TRANSCRIPT_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)$/;
+const ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)\/approve$/;
 const ADMIN_EPISODE_AD_PLAN_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
 const ADMIN_UPLOAD_PART_PATH =
@@ -427,6 +438,38 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       adminEpisodeDistributionMatch[1]
+    );
+  }
+  const adminEpisodeTranscriptApproveMatch = url.pathname.match(
+    ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH
+  );
+  if (adminEpisodeTranscriptApproveMatch && method === "POST") {
+    return approveAdminEpisodeTranscript(
+      request,
+      env,
+      adminEpisodeTranscriptApproveMatch[1],
+      adminEpisodeTranscriptApproveMatch[2]
+    );
+  }
+  const adminEpisodeTranscriptMatch = url.pathname.match(
+    ADMIN_EPISODE_TRANSCRIPT_PATH
+  );
+  if (adminEpisodeTranscriptMatch && method === "PUT") {
+    return saveAdminEpisodeTranscript(
+      request,
+      env,
+      adminEpisodeTranscriptMatch[1],
+      adminEpisodeTranscriptMatch[2]
+    );
+  }
+  const adminEpisodeTranscriptsMatch = url.pathname.match(
+    ADMIN_EPISODE_TRANSCRIPTS_PATH
+  );
+  if (adminEpisodeTranscriptsMatch && method === "GET") {
+    return listAdminEpisodeTranscripts(
+      request,
+      env,
+      adminEpisodeTranscriptsMatch[1]
     );
   }
   const adminEpisodeAdPlanMatch = url.pathname.match(

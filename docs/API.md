@@ -158,6 +158,9 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |
+| `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
+| `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
+| `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
 | `GET` | `/v1/admin/distribution` | analyst+ | Directory registry |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Per-episode destination state |
 | `POST` | `/v1/admin/uploads` | producer+ | Start R2 multipart upload |
@@ -189,6 +192,31 @@ one status record per configured directory.
 Multipart clients should use 32 MiB parts; the API currently caps each request
 at 100 MiB and each logical media object at 20 GiB. Parts are streamed to R2 and
 never buffered as one Worker request.
+
+### Transcript review
+
+Transcript writes accept `mutationId`, `baseRevision`, and 1–10,000 ordered
+cues within a one-megabyte canonical payload. Each cue has a stable ID, integer
+millisecond start/end, optional public speaker label plus an explicit
+confirmation bit, and restricted inline Markdown from the shared timed-text
+editor. The Worker independently rejects HTML/control characters, duplicate
+IDs, overlaps, cues longer than two minutes, and timing outside the reviewed
+episode duration.
+
+The mutation ID is replay-safe and each transcript/base-revision pair may
+advance exactly once. A successful edit snapshots the canonical content JSON
+and SHA-256, returns status to `needs_review`, clears prior approval, and
+supersedes processing/reviewed/passed alignment revisions whose transcript
+digest no longer matches. Audit metadata contains only IDs, language,
+revision, cue count, digest, and speaker-confirmation state—never caption text.
+
+Approval requires `approvalId` and `expectedRevision`, an Admin/Super-admin
+session, current CSRF, and explicit confirmation for every non-empty speaker
+label. Transcript approval does not manufacture or approve word timing. The
+response exposes `alignment.wordControlsEnabled` only when a matching
+alignment revision has status `passed` and contains aligned/editor-adjusted
+word rows; otherwise the cue editor remains usable while word navigation and
+word-accurate cuts stay locked.
 
 ### Sponsor decision preview
 

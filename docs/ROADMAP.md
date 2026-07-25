@@ -47,6 +47,10 @@ iHeartRadio, and Deezer.
 - Build the common admin shell at `/admin/podcasts/` with Shows, Episodes,
   Distribution, Marketing, Analytics, Sponsors, Subscribers, and Settings.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
+- The first transcript-review slice now reuses its restricted timed-text mode
+  for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
+  speaker labels, Admin approval, and matching-alignment readiness. Public
+  transcript projection and the render processor remain gated follow-ups.
 - Process source audio, validate delivery files, extract duration/loudness, and
   generate player peaks.
 - Transcribe Spanish and English, expose confidence, and block approval unless

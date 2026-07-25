@@ -156,3 +156,16 @@
   source URLs, or transcript content.
 - Complete backup/restore, queue replay, secret rotation, incident response,
   and provider revocation drills.
+
+## Transcript review boundary
+
+Transcript review writes use show-scoped Producer/Admin/Super-admin sessions,
+site-origin and CSRF checks, stable mutation IDs, and optimistic base
+revisions. Full transcript text is never included in audit metadata or logs;
+audits retain only episode/language, cue count, revision, content digest, and
+speaker-confirmation state. The Worker accepts structured cue Markdown only,
+rejects active HTML/control characters, caps cue/text counts and the canonical
+payload at one megabyte, enforces
+monotonic in-duration timing, and supersedes mismatched alignment evidence.
+Only Admin/Super-admin may approve a revision, and approval fails while any
+non-empty speaker label is unconfirmed.
