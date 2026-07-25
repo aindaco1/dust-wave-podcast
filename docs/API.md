@@ -11,6 +11,7 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 | `GET`, `HEAD` | `/health` | Runtime and environment health |
 | `GET`, `HEAD` | `/v1/shows` | Non-archived shows, including coming-soon shows |
 | `GET`, `HEAD` | `/v1/shows/{slug}` | Show, internal price choices, global Checkout gate, and public episodes |
+| `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/transcripts` | Latest immutable approved English/Spanish transcript revisions for a due public episode |
 | `GET`, `HEAD` | `/{rss-slug}/rss.xml` | Canonical public RSS |
 | `GET`, `HEAD` | `/v1/feeds/{rss-slug}/rss.xml` | RSS alias for staging and diagnostics |
 | `GET`, `HEAD` | `/episodes/{episode-id}/audio` | Public R2-backed audio with byte ranges |
@@ -22,6 +23,19 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 Append `?download=1` to the episode media URL for attachment disposition.
 Public audio is available only when the episode is published, due, eligible
 for public access, and backed by ready delivery media.
+
+The public transcript route applies the same due/public-access/ready-media
+boundary and returns `404` for drafts, scheduled releases, premium bonuses,
+archived shows, and unknown records. It reads the latest immutable approved
+revision for each language, requires confirmed public speaker labels,
+revalidates the canonical cue contract, verifies its stored SHA-256, and omits
+any invalid revision rather than exposing it. Output is plain timed text with
+stable cue IDs and millisecond ranges; it contains no Markdown/HTML, internal
+episode/transcript/admin ID, draft, or word-alignment record. Successful
+responses use a content-derived ETag and a 60-second public cache with
+stale-while-revalidate; errors are no-store. Read-only CORS is `*`, API
+responses are noindex, `HEAD` is body-free, and weak/list conditional ETags are
+accepted.
 
 Subscription tax quotes accept a configured `priceId` and a billing
 `destination`. The Worker normalizes the destination with the same shared
@@ -301,6 +315,12 @@ response exposes `alignment.wordControlsEnabled` only when a matching
 alignment revision has status `passed` and contains aligned/editor-adjusted
 word rows; otherwise the cue editor remains usable while word navigation and
 word-accurate cuts stay locked.
+
+Approval records and transcript-revision snapshots form the public source of
+truth. Editing a newer working revision clears current approval but does not
+rewrite or remove the last approved immutable snapshot. The public endpoint
+changes only after another exact revision is approved, at which point its
+content-derived ETag also changes.
 
 ### Clip recipes and private render evidence
 

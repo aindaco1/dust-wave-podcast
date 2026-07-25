@@ -80,6 +80,12 @@ describe("transcript review contract", () => {
         speakerLabel: "<svg onload=alert(1)>"
       }
     ])).toThrow(/speakerLabel is invalid/);
+    expect(() => normalizeTranscriptCues([
+      {
+        ...cue("cue_001", 0, 2_000),
+        textMarkdown: "Safe prefix\u202espoofed direction"
+      }
+    ])).toThrow(/direction-override/);
   });
 
   it("allows only the shared timed-text emphasis/underline representation", () => {

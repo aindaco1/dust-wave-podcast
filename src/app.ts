@@ -112,7 +112,8 @@ import {
 import {
   approveAdminEpisodeTranscript,
   listAdminEpisodeTranscripts,
-  saveAdminEpisodeTranscript
+  saveAdminEpisodeTranscript,
+  servePublicEpisodeTranscripts
 } from "./transcripts";
 import {
   abortMultipartUpload,
@@ -127,6 +128,8 @@ const SHOW_TAX_QUOTE_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/tax\/quote$/;
 const SHOW_CHECKOUT_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/checkout$/;
+const SHOW_EPISODE_TRANSCRIPTS_PATH =
+  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts$/;
 const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
 const PRIVATE_FEED_PATH =
@@ -276,6 +279,20 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const showCheckoutMatch = url.pathname.match(SHOW_CHECKOUT_PATH);
   if (showCheckoutMatch && method === "POST") {
     return createSubscriptionCheckout(request, env, showCheckoutMatch[1]);
+  }
+  const showEpisodeTranscriptsMatch = url.pathname.match(
+    SHOW_EPISODE_TRANSCRIPTS_PATH
+  );
+  if (
+    showEpisodeTranscriptsMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return servePublicEpisodeTranscripts(
+      request,
+      env,
+      showEpisodeTranscriptsMatch[1],
+      showEpisodeTranscriptsMatch[2]
+    );
   }
   const showMatch = url.pathname.match(SHOW_PATH);
   if (showMatch && (method === "GET" || method === "HEAD")) {

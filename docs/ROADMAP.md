@@ -49,8 +49,11 @@ iHeartRadio, and Deezer.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
-  speaker labels, Admin approval, and matching-alignment readiness. Public
-  transcript projection remains a gated follow-up.
+  speaker labels, Admin approval, and matching-alignment readiness. Canonical
+  News pages now fetch the latest immutable, hash-verified approved revision
+  per language, render it as safe plain timed text, and seek the shared Digest
+  player from accessible timestamps. Draft/future/premium-only content stays
+  outside the public projection; word-linked controls remain alignment-gated.
 - Process source audio, validate delivery files, extract duration/loudness, and
   generate player peaks.
 - Transcribe Spanish and English, expose confidence, and block approval unless

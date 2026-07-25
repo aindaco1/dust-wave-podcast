@@ -200,6 +200,18 @@ monotonic in-duration timing, and supersedes mismatched alignment evidence.
 Only Admin/Super-admin may approve a revision, and approval fails while any
 non-empty speaker label is unconfirmed.
 
+Public transcript reads are slug-addressed and fail closed behind the same
+published/due/public-or-free-or-early-access/ready-media policy as canonical
+News/audio publication. Premium bonuses, drafts, future releases, archived
+shows, and unknown records all return the same no-store `404`. The projection
+reads only immutable revision+approval rows, re-parses the restricted cue
+contract, rejects control and bidirectional direction-override characters,
+requires confirmed speaker labels, and recomputes SHA-256 before including a
+language. It strips the restricted editor markup to plain text and never
+returns internal transcript/admin IDs or word records. Public JSON uses
+content-derived ETags, bounded cache freshness, wildcard read-only CORS,
+noindex, nosniff, and a deny-all document CSP.
+
 ## Clip-render boundary
 
 Clip recipes are private, show-scoped, CSRF-protected Producer+ revisions.

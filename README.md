@@ -37,7 +37,12 @@ edits always return an approved transcript to review; Admin/Super-admin
 approval requires every visible speaker label to be explicitly confirmed.
 Caption text uses the shared timed-text editor representation and the Worker
 independently rejects HTML, invalid/overlapping timing, stale revisions, and
-out-of-bounds cues. Public transcript and clip distribution remain gated.
+out-of-bounds cues. The public transcript projection now serves only the
+latest immutable, hash-verified approved revision per language for published,
+due, public/free/early-access episodes with ready media. It emits plain timed
+text with wildcard read-only CORS, short cache validators, and no internal
+transcript/admin identity; premium bonuses and non-public episode states remain
+indistinguishable `404`s. Public clip distribution remains gated.
 
 The first clip-factory boundary now turns an approved transcript cue range
 into a versioned 9:16, 1:1, or 16:9 `captioned-waveform-v1` recipe. Producer

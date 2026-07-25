@@ -67,6 +67,9 @@ export async function publishEpisodeNewsSnapshot(
     downloadUrl: `${env.MEDIA_ORIGIN.replace(/\/$/, "")}/episodes/${episode.id}/audio?download=1`,
     audioMimeType: episode.audio_mime_type,
     audioBytes: episode.audio_bytes,
+    transcriptUrl:
+      `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/`
+      + `${episode.show_slug}/episodes/${episode.slug}/transcripts`,
     publicationRevision: episode.publication_revision
   });
   publications.sort((left, right) =>

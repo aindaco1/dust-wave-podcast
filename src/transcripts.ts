@@ -57,6 +57,134 @@ type TranscriptRow = {
   aligned_word_count: number;
 };
 
+type PublicEpisodeRow = {
+  id: string;
+  canonical_url: string;
+};
+
+type PublicTranscriptRevisionRow = {
+  language: string;
+  revision: number;
+  content_json: string;
+  content_sha256: string;
+  approved_at: string;
+};
+
+export async function servePublicEpisodeTranscripts(
+  request: Request,
+  env: PodcastEnv,
+  showSlug: string,
+  episodeSlug: string
+): Promise<Response> {
+  const episode = await env.DB
+    .prepare(
+      `SELECT e.id, e.canonical_url
+       FROM episodes e
+       JOIN shows s ON s.id = e.show_id
+       WHERE s.slug = ?
+         AND s.status != 'archived'
+         AND e.slug = ?
+         AND e.status = 'published'
+         AND e.public_at <= datetime('now')
+         AND e.access IN ('public', 'early_access', 'free_mini')
+         AND e.media_status = 'ready'
+       LIMIT 1`
+    )
+    .bind(showSlug, episodeSlug)
+    .first<PublicEpisodeRow>();
+  if (!episode) {
+    return publicTranscriptJson(
+      request,
+      { error: "episode_not_found" },
+      { status: 404, cacheControl: "no-store" }
+    );
+  }
+
+  const revisions = await env.DB
+    .prepare(
+      `SELECT
+         t.language,
+         r.revision,
+         r.content_json,
+         r.content_sha256,
+         a.created_at AS approved_at
+       FROM transcripts t
+       JOIN transcript_approvals a
+         ON a.transcript_id = t.id
+        AND a.revision = (
+          SELECT MAX(latest.revision)
+          FROM transcript_approvals latest
+          WHERE latest.transcript_id = t.id
+        )
+       JOIN transcript_revisions r
+         ON r.transcript_id = t.id
+        AND r.revision = a.revision
+       WHERE t.episode_id = ?
+         AND t.language IN ('en', 'es')
+         AND r.speaker_labels_confirmed = 1
+       ORDER BY t.language`
+    )
+    .bind(episode.id)
+    .all<PublicTranscriptRevisionRow>();
+
+  const transcripts: Array<Record<string, unknown>> = [];
+  for (const revision of revisions.results) {
+    const content = parseTranscriptContent(
+      revision.content_json,
+      revision.language
+    );
+    if (
+      content.cues.length < 1
+      || content.cues.some(
+        ({ speakerLabel, speakerConfirmed }) =>
+          Boolean(speakerLabel) && !speakerConfirmed
+      )
+    ) {
+      continue;
+    }
+    const canonicalJson = serializeTranscriptContent(content);
+    if (await sha256Hex(canonicalJson) !== revision.content_sha256) {
+      continue;
+    }
+    transcripts.push({
+      language: revision.language,
+      revision: revision.revision,
+      approvedAt: revision.approved_at,
+      contentSha256: revision.content_sha256,
+      cues: content.cues.map((cue) => ({
+        id: cue.id,
+        startsAtMs: cue.startsAtMs,
+        endsAtMs: cue.endsAtMs,
+        speakerLabel: cue.speakerLabel,
+        text: publicTimedText(cue.textMarkdown)
+      }))
+    });
+  }
+
+  const body = {
+    schemaVersion: 1,
+    episode: {
+      showSlug,
+      slug: episodeSlug,
+      canonicalUrl: episode.canonical_url
+    },
+    transcripts
+  };
+  const bodyJson = JSON.stringify(body);
+  const etag = `"${await sha256Hex(bodyJson)}"`;
+  const headers = publicTranscriptHeaders(
+    "public, max-age=60, stale-while-revalidate=300"
+  );
+  headers.set("etag", etag);
+  if (etagMatches(request.headers.get("if-none-match"), etag)) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(request.method === "HEAD" ? null : bodyJson, {
+    status: 200,
+    headers
+  });
+}
+
 export async function listAdminEpisodeTranscripts(
   request: Request,
   env: PodcastEnv,
@@ -619,6 +747,57 @@ function parseTranscriptContent(
   };
 }
 
+function publicTimedText(textMarkdown: string): string {
+  return textMarkdown
+    .replace(/<\/?u>/gi, "")
+    .replace(/[*_]/g, "")
+    .trim();
+}
+
+function publicTranscriptJson(
+  request: Request,
+  body: unknown,
+  {
+    status,
+    cacheControl
+  }: {
+    status: number;
+    cacheControl: string;
+  }
+): Response {
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(body),
+    {
+      status,
+      headers: publicTranscriptHeaders(cacheControl)
+    }
+  );
+}
+
+function publicTranscriptHeaders(cacheControl: string): Headers {
+  return new Headers({
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": cacheControl,
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "etag",
+    "cross-origin-resource-policy": "cross-origin",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "x-content-type-options": "nosniff",
+    "x-robots-tag": "noindex, nofollow, noarchive",
+    "referrer-policy": "no-referrer"
+  });
+}
+
+function etagMatches(header: string | null, etag: string): boolean {
+  if (!header) return false;
+  return header.split(",").some((candidate) => {
+    const value = candidate.trim();
+    return value === "*"
+      || value === etag
+      || (value.startsWith("W/") && value.slice(2) === etag);
+  });
+}
+
 async function stableTranscriptId(
   episodeId: string,
   language: string
@@ -691,8 +870,13 @@ function validateTimedTextMarkdown(value: unknown, field: string): string {
     .normalize("NFKC")
     .replace(/\s+/g, " ")
     .trim();
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) {
-    throw new RequestValidationError(`${field} contains control characters`);
+  if (
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/
+      .test(text)
+  ) {
+    throw new RequestValidationError(
+      `${field} contains control or direction-override characters`
+    );
   }
   const withoutUnderline = text.replace(/<\/?u>/gi, "");
   if (/[<>]/.test(withoutUnderline)) {
@@ -727,7 +911,9 @@ function optionalCaptionText(
   if (text.length > maximum) {
     throw new RequestValidationError(`${field} is too long`);
   }
-  if (/[\u0000-\u001f\u007f<>]/.test(text)) {
+  if (
+    /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069<>]/.test(text)
+  ) {
     throw new RequestValidationError(`${field} is invalid`);
   }
   return text;

@@ -86,6 +86,16 @@ invalid calendar dates, multiline account labels, control characters, unknown
 fields, passwords, and verification codes. Do not fabricate a provider
 submission merely to exercise staging.
 
+For the public transcript projection, use an isolated published/due/public
+episode with ready media and one immutable approved English or Spanish
+revision. Confirm `GET` returns only plain timed text, confirmed speaker names,
+the expected revision digest, wildcard read-only CORS, a public short-cache
+policy, and a content-derived ETag; confirm `HEAD` is body-free and a weak
+`If-None-Match` returns `304`. Tamper a disposable revision digest/content pair
+and confirm that language is omitted. Draft, future, archived-show,
+`premium_bonus`, and non-ready-media fixtures must all return the same
+no-store `404`. Do not use a real premium transcript as a negative fixture.
+
 ## 3. Configure non-secret test state
 
 - Associate the inactive Stripe test product and inactive $5/month and
