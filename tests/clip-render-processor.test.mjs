@@ -357,6 +357,9 @@ function run(command, args, options = {}) {
     encoding: "utf8",
     ...options
   });
+  if (result.error) {
+    throw new Error(`${command} could not start: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     throw new Error(
       `${command} failed: ${String(result.stderr || result.stdout).trim()}`
