@@ -61,6 +61,13 @@ import {
   uploadClipRenderProcessorOutput
 } from "./clips";
 import {
+  approveAdminEpisodeChapters,
+  getAdminEpisodeChapters,
+  saveAdminEpisodeChapters,
+  servePrivateEpisodeChapters,
+  servePublicEpisodeChapters
+} from "./chapters";
+import {
   approveAdminClipYouTubePublication,
   createAdminClipYouTubeDraft
 } from "./clip-youtube";
@@ -130,12 +137,16 @@ const SHOW_CHECKOUT_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/checkout$/;
 const SHOW_EPISODE_TRANSCRIPTS_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts$/;
+const SHOW_EPISODE_CHAPTERS_PATH =
+  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
 const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
 const PRIVATE_FEED_PATH =
   /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const PRIVATE_MEDIA_PATH =
   /^\/v1\/private\/([A-Za-z0-9_-]{43})\/episodes\/([A-Za-z0-9_-]+)\/audio$/;
+const PRIVATE_CHAPTERS_PATH =
+  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
 const MEMBER_SHOW_FEED_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed$/;
 const MEMBER_SHOW_FEED_ROTATE_PATH =
@@ -170,6 +181,10 @@ const ADMIN_EPISODE_TRANSCRIPT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)$/;
 const ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)\/approve$/;
+const ADMIN_EPISODE_CHAPTERS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters$/;
+const ADMIN_EPISODE_CHAPTERS_APPROVE_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/approve$/;
 const ADMIN_EPISODE_CLIPS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips$/;
 const ADMIN_EPISODE_CLIP_PATH =
@@ -294,6 +309,20 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       showEpisodeTranscriptsMatch[2]
     );
   }
+  const showEpisodeChaptersMatch = url.pathname.match(
+    SHOW_EPISODE_CHAPTERS_PATH
+  );
+  if (
+    showEpisodeChaptersMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return servePublicEpisodeChapters(
+      request,
+      env,
+      showEpisodeChaptersMatch[1],
+      showEpisodeChaptersMatch[2]
+    );
+  }
   const showMatch = url.pathname.match(SHOW_PATH);
   if (showMatch && (method === "GET" || method === "HEAD")) {
     const show = await getPublicShow(env.DB, showMatch[1]);
@@ -323,6 +352,19 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       env,
       privateFeedMatch[1],
       privateFeedMatch[2]
+    );
+  }
+  const privateChaptersMatch = url.pathname.match(PRIVATE_CHAPTERS_PATH);
+  if (
+    privateChaptersMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return servePrivateEpisodeChapters(
+      request,
+      env,
+      privateChaptersMatch[1],
+      privateChaptersMatch[2],
+      privateChaptersMatch[3]
     );
   }
   const privateMediaMatch = url.pathname.match(PRIVATE_MEDIA_PATH);
@@ -582,6 +624,35 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       adminEpisodeTranscriptApproveMatch[1],
       adminEpisodeTranscriptApproveMatch[2]
     );
+  }
+  const adminEpisodeChaptersApproveMatch = url.pathname.match(
+    ADMIN_EPISODE_CHAPTERS_APPROVE_PATH
+  );
+  if (adminEpisodeChaptersApproveMatch && method === "POST") {
+    return approveAdminEpisodeChapters(
+      request,
+      env,
+      adminEpisodeChaptersApproveMatch[1]
+    );
+  }
+  const adminEpisodeChaptersMatch = url.pathname.match(
+    ADMIN_EPISODE_CHAPTERS_PATH
+  );
+  if (adminEpisodeChaptersMatch) {
+    if (method === "GET") {
+      return getAdminEpisodeChapters(
+        request,
+        env,
+        adminEpisodeChaptersMatch[1]
+      );
+    }
+    if (method === "PUT") {
+      return saveAdminEpisodeChapters(
+        request,
+        env,
+        adminEpisodeChaptersMatch[1]
+      );
+    }
   }
   const adminEpisodeTranscriptMatch = url.pathname.match(
     ADMIN_EPISODE_TRANSCRIPT_PATH

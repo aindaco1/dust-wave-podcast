@@ -86,6 +86,16 @@ invalid calendar dates, multiline account labels, control characters, unknown
 fields, passwords, and verification codes. Do not fabricate a provider
 submission merely to exercise staging.
 
+For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
+the four `episode_chapter_*` review/history tables and indexes exist, any
+legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key
+checks stay empty. With an isolated fixture, confirm Producer+ writes require
+same-origin CSRF and advance one base revision once; Admin+ approval binds the
+exact revision; a newer draft leaves the prior immutable approval readable.
+Reject nonzero first markers, duplicate/out-of-order or out-of-duration starts,
+all-silent documents, unsafe title controls/markup, and non-HTTPS or
+credentialed URLs.
+
 For the public transcript projection, use an isolated published/due/public
 episode with ready media and one immutable approved English or Spanish
 revision. Confirm `GET` returns only plain timed text, confirmed speaker names,
@@ -95,6 +105,18 @@ policy, and a content-derived ETag; confirm `HEAD` is body-free and a weak
 and confirm that language is omitted. Draft, future, archived-show,
 `premium_bonus`, and non-ready-media fixtures must all return the same
 no-store `404`. Do not use a real premium transcript as a negative fixture.
+
+For the chapter projection, use a separate isolated episode with one approved
+revision. Confirm public `GET` returns version `1.2.0`, ascending second-based
+markers, `application/json+chapters`, the expected optional HTTPS metadata,
+wildcard read-only CORS, short shared caching, and a content-derived ETag;
+confirm `HEAD` is body-free and weak `If-None-Match` returns `304`. Confirm the
+public RSS item has exactly one HTTPS `<podcast:chapters>` tag. Tamper the
+disposable revision digest and confirm the document becomes a no-store `404`.
+Draft/future/premium-only/non-ready fixtures must share that public `404`.
+Using a disposable entitled listener, confirm early/bonus private RSS points
+to the tokenized chapter route and its response is private/no-store with no
+wildcard CORS. Never put the token in shared evidence.
 
 ## 3. Configure non-secret test state
 

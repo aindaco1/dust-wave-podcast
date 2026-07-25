@@ -146,12 +146,16 @@ iHeartRadio, and Deezer.
   engagement, sponsors, subscriptions, YouTube, and publication health.
 - Keep raw delivery data privacy-minimized, methodology-versioned, deduplicated,
   filterable, and exportable.
+- Reuse the original normalized chapter rows behind a versioned review header,
+  immutable approvals, Podcasting 2.0 public/private JSON, RSS tags, and the
+  existing Digest/Podcast player. Keep draft/future/premium visibility
+  fail-closed and remote chapter artwork out of the first-party page runtime.
 
 ### Post-launch
 
 - Expose the multi-show/network interface already supported by the data model.
 - Add saved and scheduled reports, richer campaign pacing, live/video clips,
-  collaboration workflows, listener Q&A, chapters, and deeper transcript
+  collaboration workflows, listener Q&A, and deeper transcript
   discovery.
 - Treat remote multitrack recording as a separately gated product after a
   browser/device recovery spike.

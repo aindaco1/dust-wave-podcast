@@ -212,6 +212,28 @@ returns internal transcript/admin IDs or word records. Public JSON uses
 content-derived ETags, bounded cache freshness, wildcard read-only CORS,
 noindex, nosniff, and a deny-all document CSP.
 
+## Chapter boundary
+
+Chapter editing reuses the original normalized episode rows and adds a
+revision header, replay-safe optimistic mutations, immutable JSON snapshots,
+and exact Admin/Super-admin approvals. Producer+ mutations require a
+show-scoped session, allowed origin, and CSRF. Server validation caps count,
+duration, title and URL sizes; requires ordered in-duration starts and an
+00:00 first marker; rejects control/bidirectional override/markup characters;
+and accepts HTTPS URLs without credentials only. Audit metadata contains the
+episode, revision, count, and digest—never chapter titles or URLs.
+
+Public chapter documents use the same due/public-access/ready-media boundary as
+canonical News. Entitled early-access and premium-bonus documents have a
+separate tokenized route that HMACs the bearer before D1 and rechecks active,
+unexpired show entitlement on every read. Both projections read immutable
+approval/revision pairs and recompute SHA-256; missing, unapproved, malformed,
+tampered, or unauthorized records fail closed. Public documents use short
+cache/ETag/CORS headers; private documents are no-store, omit wildcard CORS,
+and never expose the bearer in D1 or response content. The first-party News UI
+does not request remote chapter artwork, avoiding an extra listener-tracking
+request; related links are no-referrer and noopener/noreferrer.
+
 ## Clip-render boundary
 
 Clip recipes are private, show-scoped, CSRF-protected Producer+ revisions.

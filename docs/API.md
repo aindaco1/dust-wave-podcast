@@ -12,6 +12,7 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 | `GET`, `HEAD` | `/v1/shows` | Non-archived shows, including coming-soon shows |
 | `GET`, `HEAD` | `/v1/shows/{slug}` | Show, internal price choices, global Checkout gate, and public episodes |
 | `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/transcripts` | Latest immutable approved English/Spanish transcript revisions for a due public episode |
+| `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/chapters.json` | Latest immutable approved Podcasting 2.0 chapter document for a due public episode |
 | `GET`, `HEAD` | `/{rss-slug}/rss.xml` | Canonical public RSS |
 | `GET`, `HEAD` | `/v1/feeds/{rss-slug}/rss.xml` | RSS alias for staging and diagnostics |
 | `GET`, `HEAD` | `/episodes/{episode-id}/audio` | Public R2-backed audio with byte ranges |
@@ -36,6 +37,16 @@ responses use a content-derived ETag and a 60-second public cache with
 stale-while-revalidate; errors are no-store. Read-only CORS is `*`, API
 responses are noindex, `HEAD` is body-free, and weak/list conditional ETags are
 accepted.
+
+The public chapter route uses the same episode visibility boundary, then reads
+the latest immutable approval/revision pair, revalidates ordered integer
+millisecond markers and safe text/HTTPS metadata, and recomputes its SHA-256.
+It returns the Podcasting 2.0 `1.2.0` shape with
+`application/json+chapters`, second-based `startTime`, optional `img`/`url`,
+and optional silent `toc: false` markers. Missing, malformed, tampered, or
+unapproved data returns the same no-store `404`. Successful public responses
+use content-derived ETags, short shared caching, wildcard read-only CORS,
+noindex/nosniff, and body-free `HEAD`.
 
 Subscription tax quotes accept a configured `priceId` and a billing
 `destination`. The Worker normalizes the destination with the same shared
@@ -91,6 +102,7 @@ customer/subscription ID, or private-feed token.
 | `POST` | `/v1/member/shows/{show-slug}/billing/portal` | Create a scoped Stripe Customer Portal session |
 | `POST` | `/v1/member/redemptions/pool` | Redeem one email-bound Pool benefit code |
 | `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/rss.xml` | Entitlement-gated premium RSS |
+| `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/episodes/{episode-slug}/chapters.json` | Entitlement-gated approved chapter document |
 | `GET`, `HEAD` | `/v1/private/{token}/episodes/{episode-id}/audio` | Entitlement-gated byte-range audio |
 
 Create and rotate require the listener cookie, allowed site origin, and current
@@ -190,6 +202,9 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
+| `GET` | `/v1/admin/episodes/{id}/chapters` | analyst+ | Current normalized chapter rows plus version/approval state |
+| `PUT` | `/v1/admin/episodes/{id}/chapters` | producer+ | Idempotent optimistic chapter revision |
+| `POST` | `/v1/admin/episodes/{id}/chapters/approve` | admin+ | Approve one exact chapter revision |
 | `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
 | `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
 | `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
@@ -321,6 +336,23 @@ truth. Editing a newer working revision clears current approval but does not
 rewrite or remove the last approved immutable snapshot. The public endpoint
 changes only after another exact revision is approved, at which point its
 content-derived ETag also changes.
+
+### Chapter review
+
+Chapter writes accept `mutationId`, `baseRevision`, and 1–500 ordered markers.
+The first marker starts at zero; subsequent integer-millisecond starts must be
+strictly increasing and inside the reviewed episode duration. Each chapter
+has a stable key, required plain title, optional HTTPS link/artwork, and a
+table-of-contents boolean; at least one marker must remain visible. Titles
+reject markup, control, and bidirectional override characters. The canonical
+review payload is capped at 256 KB.
+
+The existing normalized `episode_chapters` table remains the only editable row
+source. One replay-safe D1 batch conditionally advances its header revision,
+replaces those rows, stores the immutable canonical JSON/digest, and writes
+bounded audit metadata without titles or URLs. Admin approval binds one exact
+revision/digest. A newer draft does not rewrite the last approved snapshot, so
+public/private clients remain on the prior approval until the next review.
 
 ### Clip recipes and private render evidence
 

@@ -48,6 +48,7 @@ describe("public feed and media delivery", () => {
             return {
               results: [{
                 id: "episode_fixture",
+                slug: "episode-fixture",
                 title: "Episode Fixture",
                 summary: "Resumen.",
                 guid: "urn:uuid:fixture",
@@ -59,7 +60,8 @@ describe("public feed and media delivery", () => {
                 audio_filename: "fixture.mp3",
                 explicit: 0,
                 season_number: null,
-                episode_number: 1
+                episode_number: 1,
+                has_approved_chapters: 1
               }]
             };
           }
@@ -78,6 +80,11 @@ describe("public feed and media delivery", () => {
     expect(xml).toContain("<title>Show Fixture</title>");
     expect(xml).toContain("https://media.dustwave.xyz/episodes/episode_fixture/audio");
     expect(xml).toContain('guid isPermaLink="false"');
+    expect(xml).toContain(
+      '<podcast:chapters url="https://feeds.dustwave.xyz/v1/shows/'
+      + 'show-fixture/episodes/episode-fixture/chapters.json" '
+      + 'type="application/json+chapters"/>'
+    );
     expect(xml).not.toContain("premium_bonus");
   });
 
@@ -160,6 +167,7 @@ describe("public feed and media delivery", () => {
             return {
               results: [{
                 id: "episode_bonus",
+                slug: "bonus",
                 title: "Bonus Fixture",
                 summary: "Sólo premium.",
                 guid: "urn:uuid:bonus",
@@ -172,7 +180,8 @@ describe("public feed and media delivery", () => {
                 audio_filename: "bonus.mp3",
                 explicit: 0,
                 season_number: null,
-                episode_number: 2
+                episode_number: 2,
+                has_approved_chapters: 1
               }]
             };
           },
@@ -203,6 +212,10 @@ describe("public feed and media delivery", () => {
     expect(xml).toContain("<title>Show Fixture Premium</title>");
     expect(xml).toContain(
       `https://media.dustwave.xyz/v1/private/${rawToken}/episodes/episode_bonus/audio`
+    );
+    expect(xml).toContain(
+      `https://feeds.dustwave.xyz/v1/private/${rawToken}/show-fixture/`
+      + "episodes/bonus/chapters.json"
     );
     expect(boundValues.flat()).not.toContain(rawToken);
     expect(boundValues[0][0]).toMatch(/^[a-f0-9]{64}$/);

@@ -44,6 +44,17 @@ text with wildcard read-only CORS, short cache validators, and no internal
 transcript/admin identity; premium bonuses and non-public episode states remain
 indistinguishable `404`s. Public clip distribution remains gated.
 
+The chapter workbench wraps the original normalized `episode_chapters` rows
+with optimistic mutations, immutable revision snapshots, Admin approval, and
+content digests instead of introducing a second editable chapter model.
+Approved chapters are projected as Podcasting 2.0 `application/json+chapters`
+documents for public or entitled private feeds. Public chapter reads share the
+canonical News visibility gate; private early-access/bonus reads recheck the
+bearer token and show entitlement. RSS emits one `<podcast:chapters>` tag only
+when an approved revision exists. The canonical News page renders the same
+document as accessible seek controls through the existing Digest/Podcast
+player—there is no second audio runtime.
+
 The first clip-factory boundary now turns an approved transcript cue range
 into a versioned 9:16, 1:1, or 16:9 `captioned-waveform-v1` recipe. Producer
 writes are optimistic/idempotent and snapshot the exact transcript plus source

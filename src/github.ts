@@ -70,6 +70,9 @@ export async function publishEpisodeNewsSnapshot(
     transcriptUrl:
       `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/`
       + `${episode.show_slug}/episodes/${episode.slug}/transcripts`,
+    chapterUrl:
+      `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/`
+      + `${episode.show_slug}/episodes/${episode.slug}/chapters.json`,
     publicationRevision: episode.publication_revision
   });
   publications.sort((left, right) =>

@@ -23,6 +23,7 @@ type FeedShow = {
 
 type FeedEpisode = {
   id: string;
+  slug: string;
   title: string;
   summary: string;
   guid: string;
@@ -35,6 +36,7 @@ type FeedEpisode = {
   explicit: number;
   season_number: number | null;
   episode_number: number | null;
+  has_approved_chapters: number;
 };
 
 type PrivateFeedShow = FeedShow & {
@@ -60,19 +62,25 @@ export async function servePublicFeed(
   const episodes = await env.DB
     .prepare(
       `SELECT
-         id, title, summary, guid, public_at AS release_at,
-         canonical_url, duration_seconds,
-         audio_mime_type, audio_bytes, audio_filename, explicit,
-         season_number, episode_number
-       FROM episodes
-       WHERE show_id = ?
-         AND status = 'published'
-         AND public_at <= datetime('now')
-         AND access IN ('public', 'early_access', 'free_mini')
-         AND media_status = 'ready'
-         AND audio_key IS NOT NULL
-         AND guid IS NOT NULL
-       ORDER BY public_at DESC, created_at DESC`
+         episode.id, episode.slug, episode.title, episode.summary, episode.guid,
+         episode.public_at AS release_at, episode.canonical_url,
+         episode.duration_seconds, episode.audio_mime_type,
+         episode.audio_bytes, episode.audio_filename, episode.explicit,
+         episode.season_number, episode.episode_number,
+         EXISTS (
+           SELECT 1
+           FROM episode_chapter_approvals approval
+           WHERE approval.episode_id = episode.id
+         ) AS has_approved_chapters
+       FROM episodes episode
+       WHERE episode.show_id = ?
+         AND episode.status = 'published'
+         AND episode.public_at <= datetime('now')
+         AND episode.access IN ('public', 'early_access', 'free_mini')
+         AND episode.media_status = 'ready'
+         AND episode.audio_key IS NOT NULL
+         AND episode.guid IS NOT NULL
+       ORDER BY episode.public_at DESC, episode.created_at DESC`
     )
     .bind(show.id)
     .all<FeedEpisode>();
@@ -85,7 +93,11 @@ export async function servePublicFeed(
       feedUrl,
       env,
       (episode) =>
-        `${env.MEDIA_ORIGIN.replace(/\/$/, "")}/episodes/${episode.id}/audio`
+        `${env.MEDIA_ORIGIN.replace(/\/$/, "")}/episodes/${episode.id}/audio`,
+      (episode) => episode.has_approved_chapters === 1
+        ? `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/${show.slug}`
+          + `/episodes/${episode.slug}/chapters.json`
+        : null
     ),
     "public"
   );
@@ -131,35 +143,42 @@ export async function servePrivateFeed(
   const episodes = await env.DB
     .prepare(
       `SELECT
-         id, title, summary, guid,
+         episode.id, episode.slug, episode.title, episode.summary, episode.guid,
          CASE
-           WHEN access IN ('early_access', 'premium_bonus')
-             THEN COALESCE(premium_at, public_at)
-           ELSE public_at
+           WHEN episode.access IN ('early_access', 'premium_bonus')
+             THEN COALESCE(episode.premium_at, episode.public_at)
+           ELSE episode.public_at
          END AS release_at,
-         canonical_url, duration_seconds, audio_mime_type, audio_bytes,
-         audio_filename, explicit, season_number, episode_number
-       FROM episodes
-       WHERE show_id = ?
-         AND status IN ('scheduled', 'published')
-         AND media_status = 'ready'
-         AND audio_key IS NOT NULL
-         AND guid IS NOT NULL
+         episode.canonical_url, episode.duration_seconds,
+         episode.audio_mime_type, episode.audio_bytes, episode.audio_filename,
+         episode.explicit, episode.season_number, episode.episode_number,
+         EXISTS (
+           SELECT 1
+           FROM episode_chapter_approvals approval
+           WHERE approval.episode_id = episode.id
+         ) AS has_approved_chapters
+       FROM episodes episode
+       WHERE episode.show_id = ?
+         AND episode.status IN ('scheduled', 'published')
+         AND episode.media_status = 'ready'
+         AND episode.audio_key IS NOT NULL
+         AND episode.guid IS NOT NULL
          AND (
            (
-             access IN ('public', 'free_mini')
-             AND public_at <= datetime('now')
+             episode.access IN ('public', 'free_mini')
+             AND episode.public_at <= datetime('now')
            )
            OR (
-             access = 'early_access'
-             AND COALESCE(premium_at, public_at) <= datetime('now')
+             episode.access = 'early_access'
+             AND COALESCE(episode.premium_at, episode.public_at)
+               <= datetime('now')
            )
            OR (
-             access = 'premium_bonus'
-             AND premium_at <= datetime('now')
+             episode.access = 'premium_bonus'
+             AND episode.premium_at <= datetime('now')
            )
          )
-       ORDER BY release_at DESC, created_at DESC`
+       ORDER BY release_at DESC, episode.created_at DESC`
     )
     .bind(show.id)
     .all<FeedEpisode>();
@@ -180,7 +199,11 @@ export async function servePrivateFeed(
       (episode) =>
         `${
           env.MEDIA_ORIGIN.replace(/\/$/, "")
-        }/v1/private/${rawToken}/episodes/${episode.id}/audio`
+        }/v1/private/${rawToken}/episodes/${episode.id}/audio`,
+      (episode) => episode.has_approved_chapters === 1
+        ? `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/private/${rawToken}/`
+          + `${show.rss_slug}/episodes/${episode.slug}/chapters.json`
+        : null
     ),
     "private"
   );
@@ -191,12 +214,19 @@ function renderFeed(
   episodes: FeedEpisode[],
   feedUrl: string,
   env: PodcastEnv,
-  enclosureUrl: (episode: FeedEpisode) => string
+  enclosureUrl: (episode: FeedEpisode) => string,
+  chapterUrl: (episode: FeedEpisode) => string | null
 ): string {
   const ownerEmail = env.PODCAST_OWNER_EMAIL || "podcasts@dustwave.xyz";
   const authorName = env.PODCAST_AUTHOR_NAME || show.author_name;
   const items = episodes
-    .map((episode) => renderEpisode(episode, enclosureUrl(episode)))
+    .map((episode) =>
+      renderEpisode(
+        episode,
+        enclosureUrl(episode),
+        chapterUrl(episode)
+      )
+    )
     .join("");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
@@ -246,7 +276,8 @@ async function feedResponse(
 
 function renderEpisode(
   episode: FeedEpisode,
-  enclosureUrl: string
+  enclosureUrl: string,
+  chapterUrl: string | null
 ): string {
   return `<item>
       <title>${escapeXml(episode.title)}</title>
@@ -260,6 +291,7 @@ function renderEpisode(
       <itunes:explicit>${episode.explicit === 1 ? "true" : "false"}</itunes:explicit>
       ${episode.season_number ? `<itunes:season>${episode.season_number}</itunes:season>` : ""}
       ${episode.episode_number ? `<itunes:episode>${episode.episode_number}</itunes:episode>` : ""}
+      ${chapterUrl ? `<podcast:chapters url="${escapeXml(chapterUrl)}" type="application/json+chapters"/>` : ""}
     </item>`;
 }
 
