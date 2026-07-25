@@ -1,0 +1,197 @@
+name: Prepare staging Podcast transcription chunks
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Queued large-source transcription chunk run ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-transcription-chunks-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: podcast-staging
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Validate chunk request
+        id: request
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+        run: node scripts/prepare-transcription-chunk-request.mjs
+
+      - name: Sign private manifest request
+        id: manifest_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/transcription-chunks/manifest-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Fetch private checksummed manifest
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.manifest_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.manifest_signature.outputs.timestamp }}
+          MANIFEST_URL: ${{ steps.request.outputs.manifest_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/transcription-chunks/manifest-request.json \
+            --output work/transcription-chunks/manifest-response.json \
+            "$MANIFEST_URL"
+
+      - name: Validate isolated-staging manifest
+        id: chunking
+        run: >-
+          node scripts/prepare-transcription-chunk-workflow.mjs
+          work/transcription-chunks/manifest-response.json
+
+      - name: Sign private source request
+        id: source_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/transcription-chunks/source-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream immutable private source
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.source_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.source_signature.outputs.timestamp }}
+          SOURCE_URL: ${{ steps.request.outputs.source_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 3600 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/transcription-chunks/source-request.json \
+            --output work/transcription-chunks/source.bin \
+            "$SOURCE_URL"
+
+      - name: Record media-tool versions
+        run: |
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Detect silence, fully decode, and encode bounded chunks
+        run: >-
+          node scripts/build-transcription-chunks.mjs
+          work/transcription-chunks/manifest.json
+          work/transcription-chunks/source.bin
+          work/transcription-chunks/audio
+          work/transcription-chunks/callback.json
+
+      - name: Upload immutable checksummed chunks
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/upload-transcription-chunks.mjs
+          work/transcription-chunks/manifest.json
+          work/transcription-chunks/upload-inventory.json
+
+      - name: Mark chunk artifacts ready
+        id: ready
+        run: echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sign success evidence
+        id: success_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/transcription-chunks/callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit immutable chunk inventory
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.success_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.success_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.chunking.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 60 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/transcription-chunks/callback.json \
+            "$CALLBACK_URL"
+
+      - name: Build bounded failure evidence
+        if: ${{ failure() && steps.chunking.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        run: >-
+          node scripts/build-transcription-chunk-failure-callback.mjs
+          work/transcription-chunks/manifest.json
+          work/transcription-chunks/failure-callback.json
+
+      - name: Sign failure evidence
+        if: ${{ failure() && steps.chunking.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        id: failure_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/transcription-chunks/failure-callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit bounded failure evidence
+        if: ${{ failure() && steps.chunking.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.failure_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.failure_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.chunking.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/transcription-chunks/failure-callback.json \
+            "$CALLBACK_URL"
+
+      - name: Retain non-secret chunk evidence only
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: transcription-chunk-evidence
+          path: |
+            work/transcription-chunks/plan.json
+            work/transcription-chunks/inventory.json
+            work/transcription-chunks/callback.json
+            work/transcription-chunks/failure-callback.json
+          if-no-files-found: warn
+          retention-days: 30

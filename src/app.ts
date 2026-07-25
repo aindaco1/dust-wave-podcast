@@ -145,6 +145,12 @@ import {
   subscriptionCheckoutConfigured
 } from "./tax-quotes";
 import {
+  completeTranscriptionChunkRun,
+  getTranscriptionChunkProcessorManifest,
+  getTranscriptionChunkProcessorSource,
+  uploadTranscriptionChunkProcessorOutput
+} from "./transcription-chunking";
+import {
   listAdminEpisodeTranscriptionJobs,
   queueAdminEpisodeTranscription
 } from "./transcription-jobs";
@@ -298,6 +304,14 @@ const PROCESSOR_AUDIO_ENHANCEMENT_SOURCE_PATH =
   /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/source$/;
 const PROCESSOR_AUDIO_ENHANCEMENT_OUTPUT_PATH =
   /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/outputs\/(original|enhanced)$/;
+const PROCESSOR_TRANSCRIPTION_CHUNK_COMPLETE_PATH =
+  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/complete$/;
+const PROCESSOR_TRANSCRIPTION_CHUNK_MANIFEST_PATH =
+  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/manifest$/;
+const PROCESSOR_TRANSCRIPTION_CHUNK_SOURCE_PATH =
+  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/source$/;
+const PROCESSOR_TRANSCRIPTION_CHUNK_OUTPUT_PATH =
+  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/chunks\/([0-9]{1,3})$/;
 const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
@@ -1190,6 +1204,47 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       env,
       processorAudioEnhancementOutputMatch[1],
       processorAudioEnhancementOutputMatch[2]
+    );
+  }
+  const processorTranscriptionChunkCompleteMatch = url.pathname.match(
+    PROCESSOR_TRANSCRIPTION_CHUNK_COMPLETE_PATH
+  );
+  if (processorTranscriptionChunkCompleteMatch && method === "POST") {
+    return completeTranscriptionChunkRun(
+      request,
+      env,
+      processorTranscriptionChunkCompleteMatch[1]
+    );
+  }
+  const processorTranscriptionChunkManifestMatch = url.pathname.match(
+    PROCESSOR_TRANSCRIPTION_CHUNK_MANIFEST_PATH
+  );
+  if (processorTranscriptionChunkManifestMatch && method === "POST") {
+    return getTranscriptionChunkProcessorManifest(
+      request,
+      env,
+      processorTranscriptionChunkManifestMatch[1]
+    );
+  }
+  const processorTranscriptionChunkSourceMatch = url.pathname.match(
+    PROCESSOR_TRANSCRIPTION_CHUNK_SOURCE_PATH
+  );
+  if (processorTranscriptionChunkSourceMatch && method === "POST") {
+    return getTranscriptionChunkProcessorSource(
+      request,
+      env,
+      processorTranscriptionChunkSourceMatch[1]
+    );
+  }
+  const processorTranscriptionChunkOutputMatch = url.pathname.match(
+    PROCESSOR_TRANSCRIPTION_CHUNK_OUTPUT_PATH
+  );
+  if (processorTranscriptionChunkOutputMatch && method === "PUT") {
+    return uploadTranscriptionChunkProcessorOutput(
+      request,
+      env,
+      processorTranscriptionChunkOutputMatch[1],
+      processorTranscriptionChunkOutputMatch[2]
     );
   }
 

@@ -193,9 +193,30 @@ than overwriting reviewed text. Audit metadata contains only IDs, counts,
 versions, and digests.
 
 Direct transcription is limited to a 16 MiB source object because base64
-encoding temporarily multiplies Worker memory. Larger approved masters fail
-closed with `source_requires_chunking`; they must not be downsampled, truncated,
-or split at invented boundaries inside the Worker.
+encoding temporarily multiplies Worker memory. A larger approved master creates
+one immutable chunk-run manifest instead of entering the provider path. In
+isolated staging, the HMAC-authenticated GitHub workflow streams the exact
+private source without an R2 credential, verifies its bytes/SHA-256/duration,
+fully decodes it, detects bounded silence, and selects the closest safe cut
+inside fixed duration windows. When no safe silence exists, the shared planner
+uses a deterministic duration boundary. It encodes private, replaceable 16 kHz
+mono 64 kbps MP3 transcription intermediates with only a 1.5-second overlap;
+the approved master and public enclosure are never modified.
+
+Every chunk upload signs its manifest digest, index, byte count, and SHA-256.
+The Worker writes it to a deterministic private key, verifies R2's checksum
+and metadata, then accepts a signed plan/report only after rebuilding the
+shared contract and rechecking every stored object. Production processor
+routes are `404`. GitHub evidence excludes source/chunk audio, provider
+responses, transcript text, and credentials.
+
+Workers AI consumes at most one verified chunk per Queue message. Each private
+raw response has its own immutable digest so a retry reuses completed provider
+work. Merge assigns each segment to one non-overlapping core window, clips only
+at that window, and removes only a conservative exact token overlap at adjacent
+chunk boundaries. It never fabricates words, speaker identity, or word timing.
+The final transcript still requires review, and the separate English/Spanish
+word-alignment quality gate remains locked.
 
 ## Before production
 

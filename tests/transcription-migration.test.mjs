@@ -153,6 +153,14 @@ describe("transcription orchestration migration", () => {
           'podcasts/show/episode/transcription/job/transcript.txt',
           'admin_transcription_fixture'
         );
+        INSERT INTO transcription_chunk_runs (
+          id, transcription_job_id, processor_manifest_sha256, policy_json
+        ) VALUES (
+          'transcription_chunks_fixture',
+          'transcription_fixture',
+          '${"e".repeat(64)}',
+          '{"targetChunkDurationMs":720000,"maximumChunkDurationMs":900000,"minimumChunkDurationMs":120000,"overlapMs":1500,"silenceThresholdDb":-35,"minimumSilenceDurationMs":500,"outputMimeType":"audio/mpeg","outputCodec":"libmp3lame","outputSampleRateHz":16000,"outputChannels":1,"outputBitrateKbps":64}'
+        );
       `);
       expect(() => db.exec(`
         UPDATE episodes
@@ -163,6 +171,20 @@ describe("transcription orchestration migration", () => {
         UPDATE transcription_jobs
         SET status = 'succeeded', completed_at = datetime('now')
         WHERE id = 'transcription_fixture';
+      `)).toThrow();
+      expect(() => db.exec(`
+        INSERT INTO transcription_chunks (
+          run_id, chunk_index, core_starts_at_ms, core_ends_at_ms,
+          media_starts_at_ms, media_ends_at_ms, encoded_duration_ms,
+          boundary_kind, object_key,
+          object_bytes, object_etag, mime_type, sha256,
+          provider_raw_object_key
+        ) VALUES (
+          'transcription_chunks_fixture', 0, 0, 60000, 0, 60000, 60000, 'end',
+          'podcasts/show/episode/transcription/job/chunk-audio/000.mp3',
+          16777217, 'chunk-etag', 'audio/mpeg', '${"f".repeat(64)}',
+          'podcasts/show/episode/transcription/job/chunks/000/provider-response.json'
+        );
       `)).toThrow();
       db.exec(`
         UPDATE episode_working_master_states
@@ -176,6 +198,15 @@ describe("transcription orchestration migration", () => {
       `).get()).toEqual({
         status: "stale",
         failure_code: "working_master_changed",
+        completed: 1
+      });
+      expect(db.prepare(`
+        SELECT status, failure_code, completed_at IS NOT NULL AS completed
+        FROM transcription_chunk_runs
+        WHERE id = 'transcription_chunks_fixture'
+      `).get()).toEqual({
+        status: "stale",
+        failure_code: "source_invalid",
         completed: 1
       });
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);

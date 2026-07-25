@@ -53,9 +53,16 @@ inputs reuse one stored job. Provider responses, normalized timed-text JSON,
 WebVTT, SRT, and plain text remain private in R2. Workers AI segment timing is
 normalized through `@dustwave/timed-text`; provider word records and speaker
 guesses are not imported. Direct Worker processing is capped at 16 MiB to
-bound base64 memory. Larger masters fail closed as
-`source_requires_chunking` until the silence-aware FFmpeg chunk processor is
-connected.
+bound base64 memory. Larger masters use the credential-minimized
+`process-transcription-chunks.yml` staging workflow: it verifies the immutable
+source, fully decodes it once, chooses bounded silence-aware cuts with a
+1.5-second overlap, and uploads only checksummed private 16 kHz mono MP3
+transcription intermediates. The Queue processes one chunk per message, stores
+each raw response immutably for retry reuse, and merges segment timing by
+non-overlapping core ownership with conservative boundary-token deduplication.
+The working master and public enclosure are never changed. Production
+processor routes remain absent until the owner-controlled large-source gate
+passes.
 
 The chapter workbench wraps the original normalized `episode_chapters` rows
 with optimistic mutations, immutable revision snapshots, Admin approval, and

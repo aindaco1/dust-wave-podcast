@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
+import {
+  planTranscriptionChunks
+} from "@dustwave/timed-text/chunking";
 import { processTranscriptionJob } from "../src/transcription-jobs";
 
 const migrationsDirectory = fileURLToPath(
@@ -198,6 +201,293 @@ describe("source-language transcription consumer", () => {
         timingPrecision: "segment",
         cueCount: 2
       });
+      expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("transcribes one prepared chunk per message and merges overlap once", async () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      applyMigrations(database);
+      const largeSourceBytes = 16 * 1024 * 1024 + 1;
+      const largeSourceSha256 = createHash("sha256")
+        .update("large-source-fixture")
+        .digest("hex");
+      seedTranscriptionJob(
+        database,
+        largeSourceBytes,
+        largeSourceSha256
+      );
+      database.exec(`
+        UPDATE audio_qc_runs
+        SET duration_ms = 960000
+        WHERE id = 'qc_transcription_consumer';
+        UPDATE transcription_jobs
+        SET source_duration_ms = 960000
+        WHERE id = '${jobId}';
+      `);
+      const objects = new Map();
+      let providerCalls = 0;
+      const queueMessages = [];
+      const env = {
+        DB: d1Database(database),
+        FEED_ORIGIN:
+          "https://dust-wave-podcast-staging.jogo.workers.dev",
+        MEDIA_BUCKET: {
+          async get(key) {
+            const object = objects.get(key);
+            if (!object) return null;
+            return {
+              ...object,
+              async bytes() {
+                return object.body instanceof Uint8Array
+                  ? object.body
+                  : new TextEncoder().encode(object.body);
+              },
+              async text() {
+                return object.body instanceof Uint8Array
+                  ? new TextDecoder().decode(object.body)
+                  : object.body;
+              }
+            };
+          },
+          async head(key) {
+            return objects.get(key) ?? null;
+          },
+          async put(key, value, options) {
+            if (objects.has(key)) return null;
+            const body = typeof value === "string"
+              ? value
+              : new Uint8Array(await new Response(value).arrayBuffer());
+            const object = {
+              key,
+              size: typeof body === "string"
+                ? new TextEncoder().encode(body).byteLength
+                : body.byteLength,
+              etag: `artifact-etag-${objects.size + 1}`,
+              httpEtag: `"artifact-etag-${objects.size + 1}"`,
+              body,
+              httpMetadata: options.httpMetadata,
+              customMetadata: options.customMetadata
+            };
+            objects.set(key, object);
+            return object;
+          }
+        },
+        AI: {
+          aiGatewayLogId: "chunk-provider-request",
+          async run() {
+            const index = providerCalls;
+            providerCalls += 1;
+            return index === 0
+              ? {
+                  segments: [
+                    {
+                      start: 710,
+                      end: 715,
+                      text: "Una historia empieza."
+                    },
+                    {
+                      start: 715,
+                      end: 721.5,
+                      text: "La selva canta esta noche."
+                    }
+                  ]
+                }
+              : {
+                  segments: [
+                    {
+                      start: 0,
+                      end: 4,
+                      text: "La selva canta esta noche con nosotros."
+                    },
+                    {
+                      start: 4,
+                      end: 10,
+                      text: "Fin."
+                    }
+                  ]
+                };
+          }
+        },
+        JOBS: {
+          async send(message) {
+            queueMessages.push(message);
+          }
+        }
+      };
+      const message = {
+        id: jobId,
+        type: "transcribe",
+        showId,
+        episodeId,
+        requestedAt: new Date().toISOString()
+      };
+
+      await processTranscriptionJob(env, message);
+      const run = database.prepare(`
+        SELECT id, processor_manifest_sha256, policy_json, status
+        FROM transcription_chunk_runs
+        WHERE transcription_job_id = ?
+      `).get(jobId);
+      expect(run.status).toBe("queued");
+
+      const plan = planTranscriptionChunks({
+        sourceDurationMs: 960_000,
+        silenceWindows: [],
+        policy: JSON.parse(run.policy_json)
+      });
+      const planJson = JSON.stringify(plan);
+      const planSha256 = createHash("sha256")
+        .update(planJson)
+        .digest("hex");
+      const chunkBytes = [
+        new Uint8Array([1, 2, 3, 4, 5]),
+        new Uint8Array([6, 7, 8, 9, 10])
+      ];
+      const chunkRows = plan.chunks.map((chunk, index) => {
+        const objectKey =
+          `${artifactPrefix}/chunk-audio/${String(index).padStart(3, "0")}.mp3`;
+        const sha256 = createHash("sha256")
+          .update(chunkBytes[index])
+          .digest("hex");
+        objects.set(objectKey, {
+          key: objectKey,
+          size: chunkBytes[index].byteLength,
+          etag: `chunk-etag-${index}`,
+          httpEtag: `"chunk-etag-${index}"`,
+          body: chunkBytes[index],
+          httpMetadata: { contentType: "audio/mpeg" },
+          customMetadata: { sha256 }
+        });
+        return {
+          ...chunk,
+          objectKey,
+          objectBytes: chunkBytes[index].byteLength,
+          objectEtag: `"chunk-etag-${index}"`,
+          sha256,
+          providerRawObjectKey:
+            `${artifactPrefix}/chunks/${String(index).padStart(3, "0")}`
+            + "/provider-response.json"
+        };
+      });
+      database.exec(`
+        UPDATE transcription_chunk_runs
+        SET
+          status = 'ready',
+          plan_json = '${planJson.replaceAll("'", "''")}',
+          plan_sha256 = '${planSha256}',
+          report_sha256 = '${"f".repeat(64)}',
+          processor_version = 'ffmpeg-transcription-chunker-v1',
+          chunk_count = 2,
+          total_output_bytes = 10,
+          completed_at = datetime('now')
+        WHERE id = '${run.id}';
+      `);
+      const insertChunk = database.prepare(`
+        INSERT INTO transcription_chunks (
+          run_id, chunk_index, core_starts_at_ms, core_ends_at_ms,
+          media_starts_at_ms, media_ends_at_ms, encoded_duration_ms,
+          boundary_kind, object_key, object_bytes, object_etag, mime_type,
+          sha256, provider_raw_object_key
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'audio/mpeg', ?, ?)
+      `);
+      for (const row of chunkRows) {
+        insertChunk.run(
+          run.id,
+          row.index,
+          row.coreStartsAtMs,
+          row.coreEndsAtMs,
+          row.mediaStartsAtMs,
+          row.mediaEndsAtMs,
+          row.mediaEndsAtMs - row.mediaStartsAtMs,
+          row.boundaryKind,
+          row.objectKey,
+          row.objectBytes,
+          row.objectEtag,
+          row.sha256,
+          row.providerRawObjectKey
+        );
+      }
+
+      await processTranscriptionJob(env, message);
+      await processTranscriptionJob(env, message);
+      await processTranscriptionJob(env, message);
+
+      expect(providerCalls).toBe(2);
+      expect(queueMessages).toHaveLength(2);
+      expect(database.prepare(`
+        SELECT status, attempt_count, transcript_revision,
+          provider_request_id, failure_code
+        FROM transcription_jobs
+        WHERE id = ?
+      `).get(jobId)).toMatchObject({
+        status: "succeeded",
+        attempt_count: 1,
+        transcript_revision: 1,
+        failure_code: null
+      });
+      expect(database.prepare(`
+        SELECT chunk_index, provider_status, provider_attempt_count
+        FROM transcription_chunks
+        WHERE run_id = ?
+        ORDER BY chunk_index
+      `).all(run.id)).toEqual([
+        {
+          chunk_index: 0,
+          provider_status: "succeeded",
+          provider_attempt_count: 1
+        },
+        {
+          chunk_index: 1,
+          provider_status: "succeeded",
+          provider_attempt_count: 1
+        }
+      ]);
+      const transcript = database.prepare(`
+        SELECT content_json
+        FROM transcripts
+        WHERE episode_id = ? AND language = 'es'
+      `).get(episodeId);
+      expect(
+        JSON.parse(transcript.content_json).cues.map(
+          ({ textMarkdown }) => textMarkdown
+        )
+      ).toEqual([
+        "Una historia empieza.",
+        "La selva canta esta noche.",
+        "con nosotros.",
+        "Fin."
+      ]);
+      const rawIndex = JSON.parse(
+        objects.get(`${artifactPrefix}/provider-response.json`).body
+      );
+      expect(rawIndex).toMatchObject({
+        schemaVersion: "workers-ai-chunked-response-index-v1",
+        chunkRunId: run.id,
+        planSha256,
+        mergeEvidence: {
+          chunkCount: 2,
+          deduplicatedTokenCount: 5
+        }
+      });
+      const audit = database.prepare(`
+        SELECT metadata_json
+        FROM admin_audit_events
+        WHERE action = 'transcription.completed'
+      `).get();
+      expect(audit.metadata_json).not.toContain("selva");
+      expect(JSON.parse(audit.metadata_json)).toMatchObject({
+        chunked: true,
+        chunkCount: 2,
+        deduplicatedTokenCount: 5,
+        wordTimingCreated: false
+      });
+      expect(database.prepare(`
+        SELECT COUNT(*) AS count FROM transcript_words
+      `).get()).toEqual({ count: 0 });
       expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     } finally {
       database.close();

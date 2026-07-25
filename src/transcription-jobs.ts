@@ -3,6 +3,9 @@ import {
   type NormalizedSegmentTranscription,
   type TimedTextLanguage
 } from "@dustwave/timed-text/transcription";
+import {
+  mergeChunkTranscriptions
+} from "@dustwave/timed-text/chunking";
 import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { AdminRole } from "./admin-auth";
@@ -15,6 +18,15 @@ import {
   serializeTranscriptContent,
   stableTranscriptId
 } from "./transcripts";
+import {
+  ensureTranscriptionChunkRun,
+  listPreparedTranscriptionChunks,
+  loadTranscriptionChunkRun,
+  MAXIMUM_TRANSCRIPTION_CHUNK_BYTES,
+  presentTranscriptionChunkRun,
+  type PreparedTranscriptionChunkRow,
+  type TranscriptionChunkRunRow
+} from "./transcription-chunking";
 import type { PodcastJob } from "./types";
 import {
   readJsonObject,
@@ -35,7 +47,8 @@ const MAXIMUM_PROVIDER_RESPONSE_BYTES = 5 * 1024 * 1024;
 
 // Base64 temporarily requires roughly 2.4x the source size in Worker memory.
 // Long masters must use the follow-on silence-aware chunk processor.
-export const MAXIMUM_DIRECT_TRANSCRIPTION_BYTES = 16 * 1024 * 1024;
+export const MAXIMUM_DIRECT_TRANSCRIPTION_BYTES =
+  MAXIMUM_TRANSCRIPTION_CHUNK_BYTES;
 
 type TranscriptionSourceRow = {
   source_language: string | null;
@@ -117,6 +130,9 @@ export async function listAdminEpisodeTranscriptionJobs(
        LIMIT 20`
     ).bind(access.episode.id).all<TranscriptionJobRow>()
   ]);
+  const chunkRuns = await Promise.all(
+    jobs.results.map((job) => loadTranscriptionChunkRun(env.DB, job.id))
+  );
   return privateJson(request, env.ALLOWED_ORIGINS, {
     episodeId: access.episode.id,
     source: source?.current_master_id
@@ -134,10 +150,13 @@ export async function listAdminEpisodeTranscriptionJobs(
           settingsVersion: source.settings_version
         }
       : null,
-    jobs: jobs.results.map(presentTranscriptionJob),
+    jobs: jobs.results.map(
+      (job, index) => presentTranscriptionJob(job, chunkRuns[index])
+    ),
     safeguards: {
       sourceLanguageOnly: true,
       directSourceByteLimit: MAXIMUM_DIRECT_TRANSCRIPTION_BYTES,
+      largeSourceProcessor: "silence_aware_staging_workflow",
       wordTimingCreated: false,
       alignmentRequiredForWordControls: true
     }
@@ -232,9 +251,15 @@ export async function queueAdminEpisodeTranscription(
         "transcription_request_id_conflict"
       );
     }
-    await enqueueRetryableTranscription(env, existing);
+    const chunkRun = existing.source_object_bytes
+        > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES
+      ? await ensureTranscriptionChunkRun(env, existing)
+      : null;
+    if (!chunkRun || chunkRun.status === "ready") {
+      await enqueueRetryableTranscription(env, existing);
+    }
     return privateJson(request, env.ALLOWED_ORIGINS, {
-      job: presentTranscriptionJob(existing),
+      job: presentTranscriptionJob(existing, chunkRun),
       idempotent: true
     });
   }
@@ -321,9 +346,15 @@ export async function queueAdminEpisodeTranscription(
         "transcription_queue_conflict"
       );
     }
-    await enqueueRetryableTranscription(env, raced);
+    const chunkRun = raced.source_object_bytes
+        > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES
+      ? await ensureTranscriptionChunkRun(env, raced)
+      : null;
+    if (!chunkRun || chunkRun.status === "ready") {
+      await enqueueRetryableTranscription(env, raced);
+    }
     return privateJson(request, env.ALLOWED_ORIGINS, {
-      job: presentTranscriptionJob(raced),
+      job: presentTranscriptionJob(raced, chunkRun),
       idempotent: true
     });
   }
@@ -332,17 +363,26 @@ export async function queueAdminEpisodeTranscription(
   if (!created) {
     throw new Error("Created transcription job could not be loaded");
   }
-  let delivery: "queued" | "scheduled_recovery" = "queued";
-  try {
-    await sendTranscriptionJob(env, created);
-  } catch {
-    delivery = "scheduled_recovery";
+  let chunkRun: TranscriptionChunkRunRow | null = null;
+  let delivery:
+    | "queued"
+    | "scheduled_recovery"
+    | "chunk_processor_required" = "queued";
+  if (created.source_object_bytes > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES) {
+    chunkRun = await ensureTranscriptionChunkRun(env, created);
+    delivery = "chunk_processor_required";
+  } else {
+    try {
+      await sendTranscriptionJob(env, created);
+    } catch {
+      delivery = "scheduled_recovery";
+    }
   }
   return privateJson(
     request,
     env.ALLOWED_ORIGINS,
     {
-      job: presentTranscriptionJob(created),
+      job: presentTranscriptionJob(created, chunkRun),
       idempotent: false,
       delivery
     },
@@ -372,6 +412,12 @@ export async function processTranscriptionJob(
     );
     return;
   }
+  if (job.source_object_bytes > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES) {
+    const run = await ensureTranscriptionChunkRun(env, job);
+    if (run.status !== "ready") return;
+    await processPreparedChunkTranscription(env, job, run);
+    return;
+  }
   const claimed = await env.DB.prepare(
     `UPDATE transcription_jobs
      SET
@@ -393,17 +439,6 @@ export async function processTranscriptionJob(
        )`
   ).bind(job.id).run();
   if (Number(claimed.meta?.changes ?? 0) !== 1) return;
-
-  if (job.source_object_bytes > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES) {
-    await markTranscriptionTerminal(
-      env.DB,
-      job.id,
-      "failed",
-      "source_requires_chunking",
-      "The working master exceeds the direct transcription limit."
-    );
-    return;
-  }
 
   try {
     const source = await env.MEDIA_BUCKET.get(job.source_object_key);
@@ -497,6 +532,359 @@ export async function processTranscriptionJob(
   }
 }
 
+async function processPreparedChunkTranscription(
+  env: PodcastEnv,
+  job: TranscriptionJobRow,
+  run: TranscriptionChunkRunRow
+): Promise<void> {
+  const chunks = await listPreparedTranscriptionChunks(env.DB, job.id);
+  if (
+    !run.plan_json
+    || !run.plan_sha256
+    || !run.chunk_count
+    || chunks.length !== run.chunk_count
+  ) {
+    await markTranscriptionTerminal(
+      env.DB,
+      job.id,
+      "failed",
+      "storage_failed",
+      "The prepared transcription chunk inventory is incomplete."
+    );
+    return;
+  }
+  const claimed = await env.DB.prepare(
+    `UPDATE transcription_jobs
+     SET
+       status = 'running',
+       attempt_count = CASE
+         WHEN attempt_count = 0 THEN 1
+         ELSE attempt_count
+       END,
+       failure_code = NULL,
+       last_error = NULL,
+       started_at = datetime('now'),
+       completed_at = NULL,
+       updated_at = datetime('now')
+     WHERE id = ?
+       AND attempt_count < 5
+       AND (
+         status = 'queued'
+         OR (
+           status = 'failed'
+           AND failure_code IN ('provider_failed', 'storage_failed')
+         )
+       )`
+  ).bind(job.id).run();
+  if (Number(claimed.meta?.changes ?? 0) !== 1) return;
+
+  const next = chunks.find((chunk) =>
+    chunk.provider_status !== "succeeded"
+    && chunk.provider_attempt_count < 5
+  );
+  if (next) {
+    await processOneTranscriptionChunk(env, job, next);
+    return;
+  }
+  if (chunks.some((chunk) => chunk.provider_status !== "succeeded")) {
+    await markTranscriptionTerminal(
+      env.DB,
+      job.id,
+      "failed",
+      "provider_failed",
+      "A transcription chunk exhausted its provider attempt limit."
+    );
+    return;
+  }
+
+  try {
+    const plan = JSON.parse(run.plan_json) as {
+      silenceWindows: Array<{ startsAtMs: number; endsAtMs: number }>;
+      chunks: Array<{
+        index: number;
+        coreStartsAtMs: number;
+        coreEndsAtMs: number;
+        mediaStartsAtMs: number;
+        mediaEndsAtMs: number;
+        boundaryKind: "silence" | "duration" | "end";
+      }>;
+    };
+    if (!Array.isArray(plan.chunks) || plan.chunks.length !== chunks.length) {
+      throw new TypeError("Transcription chunk plan is invalid");
+    }
+    const stored: Array<{
+      response: unknown;
+      providerRequestId: string | null;
+    }> = [];
+    for (const chunk of chunks) {
+      const response = await readStoredChunkProviderResponse(
+        env.MEDIA_BUCKET,
+        job,
+        chunk
+      );
+      if (!response) {
+        throw new Error("Immutable transcription chunk response is missing");
+      }
+      stored.push(response);
+    }
+    const merged = mergeChunkTranscriptions(
+      chunks.map((chunk, index) => ({
+        plan: {
+          silenceWindows: plan.silenceWindows,
+          chunk: plan.chunks[index]
+        },
+        mediaDurationMs: chunk.encoded_duration_ms,
+        response: stored[index].response
+      })),
+      {
+        language: job.language as TimedTextLanguage,
+        sourceDurationMs: job.source_duration_ms
+      }
+    );
+    const rawIndex = {
+      schemaVersion: "workers-ai-chunked-response-index-v1",
+      chunkRunId: run.id,
+      planSha256: run.plan_sha256,
+      mergeEvidence: merged.evidence,
+      chunks: chunks.map((chunk, index) => ({
+        index: chunk.chunk_index,
+        rawResponseObjectKey: chunk.provider_raw_object_key,
+        rawResponseSha256: chunk.provider_raw_sha256,
+        providerRequestId: stored[index].providerRequestId
+      }))
+    };
+    const rawJson = JSON.stringify(rawIndex);
+    const rawIndexSha256 = await sha256Hex(rawJson);
+    await completeTranscriptionJob(
+      env,
+      job,
+      null,
+      `chunked:${rawIndexSha256.slice(0, 48)}`,
+      {
+        rawJson,
+        normalized: merged.transcription,
+        auditEvidence: {
+          chunked: true,
+          chunkRunId: run.id,
+          chunkPlanSha256: run.plan_sha256,
+          chunkReportSha256: run.report_sha256,
+          chunkCount: chunks.length,
+          deduplicatedTokenCount:
+            merged.evidence.deduplicatedTokenCount,
+          droppedOverlapCueCount: merged.evidence.droppedCueCount
+        }
+      }
+    );
+  } catch (error) {
+    await markTranscriptionTerminal(
+      env.DB,
+      job.id,
+      "failed",
+      "storage_failed",
+      error instanceof Error
+        ? error.message
+        : "Chunked transcription completion failed."
+    );
+    throw error;
+  }
+}
+
+async function processOneTranscriptionChunk(
+  env: PodcastEnv,
+  job: TranscriptionJobRow,
+  candidate: PreparedTranscriptionChunkRow
+): Promise<void> {
+  const claim = await env.DB.prepare(
+    `UPDATE transcription_chunks
+     SET
+       provider_status = 'running',
+       provider_attempt_count = provider_attempt_count + 1,
+       last_error = NULL,
+       updated_at = datetime('now')
+     WHERE run_id = ?
+       AND chunk_index = ?
+       AND provider_attempt_count < 5
+       AND provider_status IN ('pending', 'failed')`
+  ).bind(candidate.run_id, candidate.chunk_index).run();
+  if (Number(claim.meta?.changes ?? 0) !== 1) {
+    await env.DB.prepare(
+      `UPDATE transcription_jobs
+       SET status = 'queued', updated_at = datetime('now')
+       WHERE id = ? AND status = 'running'`
+    ).bind(job.id).run();
+    return;
+  }
+  const chunk = (await listPreparedTranscriptionChunks(env.DB, job.id))
+    .find((entry) => entry.chunk_index === candidate.chunk_index);
+  if (!chunk) {
+    await markTranscriptionTerminal(
+      env.DB,
+      job.id,
+      "failed",
+      "storage_failed",
+      "The claimed transcription chunk is missing."
+    );
+    return;
+  }
+  try {
+    const object = await env.MEDIA_BUCKET.get(chunk.object_key);
+    if (
+      !object
+      || object.size !== chunk.object_bytes
+      || !r2EtagMatches(object, chunk.object_etag)
+      || object.httpMetadata?.contentType !== chunk.mime_type
+    ) {
+      throw new Error("Prepared transcription chunk object changed");
+    }
+    const bytes = await object.bytes();
+    if (await byteSha256Hex(bytes) !== chunk.sha256) {
+      throw new Error("Prepared transcription chunk digest changed");
+    }
+    const localDurationMs = chunk.encoded_duration_ms;
+    const stored = await readStoredChunkProviderResponse(
+      env.MEDIA_BUCKET,
+      job,
+      chunk
+    );
+    const settings = parseSettings(job.settings_json);
+    const providerResponse = stored?.response ?? await env.AI.run(
+      TRANSCRIPTION_MODEL,
+      {
+        audio: bytesToBase64(bytes),
+        task: "transcribe",
+        language: job.language,
+        vad_filter: settings.vadFilter,
+        condition_on_previous_text: settings.conditionOnPreviousText,
+        ...(settings.vocabulary.length
+          ? { initial_prompt: settings.vocabulary.join(", ") }
+          : {})
+      },
+      {
+        tags: [
+          "dust-wave-podcast",
+          "transcription-chunk",
+          job.language
+        ]
+      }
+    );
+    normalizeSegmentTranscription(providerResponse, {
+      language: job.language as TimedTextLanguage,
+      durationMs: localDurationMs
+    });
+    const rawJson = JSON.stringify(providerResponse);
+    if (
+      new TextEncoder().encode(rawJson).byteLength
+      > MAXIMUM_PROVIDER_RESPONSE_BYTES
+    ) {
+      throw new TypeError("Transcription provider response is too large");
+    }
+    const rawSha256 = await sha256Hex(rawJson);
+    const providerRequestId = stored?.providerRequestId
+      ?? parseProviderRequestId(env.AI.aiGatewayLogId);
+    await putImmutableArtifact(
+      env.MEDIA_BUCKET,
+      chunk.provider_raw_object_key,
+      rawJson,
+      "application/json; charset=utf-8",
+      rawSha256,
+      {
+        jobId: job.id,
+        sourceSha256: job.working_master_sha256,
+        ...(providerRequestId ? { providerRequestId } : {})
+      }
+    );
+    const completed = await env.DB.prepare(
+      `UPDATE transcription_chunks
+       SET
+         provider_status = 'succeeded',
+         provider_raw_sha256 = ?,
+         provider_request_id = ?,
+         last_error = NULL,
+         updated_at = datetime('now')
+       WHERE run_id = ?
+         AND chunk_index = ?
+         AND provider_status = 'running'`
+    ).bind(
+      rawSha256,
+      providerRequestId,
+      chunk.run_id,
+      chunk.chunk_index
+    ).run();
+    if (Number(completed.meta?.changes ?? 0) !== 1) {
+      throw new Error("Transcription chunk completion conflicted");
+    }
+    await env.DB.prepare(
+      `UPDATE transcription_jobs
+       SET
+         status = 'queued',
+         failure_code = NULL,
+         last_error = NULL,
+         completed_at = NULL,
+         updated_at = datetime('now')
+       WHERE id = ? AND status = 'running'`
+    ).bind(job.id).run();
+    await sendTranscriptionJob(env, job).catch(() => undefined);
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : "Unknown transcription chunk error";
+    const responseInvalid =
+      error instanceof RequestValidationError
+      || error instanceof TypeError
+      || message.includes("response")
+      || message.includes("segment")
+      || message.includes("timing");
+    const storageFailure =
+      message.includes("chunk object")
+      || message.includes("chunk digest")
+      || message.includes("artifact")
+      || message.includes("completion conflicted")
+      || message.includes("storage");
+    const current = (await listPreparedTranscriptionChunks(env.DB, job.id))
+      .find((entry) => entry.chunk_index === chunk.chunk_index);
+    const exhausted = (current?.provider_attempt_count ?? 5) >= 5;
+    await env.DB.prepare(
+      `UPDATE transcription_chunks
+       SET
+         provider_status = 'failed',
+         last_error = ?,
+         updated_at = datetime('now')
+       WHERE run_id = ?
+         AND chunk_index = ?
+         AND provider_status = 'running'`
+    ).bind(
+      message.slice(0, 500),
+      chunk.run_id,
+      chunk.chunk_index
+    ).run();
+    if (responseInvalid || exhausted) {
+      await markTranscriptionTerminal(
+        env.DB,
+        job.id,
+        "failed",
+        responseInvalid
+          ? "provider_response_invalid"
+          : storageFailure
+            ? "storage_failed"
+            : "provider_failed",
+        message
+      );
+      return;
+    }
+    await env.DB.prepare(
+      `UPDATE transcription_jobs
+       SET
+         status = 'queued',
+         failure_code = NULL,
+         last_error = NULL,
+         completed_at = NULL,
+         updated_at = datetime('now')
+       WHERE id = ? AND status = 'running'`
+    ).bind(job.id).run();
+    throw error;
+  }
+}
+
 export async function schedulePendingTranscriptions(
   env: PodcastEnv
 ): Promise<void> {
@@ -521,6 +909,15 @@ export async function schedulePendingTranscriptions(
        )
      )
        AND job.attempt_count < 5
+       AND (
+         job.source_object_bytes <= ${MAXIMUM_DIRECT_TRANSCRIPTION_BYTES}
+         OR EXISTS (
+           SELECT 1
+           FROM transcription_chunk_runs chunk_run
+           WHERE chunk_run.transcription_job_id = job.id
+             AND chunk_run.status = 'ready'
+         )
+       )
      ORDER BY job.requested_at
      LIMIT 50`
   ).all<TranscriptionJobRow>();
@@ -533,19 +930,25 @@ async function completeTranscriptionJob(
   env: PodcastEnv,
   job: TranscriptionJobRow,
   providerResponse: unknown,
-  providerRequestId: string | null
+  providerRequestId: string | null,
+  completion?: {
+    rawJson: string;
+    normalized: NormalizedSegmentTranscription;
+    auditEvidence: Record<string, unknown>;
+  }
 ): Promise<void> {
-  const rawJson = JSON.stringify(providerResponse);
+  const rawJson = completion?.rawJson ?? JSON.stringify(providerResponse);
   if (
     new TextEncoder().encode(rawJson).byteLength
     > MAXIMUM_PROVIDER_RESPONSE_BYTES
   ) {
     throw new TypeError("Transcription provider response is too large");
   }
-  const normalized = normalizeSegmentTranscription(providerResponse, {
-    language: job.language as TimedTextLanguage,
-    durationMs: job.source_duration_ms
-  });
+  const normalized = completion?.normalized
+    ?? normalizeSegmentTranscription(providerResponse, {
+      language: job.language as TimedTextLanguage,
+      durationMs: job.source_duration_ms
+    });
   const transcriptCues = normalizeTranscriptCues(
     normalized.cues,
     job.source_duration_ms
@@ -777,7 +1180,8 @@ async function completeTranscriptionJob(
         transcriptSha256,
         timingPrecision: normalized.timingPrecision,
         cueCount: normalized.cues.length,
-        wordTimingCreated: false
+        wordTimingCreated: false,
+        ...(completion?.auditEvidence ?? {})
       }),
       job.id
     )
@@ -878,7 +1282,8 @@ function transcriptionJobSelect(): string {
 }
 
 function presentTranscriptionJob(
-  job: TranscriptionJobRow
+  job: TranscriptionJobRow,
+  chunkRun: TranscriptionChunkRunRow | null = null
 ): Record<string, unknown> {
   return {
     id: job.id,
@@ -902,6 +1307,7 @@ function presentTranscriptionJob(
       directProcessingEligible:
         job.source_object_bytes <= MAXIMUM_DIRECT_TRANSCRIPTION_BYTES
     },
+    chunking: presentTranscriptionChunkRun(chunkRun),
     result: {
       rawResponseSha256: job.raw_response_sha256,
       normalizedSha256: job.normalized_sha256,
@@ -1055,6 +1461,47 @@ async function readStoredProviderResponse(
   }
 }
 
+async function readStoredChunkProviderResponse(
+  bucket: R2Bucket,
+  job: Pick<TranscriptionJobRow, "id" | "working_master_sha256">,
+  chunk: Pick<
+    PreparedTranscriptionChunkRow,
+    | "provider_raw_object_key"
+    | "provider_raw_sha256"
+  >
+): Promise<{
+  response: unknown;
+  providerRequestId: string | null;
+} | null> {
+  const object = await bucket.get(chunk.provider_raw_object_key);
+  if (!object) return null;
+  const body = await object.text();
+  const sha256 = await sha256Hex(body);
+  if (
+    object.size !== new TextEncoder().encode(body).byteLength
+    || object.size > MAXIMUM_PROVIDER_RESPONSE_BYTES
+    || object.customMetadata?.sha256 !== sha256
+    || object.customMetadata?.jobId !== job.id
+    || object.customMetadata?.sourceSha256 !== job.working_master_sha256
+    || (
+      chunk.provider_raw_sha256 !== null
+      && chunk.provider_raw_sha256 !== sha256
+    )
+  ) {
+    throw new Error("Immutable transcription chunk response conflict");
+  }
+  try {
+    return {
+      response: JSON.parse(body) as unknown,
+      providerRequestId: parseProviderRequestId(
+        object.customMetadata?.providerRequestId ?? null
+      )
+    };
+  } catch {
+    throw new Error("Immutable transcription chunk response conflict");
+  }
+}
+
 function parseSettings(value: string): {
   vadFilter: boolean;
   conditionOnPreviousText: boolean;
@@ -1154,4 +1601,8 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
   }
   return btoa(binary);
+}
+
+function r2EtagMatches(object: R2Object, expected: string): boolean {
+  return object.etag === expected || object.httpEtag === expected;
 }

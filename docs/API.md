@@ -248,6 +248,19 @@ including under concurrent requests.
 | `POST` | `/v1/admin/ads/campaigns/{id}/approve` | admin+ | Approve only complete, validated inventory |
 | `POST` | `/v1/admin/ads/campaigns/{id}/kill` | admin+ | Immediately and idempotently revoke a campaign |
 
+### Isolated-staging transcription chunk processor
+
+These HMAC-authenticated routes are `404` in production. They use the existing
+Podcast media-processor secret; the workflow receives no R2 or Cloudflare API
+credential.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/transcription-chunks/{runId}/manifest` | Return the exact digest-bound source/policy/output contract |
+| `POST` | `/v1/processor/transcription-chunks/{runId}/source` | Stream the immutable private working master after manifest authorization |
+| `PUT` | `/v1/processor/transcription-chunks/{runId}/chunks/{index}` | Store one signed, SHA-256-checked MP3 chunk no larger than 16 MiB |
+| `POST` | `/v1/processor/transcription-chunks/{runId}/complete` | Validate the deterministic plan, every R2 object, report digest, and bounded failure/success transition |
+
 The publish operation hashes all publication-relevant episode state. Repeating
 the request without a change returns the existing revision. A changed episode
 creates one new revision, stable idempotency keys, one site publication, and
@@ -350,9 +363,17 @@ The Queue consumer verifies the R2 object size, ETag, and byte SHA-256 before
 Workers AI. Success writes private immutable provider JSON, timed-text JSON,
 WebVTT, SRT, and plain text, then optimistically creates one `needs_review`
 transcript revision. It imports segment timing only. Word timing and generated
-speaker labels are never created. Sources over 16 MiB record
-`source_requires_chunking` until the separate silence-aware processor is
-connected.
+speaker labels are never created.
+
+Sources over 16 MiB return `delivery: "chunk_processor_required"` with a
+content-free workflow/run reference. The staging processor fully decodes the
+source and uses the shared deterministic silence-aware plan to create private
+16 kHz mono 64 kbps MP3 chunks, each capped at 16 MiB. A signed completion
+stores the exact plan and chunk inventory. Workers AI then consumes one chunk
+per Queue message; a completed raw chunk response is reused after any later
+failure. The final source-relative merge uses core-window ownership and
+conservative adjacent-token deduplication. It emits only segment timing and
+still creates a single optimistic transcript revision.
 
 Transcript writes accept `mutationId`, `baseRevision`, and 1–10,000 ordered
 cues within a one-megabyte canonical payload. Each cue has a stable ID, integer

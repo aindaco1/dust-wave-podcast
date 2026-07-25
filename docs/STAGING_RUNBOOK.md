@@ -129,6 +129,14 @@ current transcript/chapter approvals clear, clips return to draft, authored
 rows remain, and the publication evidence epoch advances. A missing or
 cross-episode master pointer must abort.
 
+For migration `0037`, verify the explicit episode source-language column,
+one pinned `show_transcription_settings` row per show, the new-show trigger,
+both transcription-job indexes, working-master staleness, and zero jobs before
+an owner-controlled source exists. For migration `0038`, verify the
+chunk-run/chunk tables, both indexes, job-to-run staleness trigger, 16 MiB
+per-chunk cap, exact core/media/encoded-duration bounds, and clean foreign
+keys. Replay both from zero.
+
 After this workflow is present on a dispatchable branch, queue the current
 source from Production and run:
 
@@ -145,6 +153,26 @@ and report hashes match D1. Refresh Production and verify bounded findings,
 policy revision, and resource/version evidence. Change the current source ETag
 or policy revision and confirm a new run is required. Never upload a fabricated
 episode to shared staging merely to make this path green.
+
+If the approved working master is larger than 16 MiB, queue transcription,
+copy the displayed chunk run ID, and dispatch:
+
+```sh
+gh workflow run process-transcription-chunks.yml \
+  --ref agent/launch-configuration \
+  -f run_id="transcription_chunks_REPLACE_WITH_QUEUED_ID"
+```
+
+Confirm the run used the exact signed manifest/source, retained no source or
+chunk audio artifact, selected the closest safe silence or documented
+deterministic duration fallback, and uploaded only checksum-verified chunks.
+Refresh the workbench and verify the run becomes ready before Workers AI begins.
+Force one Queue retry after a completed chunk and confirm its immutable raw
+response is reused rather than billed twice. Confirm one final transcript
+revision, source-relative monotonic segment cues, no word/alignment rows, no
+transcript text in audits, and unchanged working-master/public-media objects.
+Do not expose the production processor routes until this rehearsal passes with
+rights-cleared English and Spanish sources.
 
 After a real zero-blocker current QC run exists, approve the exact source from
 the Production tab with a bounded reason and acknowledgement. Confirm a stale
