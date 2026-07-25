@@ -509,6 +509,43 @@ key. The same separation applies to the Turnstile widget secret. Public
 Turnstile test keys are not acceptable on the Internet-accessible staging
 Worker.
 
+Create the dedicated real staging widget only after Wrangler's OAuth grant
+includes `challenge-widgets.write`. Wrangler 4.114.0 exposes this boundary
+directly, so there is no need to reuse a Pool/Store widget or paste the secret
+through the dashboard:
+
+```sh
+umask 077
+TURNSTILE_RESULT="$(mktemp -t dust-wave-podcast-turnstile.XXXXXX)"
+npx wrangler turnstile widget create "Dust Wave Podcasts staging" \
+  --domain dust-wave-website-staging.pages.dev \
+  --mode managed \
+  --clearance-level no_clearance \
+  --region world \
+  --json > "$TURNSTILE_RESULT"
+jq -e '.sitekey | type == "string" and length > 0' "$TURNSTILE_RESULT" >/dev/null
+jq -e '.secret | type == "string" and length > 0' "$TURNSTILE_RESULT" >/dev/null
+jq -r '.secret' "$TURNSTILE_RESULT" |
+  npx wrangler secret put TURNSTILE_SECRET_KEY --env staging
+jq -r '.sitekey' "$TURNSTILE_RESULT"
+rm -f -- "$TURNSTILE_RESULT"
+unset TURNSTILE_RESULT
+```
+
+The final `jq` output is the public site key for the isolated website staging
+build. Put it in `PODCAST_ADMIN_TURNSTILE_SITE_KEY` and
+`PODCAST_MEMBER_TURNSTILE_SITE_KEY` only for that build; do not put the secret
+in a command argument, environment file, GitHub variable, source file, shell
+history, or build artifact. Use a separate Checkout widget/site key when
+Checkout activation begins so its action and hostname policy can change
+independently.
+
+If widget creation or either JSON assertion fails, keep login closed, delete
+only the exact temporary file created above, and inspect `wrangler whoami`.
+Never fall back to Cloudflare's public dummy key on the deployed Pages/Worker
+origins. After installation, `wrangler secret list --env staging` may confirm
+the secret name only; it must not be readable.
+
 Validate a new Resend key against Resend's designated delivered-test address
 before installing it, using a hidden environment or interactive prompt rather
 than a command argument. The Worker records only a closed delivery failure
