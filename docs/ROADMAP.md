@@ -72,6 +72,16 @@ iHeartRadio, and Deezer.
   benefit periods.
 - Reuse the versioned Store tax calculator and manual Stripe Tax Rates only
   after accountant approval; Stripe Tax automatic calculation remains off.
+- Keep Checkout behind an explicit kill switch. Use idempotent Stripe
+  Customer/Checkout calls, webhook-projected source entitlements, and a scoped
+  Customer Portal; retain only email/destination HMACs and immutable tax
+  evidence in Podcast D1.
+- Preserve independent Stripe, Pool, and manual entitlement sources beneath
+  one access projection so cancellation/revocation of one source cannot remove
+  access granted by another.
+- Before live recurring billing, add renewal/address-change tax
+  re-evaluation, invoice-to-tax-snapshot reconciliation, rate-change preview,
+  and accountant export evidence.
 
 ### H1 sponsors and dynamic audio
 

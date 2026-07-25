@@ -17,6 +17,7 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 | `GET`, `HEAD` | `/v1/media/{episode-id}` | Media alias for staging and diagnostics |
 | `POST` | `/v1/webhooks/stripe` | Signed Stripe event intake |
 | `POST` | `/v1/shows/{slug}/tax/quote` | Rate-limited, no-store manual subscription-tax estimate |
+| `POST` | `/v1/shows/{slug}/checkout` | Turnstile-protected Stripe subscription Checkout start/resume |
 
 Append `?download=1` to the episode media URL for attachment disposition.
 Public audio is available only when the episode is published, due, eligible
@@ -26,8 +27,19 @@ Subscription tax quotes accept a configured `priceId` and a billing
 `destination`. The Worker normalizes the destination with the same shared
 primitive used by Store, selects the most specific assigned
 accountant-approved rate version, and returns integer-cent exclusive or
-inclusive math. It never returns the Stripe Tax Rate ID, stores the address, or
-enables checkout. A missing assignment or provider mapping fails closed.
+inclusive math. It never returns the Stripe Tax Rate ID or stores the address.
+A missing assignment or provider mapping fails closed.
+
+Checkout accepts the same `priceId` and normalized `destination`, plus
+`email` and a Turnstile token. It re-resolves price and tax server-side,
+creates one idempotent one-hour attempt, sends the normalized address directly
+to Stripe, and applies the selected immutable manual Tax Rate as the recurring
+subscription default. D1 stores an email HMAC, a keyed destination hash, and
+the jurisdiction/rate/source/amount snapshot—not raw email or address fields.
+An explicit environment kill switch, correct test/live bindings, webhook
+secret, approved assigned rate, active Stripe Price, and challenge
+configuration must all pass before a provider request is possible. Automatic
+Stripe Tax and dynamic manual-rate selection remain off.
 
 ## Passwordless listener authentication
 
@@ -55,6 +67,7 @@ customer/subscription ID, or private-feed token.
 |---|---|---|
 | `POST` | `/v1/member/shows/{show-slug}/feed` | Create the entitled listener's first private feed |
 | `POST` | `/v1/member/shows/{show-slug}/feed/rotate` | Revoke the prior URL and return a replacement |
+| `POST` | `/v1/member/shows/{show-slug}/billing/portal` | Create a scoped Stripe Customer Portal session |
 | `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/rss.xml` | Entitlement-gated premium RSS |
 | `GET`, `HEAD` | `/v1/private/{token}/episodes/{episode-id}/audio` | Entitlement-gated byte-range audio |
 
@@ -71,8 +84,10 @@ unconfigured bearer URLs all return the same `404` shape. Private responses
 are `private, no-store`, omit wildcard CORS, and are marked noindex. Append
 `?download=1` to a private media URL for attachment disposition.
 
-Account creation, checkout, and Pool-code redemption remain separate gated
-endpoints.
+The billing-portal endpoint requires the listener cookie, same-origin CSRF,
+one Stripe entitlement source for that show, an explicitly configured Portal
+profile, and an atomic per-session rate limit. Pool-code redemption remains a
+separate gated endpoint.
 
 ## Passwordless admin authentication
 

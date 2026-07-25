@@ -18,13 +18,16 @@ entitlement-gated private RSS and R2-backed range delivery, passwordless admin
 and listener authentication, one-time private-feed creation and rotation, show
 and episode editing APIs, multipart uploads, one-click idempotent publication
 orchestration, a dry-run GitHub News publisher, a dry-run YouTube adapter, and
-the signed Stripe webhook/readiness boundary. Draft/approval/kill sponsor
+the fail-closed manual-tax quote and Stripe Checkout/Customer Portal boundaries,
+webhook-projected multi-source entitlements, and the signed Stripe
+webhook/readiness boundary. Draft/approval/kill sponsor
 operations, deterministic targeting preview, bounded creative validation, and
 the signed processor/producer-review boundary for frame-aligned episode ad
 plans are implemented without connecting public audio assembly. The bilingual word-alignment
 storage contract and executable launch-quality evaluator are also implemented;
 running a real transcription/alignment adapter and producing its human-reviewed
-benchmark evidence remain gated. Checkout, dynamic audio assembly, clips, and
+benchmark evidence remain gated. Checkout code remains disabled pending
+accountant-approved tax/provider evidence; dynamic audio assembly, clips, and
 live YouTube/GitHub publishing remain roadmap work.
 
 Migration `0012` adds an isolated staging decision exercise: an authenticated

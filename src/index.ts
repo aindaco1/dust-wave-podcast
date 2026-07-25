@@ -3,6 +3,9 @@ import { pruneAdminAuthState } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { processPodcastJob, scheduleDuePublications } from "./jobs";
 import { pruneListenerAuthState } from "./listener-auth";
+import {
+  pruneSubscriptionBillingRateLimits
+} from "./subscription-checkout";
 import { pruneTaxQuoteRateLimits } from "./tax-quotes";
 import type { PodcastJob } from "./types";
 
@@ -58,6 +61,7 @@ export default {
       scheduleDuePublications(env),
       pruneAdminAuthState(env.DB),
       pruneListenerAuthState(env.DB),
+      pruneSubscriptionBillingRateLimits(env.DB),
       pruneTaxQuoteRateLimits(env.DB)
     ]);
   }

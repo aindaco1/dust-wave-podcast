@@ -82,17 +82,38 @@
 ## Provider boundaries
 
 - Stripe webhooks require a valid signature and matching test/live mode before
-  D1 is touched. Event IDs are journaled once.
+  D1 is touched. Event IDs are journaled once; failed/received projections can
+  retry idempotently instead of being mistaken for completed duplicates.
 - Stripe product and price identifiers are configuration, not credentials.
-  Checkout stays disabled until listener identity and approved tax rules exist.
+  Checkout stays disabled behind `SUBSCRIPTION_CHECKOUT_ENABLED` until the
+  provider, signed webhook, listener email-HMAC, rate-limit HMAC, Turnstile,
+  active price, and approved tax gates all pass.
 - Subscription tax estimates reuse Store-characterized destination and
   integer-cent primitives through `@dustwave/tax-core`; provider lookup,
   jurisdiction approval, and subscription policy remain in their owning
   runtimes. Podcast accepts only assigned, effective, accountant-approved
   versions with a manual Stripe Tax Rate mapping, retains no submitted address,
   exposes no Stripe Tax Rate ID, and caps pseudonymous clients at 60 quotes per
-  minute. Provider mappings are mode-bound so test data cannot satisfy live
-  billing readiness.
+  minute. At Checkout, raw email and normalized address go only to Stripe; D1
+  retains keyed hashes and an immutable tax evidence snapshot. The fixed
+  approved rate is attached to recurring subscription invoices; Stripe Tax and
+  country/state-only dynamic rate matching stay off so they cannot override a
+  ZIP/location-specific Store result. Provider mappings are mode-bound so test
+  data cannot satisfy live billing readiness.
+- Checkout customer/session calls use deterministic provider idempotency keys.
+  Unknown/network outcomes preserve the attempt and reuse the same key; safe
+  provider errors are reduced to codes and no provider body, email, address, or
+  Checkout URL is logged or stored. One active attempt per show/email HMAC
+  prevents parallel plan sessions.
+- Stripe webhook projections store independent Stripe, Pool, and manual
+  entitlement sources and recompute one show-access projection. Canceling one
+  source cannot revoke another active source. D1 never stores a full Stripe
+  event payload.
+- Customer Portal requires an authenticated listener, same-origin CSRF,
+  show-scoped Stripe customer, rate limit, and explicit
+  `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must
+  keep address/rate-changing controls disabled until renewal-time manual-tax
+  re-evaluation is implemented and approved.
 - GitHub and YouTube writes are dry-run by default. Live mode requires
   least-privilege provider credentials and an audited environment change.
 - Resend receives the raw destination only at send time. Delivery failures are
@@ -119,10 +140,10 @@
 - Re-run the private-feed threat model and rotation drill alongside real-time
   ad decisions, webhook replays, Pool redemption codes, checkout recovery, and
   transcript/clip file access.
-- Verify deployed login/exchange caps and add equivalent limits for uploads,
-  publication, and provider callbacks before activation.
-- Add super-admin lifecycle endpoints with two-admin protection and recent-auth
-  requirements for destructive or live-provider actions.
+- Verify deployed login, checkout, Portal, and exchange caps and add equivalent
+  limits for uploads, publication, and provider callbacks before activation.
+- Extend recent-auth requirements from the protected super-admin lifecycle to
+  future destructive or live billing-provider mutations.
 - Validate logs contain no tokens, raw emails, Stripe payload bodies, media
   source URLs, or transcript content.
 - Complete backup/restore, queue replay, secret rotation, incident response,

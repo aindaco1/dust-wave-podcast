@@ -71,6 +71,10 @@ import {
   rotateListenerPrivateFeed
 } from "./private-feeds";
 import { getPublicShow, listPublicShows } from "./shows";
+import {
+  createListenerBillingPortal,
+  createSubscriptionCheckout
+} from "./subscription-checkout";
 import { quoteSubscriptionTax } from "./tax-quotes";
 import {
   abortMultipartUpload,
@@ -83,6 +87,8 @@ import { readJsonObject, RequestValidationError } from "./validation";
 const SHOW_PATH = /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/;
 const SHOW_TAX_QUOTE_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/tax\/quote$/;
+const SHOW_CHECKOUT_PATH =
+  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/checkout$/;
 const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
 const PRIVATE_FEED_PATH =
@@ -93,6 +99,8 @@ const MEMBER_SHOW_FEED_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed$/;
 const MEMBER_SHOW_FEED_ROTATE_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed\/rotate$/;
+const MEMBER_SHOW_PORTAL_PATH =
+  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/billing\/portal$/;
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
 const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
@@ -183,6 +191,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const showTaxQuoteMatch = url.pathname.match(SHOW_TAX_QUOTE_PATH);
   if (showTaxQuoteMatch && method === "POST") {
     return quoteSubscriptionTax(request, env, showTaxQuoteMatch[1]);
+  }
+  const showCheckoutMatch = url.pathname.match(SHOW_CHECKOUT_PATH);
+  if (showCheckoutMatch && method === "POST") {
+    return createSubscriptionCheckout(request, env, showCheckoutMatch[1]);
   }
   const showMatch = url.pathname.match(SHOW_PATH);
   if (showMatch && (method === "GET" || method === "HEAD")) {
@@ -288,6 +300,14 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       memberShowFeedMatch[1]
+    );
+  }
+  const memberShowPortalMatch = url.pathname.match(MEMBER_SHOW_PORTAL_PATH);
+  if (memberShowPortalMatch && method === "POST") {
+    return createListenerBillingPortal(
+      request,
+      env,
+      memberShowPortalMatch[1]
     );
   }
   if (url.pathname === "/v1/admin/auth/start" && method === "POST") {

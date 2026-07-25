@@ -11,6 +11,7 @@ import { trustedSiteOrigin } from "./passwordless-security";
 import {
   readJsonObject,
   RequestValidationError,
+  isTruthy,
   validIdentifier
 } from "./validation";
 
@@ -24,6 +25,7 @@ type PriceRow = {
   amount_cents: number;
   currency: string;
   tax_behavior: "exclusive" | "inclusive";
+  stripe_price_id: string | null;
   provider_mode: "test" | "live";
   billing_mode: "disabled" | "test" | "live";
   premium_enabled: number;
@@ -35,7 +37,34 @@ type TaxRateRow = {
   rate_parts_per_million: number;
   inclusive: number;
   provider_name: string;
+  source_reference: string;
+  stripe_tax_rate_id: string;
 };
+
+export type ResolvedSubscriptionTaxQuote = {
+  price: PriceRow;
+  taxRate: TaxRateRow;
+  destination: TaxDestination;
+  calculated: {
+    subtotalCents: number;
+    taxCents: number;
+    totalCents: number;
+    taxBehavior: "exclusive" | "inclusive";
+  };
+};
+
+export type SubscriptionTaxResolution =
+  | { ok: true; quote: ResolvedSubscriptionTaxQuote }
+  | {
+      ok: false;
+      error:
+        | "subscription_price_not_found"
+        | "subscription_price_not_ready"
+        | "tax_rate_not_approved"
+        | "tax_configuration_mismatch"
+        | "tax_configuration_invalid";
+      status: 404 | 409;
+    };
 
 export async function quoteSubscriptionTax(
   request: Request,
@@ -81,11 +110,57 @@ export async function quoteSubscriptionTax(
     throw new RequestValidationError(normalized.error);
   }
   validateDestinationForQuote(normalized.destination);
+  const resolution = await resolveSubscriptionTaxQuote(
+    env,
+    showSlug,
+    priceId,
+    normalized.destination
+  );
+  if (!resolution.ok) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: resolution.error },
+      { status: resolution.status }
+    );
+  }
+  const { price, taxRate, calculated } = resolution.quote;
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    quote: {
+      calculationVersion: "dustwave-manual-tax-v1",
+      showSlug,
+      priceId: price.id,
+      billingPeriod: price.billing_period,
+      currency: "USD",
+      subtotalCents: calculated.subtotalCents,
+      taxCents: calculated.taxCents,
+      totalCents: calculated.totalCents,
+      taxBehavior: calculated.taxBehavior,
+      jurisdictionCode: taxRate.jurisdiction_code.toUpperCase(),
+      taxRateVersionId: taxRate.id,
+      providerName: taxRate.provider_name,
+      destination: {
+        country: normalized.destination.country,
+        state: normalized.destination.state
+      },
+      expiresAt: new Date(Date.now() + 15 * 60 * 1_000).toISOString()
+    },
+    checkoutEnabled: subscriptionCheckoutConfigured(env)
+  });
+}
+
+export async function resolveSubscriptionTaxQuote(
+  env: PodcastEnv,
+  showSlug: string,
+  priceId: string,
+  destination: TaxDestination
+): Promise<SubscriptionTaxResolution> {
   const price = await env.DB
     .prepare(
       `SELECT
          p.id, p.show_id, p.billing_period, p.amount_cents, p.currency,
-         p.tax_behavior, p.provider_mode, s.billing_mode, s.premium_enabled
+         p.tax_behavior, p.stripe_price_id, p.provider_mode,
+         s.billing_mode, s.premium_enabled
        FROM show_prices p
        JOIN shows s ON s.id = p.show_id
        WHERE
@@ -97,12 +172,11 @@ export async function quoteSubscriptionTax(
     .bind(showSlug, priceId)
     .first<PriceRow>();
   if (!price) {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "subscription_price_not_found" },
-      { status: 404 }
-    );
+    return {
+      ok: false,
+      error: "subscription_price_not_found",
+      status: 404
+    };
   }
   const expectedMode = String(env.STRIPE_MODE) === "live" ? "live" : "test";
   if (
@@ -110,21 +184,21 @@ export async function quoteSubscriptionTax(
     || price.billing_mode !== expectedMode
     || price.provider_mode !== expectedMode
     || price.currency.toUpperCase() !== "USD"
+    || !price.stripe_price_id
   ) {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "subscription_price_not_ready" },
-      { status: 409 }
-    );
+    return {
+      ok: false,
+      error: "subscription_price_not_ready",
+      status: 409
+    };
   }
 
-  const candidates = taxJurisdictionCandidates(normalized.destination);
+  const candidates = taxJurisdictionCandidates(destination);
   const taxRate = await env.DB
     .prepare(
       `SELECT
          t.id, t.jurisdiction_code, t.rate_parts_per_million, t.inclusive,
-         t.provider_name
+         t.provider_name, t.source_reference, t.stripe_tax_rate_id
        FROM show_tax_rate_assignments a
        JOIN tax_rate_versions t ON t.id = a.tax_rate_version_id
        WHERE
@@ -146,21 +220,19 @@ export async function quoteSubscriptionTax(
     .bind(price.show_id, ...candidates, expectedMode)
     .first<TaxRateRow>();
   if (!taxRate) {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "tax_rate_not_approved" },
-      { status: 409 }
-    );
+    return {
+      ok: false,
+      error: "tax_rate_not_approved",
+      status: 409
+    };
   }
   const inclusive = price.tax_behavior === "inclusive";
   if (taxRate.inclusive !== (inclusive ? 1 : 0)) {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "tax_configuration_mismatch" },
-      { status: 409 }
-    );
+    return {
+      ok: false,
+      error: "tax_configuration_mismatch",
+      status: 409
+    };
   }
   let calculated;
   try {
@@ -170,35 +242,40 @@ export async function quoteSubscriptionTax(
       taxBehavior: price.tax_behavior
     });
   } catch {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "tax_configuration_invalid" },
-      { status: 409 }
-    );
+    return {
+      ok: false,
+      error: "tax_configuration_invalid",
+      status: 409
+    };
   }
-  return privateJson(request, env.ALLOWED_ORIGINS, {
+  return {
+    ok: true,
     quote: {
-      calculationVersion: "dustwave-manual-tax-v1",
-      showSlug,
-      priceId: price.id,
-      billingPeriod: price.billing_period,
-      currency: "USD",
-      subtotalCents: calculated.subtotalCents,
-      taxCents: calculated.taxCents,
-      totalCents: calculated.totalCents,
-      taxBehavior: calculated.taxBehavior,
-      jurisdictionCode: taxRate.jurisdiction_code.toUpperCase(),
-      taxRateVersionId: taxRate.id,
-      providerName: taxRate.provider_name,
-      destination: {
-        country: normalized.destination.country,
-        state: normalized.destination.state
-      },
-      expiresAt: new Date(Date.now() + 15 * 60 * 1_000).toISOString()
-    },
-    checkoutEnabled: false
-  });
+      price,
+      taxRate,
+      destination,
+      calculated
+    }
+  };
+}
+
+export function subscriptionCheckoutConfigured(env: PodcastEnv): boolean {
+  if (!isTruthy(env.SUBSCRIPTION_CHECKOUT_ENABLED)) return false;
+  if (
+    !env.STRIPE_SECRET_KEY
+    || !env.STRIPE_WEBHOOK_SECRET
+    || !env.LISTENER_EMAIL_LOOKUP_PEPPER
+    || !env.TAX_QUOTE_HASH_SECRET
+  ) {
+    return false;
+  }
+  if (
+    isTruthy(env.CHECKOUT_TURNSTILE_REQUIRED)
+    && !env.TURNSTILE_SECRET_KEY
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export function taxJurisdictionCandidates(

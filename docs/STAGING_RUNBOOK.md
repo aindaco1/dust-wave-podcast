@@ -34,8 +34,9 @@ forward-migration check.
 
 - Associate the inactive Stripe test product and inactive $5/month and
   $50/year prices with Ópera en la Selva.
-- Keep `billing_mode=test`, checkout disabled, manual tax assignments empty,
-  and all provider prices inactive.
+- Keep `billing_mode=test`, `SUBSCRIPTION_CHECKOUT_ENABLED=false`, manual tax
+  assignments empty, and all provider prices inactive until the billing
+  preflight below is complete.
 - Seed at least two super-admin lookup HMACs using one newly generated staging
   pepper. Do not store raw email addresses in D1 or the repository.
 - Confirm eleven directory rows exist with truthful owner-setup states.
@@ -68,7 +69,41 @@ Required for later provider tests:
 - `GITHUB_TOKEN`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+- non-secret `STRIPE_PORTAL_CONFIGURATION_ID` for a Podcast-only profile
 - YouTube OAuth client, secret, and refresh token
+
+Required for subscription Checkout:
+
+- `TAX_QUOTE_HASH_SECRET`
+- the listener email-HMAC and Turnstile secrets listed above
+- `CHECKOUT_TURNSTILE_REQUIRED=true`
+- `SUBSCRIPTION_CHECKOUT_ENABLED=false` until the controlled test window
+
+The Portal profile must allow only the approved Podcast subscription
+self-service actions and must not allow customer-address/rate changes until
+renewal-time Store-tax re-evaluation is implemented. Never reuse a Store order
+or Pool pledge Portal configuration implicitly.
+
+Before the first controlled Checkout:
+
+1. Back up D1 and apply every pending migration.
+2. Confirm the test Product/Prices are active and mode-matched.
+3. Enter an accountant-approved, effective test tax version and assign it to
+   the show; confirm its Stripe manual Tax Rate has the identical
+   percentage/inclusive/country/state evidence.
+4. Confirm the signed webhook subscribes to `checkout.session.completed`,
+   `checkout.session.expired`, and `customer.subscription.*`.
+5. Verify `GET /v1/admin/billing/readiness` shows every dependency and zero
+   failed journal events.
+6. Set `SUBSCRIPTION_CHECKOUT_ENABLED=true`, deploy only the reviewed commit,
+   and buy once with a Stripe test card and owner-controlled address/email.
+7. Confirm the Checkout attempt stores hashes/evidence only, the webhook
+   creates one listener plus Stripe entitlement source, the aggregate is
+   active, the magic link works, private feed creation works, and Portal opens.
+8. Cancel in Portal, replay webhook events out of order/duplicated, and confirm
+   the entitlement changes once without affecting a fixture Pool/manual source.
+9. Disable the kill switch again and remove all customer/subscription fixtures
+   after exporting redacted evidence.
 
 Required for the isolated ad-plan processor:
 

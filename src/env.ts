@@ -18,6 +18,7 @@ export type PodcastEnv = Env & {
   LISTENER_EMAIL_LOOKUP_PEPPER?: string;
   LISTENER_SESSION_SECRET?: string;
   LISTENER_TURNSTILE_REQUIRED?: string;
+  CHECKOUT_TURNSTILE_REQUIRED?: string;
   PODCAST_AUTHOR_NAME?: string;
   PODCAST_EMAIL_FROM?: string;
   PODCAST_OWNER_EMAIL?: string;
@@ -26,7 +27,9 @@ export type PodcastEnv = Env & {
   RESEND_API_KEY?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_MODE?: string;
+  STRIPE_PORTAL_CONFIGURATION_ID?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  SUBSCRIPTION_CHECKOUT_ENABLED?: string;
   TAX_QUOTE_HASH_SECRET?: string;
   TURNSTILE_SECRET_KEY?: string;
   VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN?: string;

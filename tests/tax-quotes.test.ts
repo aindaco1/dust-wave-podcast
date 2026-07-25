@@ -111,7 +111,9 @@ function taxFixture({
     jurisdiction_code: "US-NM-87120",
     rate_parts_per_million: 78_750,
     inclusive: 0,
-    provider_name: "manual_accountant"
+    provider_name: "manual_accountant",
+    source_reference: "accountant-fixture-v1",
+    stripe_tax_rate_id: "txr_fixture"
   }
 }: {
   attemptCount?: number;
@@ -121,6 +123,8 @@ function taxFixture({
     rate_parts_per_million: number;
     inclusive: number;
     provider_name: string;
+    source_reference: string;
+    stripe_tax_rate_id: string;
   } | null;
 } = {}) {
   const queries: string[] = [];
@@ -143,6 +147,7 @@ function taxFixture({
               amount_cents: 500,
               currency: "USD",
               tax_behavior: "exclusive",
+              stripe_price_id: "price_stripe_monthly",
               provider_mode: "test",
               billing_mode: "test",
               premium_enabled: 1
