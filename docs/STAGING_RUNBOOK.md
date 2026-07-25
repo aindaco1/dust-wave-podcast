@@ -30,12 +30,26 @@ Retain the export outside the repository and record its path in the private
 release evidence. Apply migrations to a fresh local database as a second
 forward-migration check.
 
+If the D1 export endpoint is temporarily unavailable, do not silently skip
+recovery evidence. Confirm read-only D1 access and clean foreign keys, then
+capture an exact pre-migration Time Travel bookmark with
+`wrangler d1 time-travel info DB --env staging --json`. Proceed only when that
+bookmark is returned and the migration is additive/reversible through Time
+Travel; record the export failure and bookmark privately. Never substitute a
+production bookmark or apply the migration to production.
+
 For migration `0026`, verify the fresh and restored databases contain
 `show_notification_preferences`, its listener/show primary key, and the
 `show_notification_preferences_eligible` partial index. Before and after the
 remote apply, record only
 aggregate row counts and `PRAGMA foreign_key_check`; do not export listener
 identifiers into shared release evidence.
+
+For migration `0027`, verify `show_distribution_destinations` contains one row
+per show/directory pair, the show/setup index exists, and foreign-key checks are
+empty. Keep every owner state `not_started` until an authorized operator
+actually completes that platform's one-time setup; do not mark a directory
+`verified` merely because its submission page or RSS feed is reachable.
 
 ## 3. Configure non-secret test state
 
