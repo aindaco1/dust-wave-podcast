@@ -234,6 +234,23 @@ and never expose the bearer in D1 or response content. The first-party News UI
 does not request remote chapter artwork, avoiding an extra listener-tracking
 request; related links are no-referrer and noopener/noreferrer.
 
+## Production-review boundary
+
+Production review is private, show-scoped, no-store admin data. Analyst+ may
+read; Producer+ may create notes and change non-approval state; Admin+ is
+required to approve or reopen an approved target. All writes require the
+allowed site origin and current CSRF token. Assignments resolve only to an
+active administrator with a global or matching-show role.
+
+The server, not the client, resolves the exact current media/revision digest.
+Every review stores that immutable reference, stale references remain
+historical, and stale targets cannot be newly approved. Comment ranges are
+bounded by episode duration; text is normalized plain text with body/count and
+control/bidirectional-override limits. Optimistic mutations are replay-safe and
+content-digested. Audit events intentionally omit comment bodies. Readiness is
+explicitly non-enforcing until a later publication gate receives separate
+staleness, rollback, and exact-revision coverage.
+
 ## Clip-render boundary
 
 Clip recipes are private, show-scoped, CSRF-protected Producer+ revisions.

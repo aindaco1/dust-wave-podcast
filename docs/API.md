@@ -205,6 +205,10 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/chapters` | analyst+ | Current normalized chapter rows plus version/approval state |
 | `PUT` | `/v1/admin/episodes/{id}/chapters` | producer+ | Idempotent optimistic chapter revision |
 | `POST` | `/v1/admin/episodes/{id}/chapters/approve` | admin+ | Approve one exact chapter revision |
+| `GET` | `/v1/admin/episodes/{id}/reviews` | analyst+ | Current reviewable targets, exact-revision history, comments, blockers, and non-enforcing readiness |
+| `POST` | `/v1/admin/episodes/{id}/reviews` | producer+ | Add one replay-safe plain-text note to an exact current target and optional time range |
+| `PATCH` | `/v1/admin/reviews/{id}` | producer+; admin+ for approval/reopen | Optimistically update target review state/assignment |
+| `PATCH` | `/v1/admin/review-comments/{id}` | producer+ | Optimistically resolve/reopen or assign a review note |
 | `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
 | `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
 | `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
@@ -353,6 +357,29 @@ replaces those rows, stores the immutable canonical JSON/digest, and writes
 bounded audit metadata without titles or URLs. Admin approval binds one exact
 revision/digest. A newer draft does not rewrite the last approved snapshot, so
 public/private clients remain on the prior approval until the next review.
+
+### Production review
+
+Review targets are discovered server-side from the episode's current ready
+audio ETag/publication revision, transcript content digest, chapter digest,
+clip recipe digest, or latest processed ad-plan digest. A review snapshots that
+exact type, ID, revision, and digest. When the underlying target changes, the
+review remains readable as history but is not current and cannot receive a new
+approval.
+
+Comment creation accepts a replay-safe `commentId`, optional ordered
+integer-millisecond range inside the episode, 1–4,000 characters of normalized
+plain text, an explicit blocker boolean, and an optional active show-team
+assignee. Review and comment state changes accept `mutationId` plus
+`baseRevision`; D1 advances each base once. Approval or reopening an approved
+review requires Admin+, and approval fails while that exact target has an open
+blocker. Audit metadata records IDs, revisions, state, blocker, range-presence,
+and assignment-presence only—never comment text.
+
+The list response marks exact current versus historical targets and summarizes
+current approvals/open blockers. `reviewReady` is evidence only and
+`publishingEnforced` remains false until dependency-staleness and
+exact-publication-revision gates are connected and tested.
 
 ### Clip recipes and private render evidence
 

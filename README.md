@@ -55,6 +55,13 @@ when an approved revision exists. The canonical News page renders the same
 document as accessible seek controls through the existing Digest/Podcast
 player—there is no second audio runtime.
 
+Production review is a separate private collaboration layer over the same
+versioned audio, transcript, chapter, clip, and ad-plan targets. Timestamped
+plain-text notes, open/resolved blockers, assignment, and the four review
+states retain the exact target revision/digest and become historical when that
+target changes. The readiness result is evidence-only until the later
+dependency-staleness publication gate is deliberately connected.
+
 The first clip-factory boundary now turns an approved transcript cue range
 into a versioned 9:16, 1:1, or 16:9 `captioned-waveform-v1` recipe. Producer
 writes are optimistic/idempotent and snapshot the exact transcript plus source

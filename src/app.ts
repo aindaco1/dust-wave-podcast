@@ -68,6 +68,12 @@ import {
   servePublicEpisodeChapters
 } from "./chapters";
 import {
+  createAdminEpisodeReviewComment,
+  listAdminEpisodeReviews,
+  updateAdminProductionReview,
+  updateAdminProductionReviewComment
+} from "./production-reviews";
+import {
   approveAdminClipYouTubePublication,
   createAdminClipYouTubeDraft
 } from "./clip-youtube";
@@ -185,6 +191,12 @@ const ADMIN_EPISODE_CHAPTERS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters$/;
 const ADMIN_EPISODE_CHAPTERS_APPROVE_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/approve$/;
+const ADMIN_EPISODE_REVIEWS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/reviews$/;
+const ADMIN_REVIEW_PATH =
+  /^\/v1\/admin\/reviews\/([A-Za-z0-9_-]+)$/;
+const ADMIN_REVIEW_COMMENT_PATH =
+  /^\/v1\/admin\/review-comments\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_CLIPS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips$/;
 const ADMIN_EPISODE_CLIP_PATH =
@@ -653,6 +665,43 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
         adminEpisodeChaptersMatch[1]
       );
     }
+  }
+  const adminEpisodeReviewsMatch = url.pathname.match(
+    ADMIN_EPISODE_REVIEWS_PATH
+  );
+  if (adminEpisodeReviewsMatch) {
+    if (method === "GET") {
+      return listAdminEpisodeReviews(
+        request,
+        env,
+        adminEpisodeReviewsMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return createAdminEpisodeReviewComment(
+        request,
+        env,
+        adminEpisodeReviewsMatch[1]
+      );
+    }
+  }
+  const adminReviewMatch = url.pathname.match(ADMIN_REVIEW_PATH);
+  if (adminReviewMatch && method === "PATCH") {
+    return updateAdminProductionReview(
+      request,
+      env,
+      adminReviewMatch[1]
+    );
+  }
+  const adminReviewCommentMatch = url.pathname.match(
+    ADMIN_REVIEW_COMMENT_PATH
+  );
+  if (adminReviewCommentMatch && method === "PATCH") {
+    return updateAdminProductionReviewComment(
+      request,
+      env,
+      adminReviewCommentMatch[1]
+    );
   }
   const adminEpisodeTranscriptMatch = url.pathname.match(
     ADMIN_EPISODE_TRANSCRIPT_PATH

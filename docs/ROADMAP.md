@@ -150,6 +150,10 @@ iHeartRadio, and Deezer.
   immutable approvals, Podcasting 2.0 public/private JSON, RSS tags, and the
   existing Digest/Podcast player. Keep draft/future/premium visibility
   fail-closed and remote chapter artwork out of the first-party page runtime.
+- Add private exact-revision production review across current audio,
+  transcripts, chapters, clips, and ad plans: timestamp/range notes,
+  assignment, open/resolved blockers, four simple review states, historical
+  staleness, and non-enforcing readiness before a later publication gate.
 
 ### Post-launch
 

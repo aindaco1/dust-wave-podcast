@@ -96,6 +96,17 @@ Reject nonzero first markers, duplicate/out-of-order or out-of-duration starts,
 all-silent documents, unsafe title controls/markup, and non-HTTPS or
 credentialed URLs.
 
+For migration `0033`, verify the three `production_review*` tables, four
+episode/readiness/comment/blocker indexes, range/resolution checks, assignment
+foreign keys, and replay-uniqueness constraints. With an isolated ready-audio
+fixture and scoped Admin session, create one timed bilingual blocker, replay
+its `commentId`, resolve/reopen it, move its exact target through
+`ready_for_review` and Admin approval, and replay each mutation. Change the
+fixture ETag/revision before approval and confirm stale approval is `409`.
+Confirm readiness counts only current targets, publish enforcement remains
+false, comment text never enters audit metadata, unauthorized/CSRF-cross-origin
+writes fail before mutation, and foreign keys remain clean.
+
 For the public transcript projection, use an isolated published/due/public
 episode with ready media and one immutable approved English or Spanish
 revision. Confirm `GET` returns only plain timed text, confirmed speaker names,
