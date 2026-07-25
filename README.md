@@ -131,9 +131,15 @@ output routes stream through the Worker's private R2 binding. See
 Source-audio QC uses the same isolated secret and credential-free streaming
 pattern with separate `audio-qc` request purposes. The pinned manual workflow
 fully decodes the current immutable source, submits a shared-contract report,
-and retains no audio artifact. It only measures the source; working-master
-approval, enhancement previews, peaks, delivery rendering, and publication
-gating remain separate follow-up boundaries.
+and retains no audio artifact. A zero-blocker run against the current source
+and current show policy can now be explicitly approved by a Super-admin as a
+revisioned working master. Private A/B enhancement previews reuse the same
+signed streaming pattern and `@dustwave/media-core` contract; their original
+and enhanced excerpts use the same MP3 profile and can never become a master.
+Replacing a master invalidates current transcript, chapter, and clip
+approvals, and the publication-readiness graph now blocks without an exact
+approved master. Full-length enhanced derivatives, derivative QC, peaks, and
+delivery rendering remain separate follow-up boundaries.
 
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.

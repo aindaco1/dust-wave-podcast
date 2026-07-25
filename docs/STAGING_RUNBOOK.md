@@ -120,6 +120,15 @@ policy uniqueness), strict policy bounds, and the queued/running/succeeded/
 failed state checks. Replay from zero and keep foreign keys clean. Staging
 should still have zero QC runs until a real rights-cleared source exists.
 
+For migration `0036`, verify one revision-zero
+`episode_working_master_states` row per episode, the new-episode seed and
+state-reference triggers, immutable master history/uniqueness, all preview
+state checks/indexes, and clean foreign keys. In an isolated fixture, approve
+revision one, approve a different revision-two QC snapshot, and confirm
+current transcript/chapter approvals clear, clips return to draft, authored
+rows remain, and the publication evidence epoch advances. A missing or
+cross-episode master pointer must abort.
+
 After this workflow is present on a dispatchable branch, queue the current
 source from Production and run:
 
@@ -137,8 +146,29 @@ policy revision, and resource/version evidence. Change the current source ETag
 or policy revision and confirm a new run is required. Never upload a fabricated
 episode to shared staging merely to make this path green.
 
+After a real zero-blocker current QC run exists, approve the exact source from
+the Production tab with a bounded reason and acknowledgement. Confirm a stale
+`baseRevision` is `409`, non-Super-admin approval is `403`, the response/audit
+contains hashes but no object key or reason text, and readiness changes from a
+missing to ready `core.working_master` node.
+
+Queue one bounded A/B preview and dispatch:
+
+```sh
+gh workflow run process-audio-enhancement-preview.yml \
+  --ref agent/launch-configuration \
+  -f job_id="enhance_REPLACE_WITH_QUEUED_ID"
+```
+
+Confirm the workflow checks the source SHA against successful QC, renders both
+48 kHz 192 kbps MP3 excerpts, uploads through signed Worker streams, verifies
+both native R2 checksums, retains no audio artifact, and commits one bounded
+report. In the workbench, test authenticated range playback and downloads for
+both sides. Confirm anonymous media is `401`, a changed ETag/report/recipe is
+`409`, a preview cannot become a master, and production remains untouched.
+
 Using an isolated fully reviewed fixture, confirm
-`GET /v1/admin/episodes/{id}/readiness` returns 14 ordered nodes, the existing
+`GET /v1/admin/episodes/{id}/readiness` returns 15 ordered nodes, the existing
 legacy Publish checks pass unchanged, every current review target is counted,
 the candidate is ready, and repeated reads return the same `snapshotDigest`
 despite different `generatedAt` values. Confirm Analyst access succeeds,

@@ -356,10 +356,39 @@ not free-form processor output. Audit metadata contains IDs, counts, sizes,
 policy/manifest/report/source hashes, and duration, but no object key, filename,
 raw FFmpeg log, or audio.
 
-The pinned processor uses argument arrays rather than a shell, bounds process
-output and runtime, fully decodes the source, and retains only the non-secret
-callback report as a 30-day GitHub artifact. It cannot write R2, approve a
-working master, change delivery audio, or publish.
+The pinned QC processor uses argument arrays rather than a shell, bounds
+process output and runtime, fully decodes the source, and retains only the
+non-secret callback report as a 30-day GitHub artifact. It cannot write R2,
+approve a working master, change delivery audio, or publish.
+
+## Working-master and enhancement-preview boundary
+
+Working-master approval requires a current CSRF token and Super-admin role.
+The Worker re-heads R2 and D1 atomically rechecks the expected state revision,
+current completed upload, source object/ETag/bytes, zero-blocker successful QC,
+and current policy revision. Approval audit metadata contains only IDs,
+revisions, hashes, origin kind, and whether prior derived approvals were made
+stale. It excludes object keys and free-form approval text.
+
+Master state points to one immutable episode-scoped approval row. A D1 trigger
+rejects a cross-episode or wrong-revision pointer. On replacement, triggers
+preserve authored transcript/chapter/clip data and immutable history but clear
+current transcript/chapter approvals, return clips to draft, and advance the
+publication evidence epoch. Production review and publication readiness read
+only the exact current pointer.
+
+Enhancement recipes are validated by a shared allowlist; no request can supply
+an FFmpeg expression. Manifest/source/output/completion requests have distinct
+purpose-bound payloads. Output uploads authenticate a base64url descriptor
+before D1, require an exact `Content-Length` and `audio/mpeg`, stream through
+the Worker R2 binding, and require native SHA-256 plus manifest/kind metadata.
+Completion re-heads source and both outputs before transition to ready.
+
+Private preview playback is role- and show-scoped, credentialed, byte-range
+safe, `no-store`, `noindex`, and checksum-verified before streaming. The
+workflow retains only callback and upload-response evidence for 30 days; audio
+files remain only in private staging R2. Preview state is explicitly
+ineligible for master approval or publication.
 
 The separately authorized Shorts test stores one publication per render and
 revalidates the current revision plus the same D1/R2 evidence before any

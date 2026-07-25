@@ -59,9 +59,15 @@ iHeartRadio, and Deezer.
   records normalized codec/duration/sample/channel/bitrate, LUFS/LRA,
   sample/true-peak, clipping, DC-offset, channel-balance, silence, checksum,
   and resource evidence through the shared `@dustwave/media-core` contract.
-  It is non-destructive and does not yet approve a working master, generate
-  enhancement previews/player peaks, change delivery audio, or feed
-  publication readiness.
+  It remains non-destructive. The next completed boundary adds a revisioned
+  Super-admin approval of the exact zero-blocker source as working master,
+  private codec-matched A/B previews for curated enhancement presets, and a
+  strict publication-readiness node. Replacing a master preserves authored
+  material and immutable history while making transcript, chapter, and clip
+  approvals stale. A preview is explicitly ineligible as a master.
+- Generate a full-length enhanced derivative only after preview selection,
+  run it through the same QC contract, require explicit master approval, and
+  then render delivery audio and player peaks from that approved revision.
 - Transcribe Spanish and English, expose confidence, and block approval unless
   the word-alignment quality gate passes or a super-admin records an audited
   override.

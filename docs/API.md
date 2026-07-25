@@ -199,6 +199,10 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/readiness` | analyst+ | Stable exact-evidence snapshot plus the environment's `legacy`, `shadow`, or `enforce` gate projection |
 | `GET` | `/v1/admin/episodes/{id}/audio-qc` | analyst+ | Current source/policy, up to 20 private QC summaries, and the latest bounded full report |
 | `POST` | `/v1/admin/episodes/{id}/audio-qc` | producer+ | Staging-only queue of one exact source/policy manifest; does not modify or publish audio |
+| `GET` | `/v1/admin/episodes/{id}/audio-master` | analyst+ | Current revisioned working master, eligible zero-blocker source, immutable history, presets, and private previews |
+| `POST` | `/v1/admin/episodes/{id}/audio-master/approve-source` | super-admin | Optimistically approve the exact current source/QC evidence as a new master revision |
+| `POST` | `/v1/admin/episodes/{id}/audio-enhancement-previews` | producer+ | Staging-only queue of a curated, bounded, private A/B preview |
+| `GET`, `HEAD` | `/v1/admin/audio-enhancements/{jobId}/media/{original\|enhanced}` | analyst+ | Show-scoped, range-safe, no-store preview or download |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
@@ -582,9 +586,44 @@ not trust processor-supplied blocker or warning totals.
 All three processor routes are absent outside staging. Success re-heads R2,
 validates the shared report, recomputes its SHA-256 and findings, and writes
 summary/report state plus content-minimized audit metadata. The source object
-key is not included in the workbench response or audit metadata. This slice
-deliberately does not approve a working master, generate enhancement previews,
-replace delivery audio, or alter publication readiness.
+key is not included in the workbench response or audit metadata.
+
+### Working master and enhancement previews
+
+A working-master approval is an immutable, revisioned boundary separate from
+source upload and delivery audio. Only a Super-admin can approve. The request
+must carry the current state revision, exact successful QC run ID, a bounded
+reason, and an explicit exact-source acknowledgement. At commit time D1
+rechecks that the QC run has zero blockers, still matches the current
+`source_audio` upload and ETag, and uses the current show-policy revision; the
+Worker re-heads R2 first. A stale or competing revision returns `409`.
+
+Changing the current master increments publication evidence and removes
+current transcript/chapter approvals while returning clips to draft. Authored
+content and immutable approval history remain. Production reviews use the
+approved master SHA/revision—not delivery-audio ETag—as their working-audio
+target, and readiness has a blocking `core.working_master` node.
+
+Enhancement queueing accepts only the two shared curated presets, an integer
+start, and a 5–90 second duration bounded by the QC-measured source duration.
+The shared `@dustwave/media-core/audio-enhancement` contract binds source
+bytes/ETag/SHA, QC report SHA, recipe, predetermined A/B keys, callback, and
+manifest digest. Both outputs are 48 kHz 192 kbps MP3 so an A/B comparison
+does not confound the preset with a codec change.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/audio-enhancements/{jobId}/manifest` | Return the rebuilt exact manifest after a signed `manifest` request |
+| `POST` | `/v1/processor/audio-enhancements/{jobId}/source` | Stream the ETag-pinned private source after a signed `source` request |
+| `PUT` | `/v1/processor/audio-enhancements/{jobId}/outputs/{original\|enhanced}` | Stream one signed, length-bound, native-SHA-verified private MP3 |
+| `POST` | `/v1/processor/audio-enhancements/{jobId}/complete` | Re-head both outputs and commit one shared-contract report or bounded failure |
+
+These processor routes exist only in staging. The workflow receives no R2
+credential, uses argument arrays rather than user-supplied filters, retains no
+audio artifact, and uploads through the Worker binding. The admin response
+contains authenticated media URLs rather than R2 keys. A preview cannot be
+approved as a working master; a future full-length derivative must pass a new
+QC run before a separate approval.
 
 ### Sponsor decision preview
 

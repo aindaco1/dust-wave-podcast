@@ -51,6 +51,16 @@ import {
   updateAdminShowAudioQcPolicy
 } from "./audio-qc";
 import {
+  approveAdminEpisodeSourceMaster,
+  completeAudioEnhancementPreview,
+  getAdminEpisodeAudioMaster,
+  getAudioEnhancementProcessorManifest,
+  getAudioEnhancementProcessorSource,
+  queueAdminAudioEnhancementPreview,
+  serveAdminAudioEnhancementPreview,
+  uploadAudioEnhancementProcessorOutput
+} from "./audio-masters";
+import {
   issueAdminStagingAdDecision,
   recordTrustedAdQualificationCallback,
   serveStagingAdDecisionAudio
@@ -193,6 +203,14 @@ const ADMIN_EPISODE_READINESS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/readiness$/;
 const ADMIN_EPISODE_AUDIO_QC_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-qc$/;
+const ADMIN_EPISODE_AUDIO_MASTER_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-master$/;
+const ADMIN_EPISODE_AUDIO_MASTER_APPROVE_SOURCE_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-master\/approve-source$/;
+const ADMIN_EPISODE_AUDIO_ENHANCEMENT_PREVIEWS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-enhancement-previews$/;
+const ADMIN_AUDIO_ENHANCEMENT_MEDIA_PATH =
+  /^\/v1\/admin\/audio-enhancements\/([A-Za-z0-9_-]+)\/media\/(original|enhanced)$/;
 const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
 const ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH =
@@ -266,6 +284,14 @@ const PROCESSOR_AUDIO_QC_MANIFEST_PATH =
   /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/manifest$/;
 const PROCESSOR_AUDIO_QC_SOURCE_PATH =
   /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/source$/;
+const PROCESSOR_AUDIO_ENHANCEMENT_COMPLETE_PATH =
+  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/complete$/;
+const PROCESSOR_AUDIO_ENHANCEMENT_MANIFEST_PATH =
+  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/manifest$/;
+const PROCESSOR_AUDIO_ENHANCEMENT_SOURCE_PATH =
+  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/source$/;
+const PROCESSOR_AUDIO_ENHANCEMENT_OUTPUT_PATH =
+  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/outputs\/(original|enhanced)$/;
 const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
@@ -666,6 +692,56 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       );
     }
   }
+  const adminEpisodeAudioMasterApproveSourceMatch = url.pathname.match(
+    ADMIN_EPISODE_AUDIO_MASTER_APPROVE_SOURCE_PATH
+  );
+  if (
+    adminEpisodeAudioMasterApproveSourceMatch
+    && method === "POST"
+  ) {
+    return approveAdminEpisodeSourceMaster(
+      request,
+      env,
+      adminEpisodeAudioMasterApproveSourceMatch[1]
+    );
+  }
+  const adminEpisodeAudioEnhancementPreviewsMatch = url.pathname.match(
+    ADMIN_EPISODE_AUDIO_ENHANCEMENT_PREVIEWS_PATH
+  );
+  if (
+    adminEpisodeAudioEnhancementPreviewsMatch
+    && method === "POST"
+  ) {
+    return queueAdminAudioEnhancementPreview(
+      request,
+      env,
+      adminEpisodeAudioEnhancementPreviewsMatch[1]
+    );
+  }
+  const adminEpisodeAudioMasterMatch = url.pathname.match(
+    ADMIN_EPISODE_AUDIO_MASTER_PATH
+  );
+  if (adminEpisodeAudioMasterMatch && method === "GET") {
+    return getAdminEpisodeAudioMaster(
+      request,
+      env,
+      adminEpisodeAudioMasterMatch[1]
+    );
+  }
+  const adminAudioEnhancementMediaMatch = url.pathname.match(
+    ADMIN_AUDIO_ENHANCEMENT_MEDIA_PATH
+  );
+  if (
+    adminAudioEnhancementMediaMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveAdminAudioEnhancementPreview(
+      request,
+      env,
+      adminAudioEnhancementMediaMatch[1],
+      adminAudioEnhancementMediaMatch[2]
+    );
+  }
   const adminEpisodeDistributionMatch = url.pathname.match(
     ADMIN_EPISODE_DISTRIBUTION_PATH
   );
@@ -1048,6 +1124,47 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       processorAudioQcSourceMatch[1]
+    );
+  }
+  const processorAudioEnhancementCompleteMatch = url.pathname.match(
+    PROCESSOR_AUDIO_ENHANCEMENT_COMPLETE_PATH
+  );
+  if (processorAudioEnhancementCompleteMatch && method === "POST") {
+    return completeAudioEnhancementPreview(
+      request,
+      env,
+      processorAudioEnhancementCompleteMatch[1]
+    );
+  }
+  const processorAudioEnhancementManifestMatch = url.pathname.match(
+    PROCESSOR_AUDIO_ENHANCEMENT_MANIFEST_PATH
+  );
+  if (processorAudioEnhancementManifestMatch && method === "POST") {
+    return getAudioEnhancementProcessorManifest(
+      request,
+      env,
+      processorAudioEnhancementManifestMatch[1]
+    );
+  }
+  const processorAudioEnhancementSourceMatch = url.pathname.match(
+    PROCESSOR_AUDIO_ENHANCEMENT_SOURCE_PATH
+  );
+  if (processorAudioEnhancementSourceMatch && method === "POST") {
+    return getAudioEnhancementProcessorSource(
+      request,
+      env,
+      processorAudioEnhancementSourceMatch[1]
+    );
+  }
+  const processorAudioEnhancementOutputMatch = url.pathname.match(
+    PROCESSOR_AUDIO_ENHANCEMENT_OUTPUT_PATH
+  );
+  if (processorAudioEnhancementOutputMatch && method === "PUT") {
+    return uploadAudioEnhancementProcessorOutput(
+      request,
+      env,
+      processorAudioEnhancementOutputMatch[1],
+      processorAudioEnhancementOutputMatch[2]
     );
   }
 

@@ -53,6 +53,11 @@ describe("publication readiness graph", () => {
         severity: "blocker"
       }),
       expect.objectContaining({
+        id: "core.working_master",
+        status: "ready",
+        severity: "blocker"
+      }),
+      expect.objectContaining({
         id: "distribution.youtube",
         status: "not_applicable"
       }),
@@ -230,7 +235,12 @@ function readyInput(): ReadinessInput {
       show_youtube_channel_url:
         "https://www.youtube.com/@dustwavecollective",
       show_premium_enabled: 1,
-      show_dynamic_ads_enabled: 0
+      show_dynamic_ads_enabled: 0,
+      working_master_revision: 1,
+      current_master_id: "master_episode_1",
+      working_master_origin_kind: "source_original",
+      working_master_source_sha256: "d".repeat(64),
+      working_master_qc_report_sha256: "e".repeat(64)
     },
     publicationFingerprintCurrent: null,
     transcripts: [

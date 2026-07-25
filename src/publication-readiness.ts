@@ -63,6 +63,11 @@ type EpisodeReadinessRow = {
   show_youtube_channel_url: string | null;
   show_premium_enabled: number;
   show_dynamic_ads_enabled: number;
+  working_master_revision: number | null;
+  current_master_id: string | null;
+  working_master_origin_kind: string | null;
+  working_master_source_sha256: string | null;
+  working_master_qc_report_sha256: string | null;
 };
 
 type TranscriptReadinessRow = {
@@ -279,11 +284,23 @@ async function loadEpisodePublicationReadiness(
        s.language AS show_language, s.rss_slug AS show_rss_slug,
        s.youtube_channel_url AS show_youtube_channel_url,
        s.premium_enabled AS show_premium_enabled,
-       s.dynamic_ads_enabled AS show_dynamic_ads_enabled
+       s.dynamic_ads_enabled AS show_dynamic_ads_enabled,
+       master_state.revision AS working_master_revision,
+       master_state.current_master_id,
+       master.origin_kind AS working_master_origin_kind,
+       master.source_sha256 AS working_master_source_sha256,
+       master.quality_control_report_sha256
+         AS working_master_qc_report_sha256
      FROM episodes e
      JOIN shows s ON s.id = e.show_id
      JOIN publication_show_evidence_versions show_evidence
        ON show_evidence.show_id = e.show_id
+     LEFT JOIN episode_working_master_states master_state
+       ON master_state.episode_id = e.id
+     LEFT JOIN episode_working_masters master
+       ON master.id = master_state.current_master_id
+      AND master.episode_id = e.id
+      AND master.revision = master_state.revision
      WHERE e.id = ?`
   ).bind(episodeId).first<EpisodeReadinessRow>();
   if (!episode) return null;
@@ -325,6 +342,7 @@ async function loadEpisodePublicationReadiness(
          COUNT(*) AS total,
          COALESCE(SUM(CASE
            WHEN c.revision > 0
+             AND c.status = 'ready'
              AND c.recipe_sha256 IS NOT NULL
              AND c.source_object_key = ?
              AND c.source_object_bytes = ?
@@ -507,6 +525,7 @@ export function evaluatePublicationReadiness(
   });
   const nodes: PublicationReadinessNode[] = [
     metadataNode(episode, input.publicationFingerprintCurrent),
+    workingMasterNode(episode),
     audioNode(episode),
     releaseTimingNode(episode),
     primaryTranscriptNode(episode, input.transcripts),
@@ -550,6 +569,40 @@ export function evaluatePublicationReadiness(
     },
     nodes
   };
+}
+
+function workingMasterNode(
+  episode: EpisodeReadinessRow
+): PublicationReadinessNode {
+  const fields = {
+    id: episode.current_master_id,
+    revision: episode.working_master_revision,
+    originKind: episode.working_master_origin_kind,
+    hasSourceSha256: /^[a-f0-9]{64}$/.test(
+      episode.working_master_source_sha256 ?? ""
+    ),
+    hasQualityControlReportSha256: /^[a-f0-9]{64}$/.test(
+      episode.working_master_qc_report_sha256 ?? ""
+    )
+  };
+  const ready = Boolean(
+    fields.id
+    && Number(fields.revision) > 0
+    && fields.originKind
+    && fields.hasSourceSha256
+    && fields.hasQualityControlReportSha256
+  );
+  return node({
+    id: "core.working_master",
+    group: "core",
+    label: "Approved working master",
+    status: ready ? "ready" : "missing",
+    severity: "blocker",
+    summary: ready
+      ? "An explicit master approval is bound to exact source and QC evidence."
+      : "Approve the current zero-blocker source as the working master.",
+    evidence: fields
+  });
 }
 
 function metadataNode(

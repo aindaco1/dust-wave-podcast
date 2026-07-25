@@ -978,14 +978,23 @@ async function loadCurrentReviewTargets(
   const [episode, transcripts, chapters, clips, adPlans] = await Promise.all([
     db.prepare(
       `SELECT
-         id, publication_revision, audio_etag, media_status
-       FROM episodes
-       WHERE id = ?`
+         episode.id,
+         state.revision AS working_master_revision,
+         state.current_master_id,
+         master.source_sha256 AS working_master_sha256
+       FROM episodes episode
+       LEFT JOIN episode_working_master_states state
+         ON state.episode_id = episode.id
+       LEFT JOIN episode_working_masters master
+         ON master.id = state.current_master_id
+        AND master.episode_id = episode.id
+        AND master.revision = state.revision
+       WHERE episode.id = ?`
     ).bind(episodeId).first<{
       id: string;
-      publication_revision: number;
-      audio_etag: string | null;
-      media_status: string;
+      working_master_revision: number | null;
+      current_master_id: string | null;
+      working_master_sha256: string | null;
     }>(),
     db.prepare(
       `SELECT id, language, revision, content_sha256
@@ -1034,15 +1043,16 @@ async function loadCurrentReviewTargets(
   const targets: ReviewTarget[] = [];
   if (
     episode
-    && episode.audio_etag
-    && episode.media_status === "ready"
+    && episode.current_master_id
+    && episode.working_master_revision
+    && episode.working_master_sha256
   ) {
     targets.push({
       type: "source_audio",
-      id: episode.id,
-      revision: episode.publication_revision,
-      digest: boundedDigest(episode.audio_etag),
-      label: "Working audio"
+      id: episode.current_master_id,
+      revision: episode.working_master_revision,
+      digest: boundedDigest(episode.working_master_sha256),
+      label: "Working master"
     });
   }
   targets.push(...transcripts.results.map((transcript) => ({
@@ -1419,7 +1429,7 @@ function targetKey(target: ReviewTarget): string {
 
 function historicalTargetLabel(review: ReviewRow): string {
   const names: Record<ReviewTargetType, string> = {
-    source_audio: "Working audio",
+    source_audio: "Working master",
     transcript: "Transcript",
     chapters: "Chapters",
     clip: "Clip",
