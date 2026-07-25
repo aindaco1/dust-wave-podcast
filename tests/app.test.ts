@@ -44,8 +44,18 @@ function createShowDatabase(): D1Database {
       if (query.includes("FROM show_prices")) {
         return {
           results: [
-            { billing_period: "month", amount_cents: 500, currency: "USD" },
-            { billing_period: "year", amount_cents: 5000, currency: "USD" }
+            {
+              id: "price_opera_monthly_usd",
+              billing_period: "month",
+              amount_cents: 500,
+              currency: "USD"
+            },
+            {
+              id: "price_opera_annual_usd",
+              billing_period: "year",
+              amount_cents: 5000,
+              currency: "USD"
+            }
           ]
         };
       }
@@ -120,12 +130,13 @@ describe("podcast API", () => {
       createEnv({ DB: createShowDatabase() })
     );
     const payload = await response.json() as {
+      checkoutEnabled: boolean;
       show: {
         premiumEnabled: boolean;
         descriptionEn: string;
         earlyAccessDays: number;
         freeMiniEpisodeEnabled: boolean;
-        prices: unknown[];
+        prices: Array<{ id: string }>;
         episodes: unknown[];
       };
     };
@@ -136,7 +147,9 @@ describe("podcast API", () => {
     expect(payload.show.earlyAccessDays).toBe(7);
     expect(payload.show.freeMiniEpisodeEnabled).toBe(true);
     expect(payload.show.prices).toHaveLength(2);
+    expect(payload.show.prices[0].id).toBe("price_opera_monthly_usd");
     expect(payload.show.episodes).toEqual([]);
+    expect(payload.checkoutEnabled).toBe(false);
   });
 
   it("keeps admin routes private without a session", async () => {

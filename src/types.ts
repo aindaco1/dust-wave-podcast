@@ -19,6 +19,7 @@ export interface ShowRow {
 }
 
 export interface PriceRow {
+  id: string;
   billing_period: "month" | "year";
   amount_cents: number;
   currency: string;

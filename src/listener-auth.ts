@@ -45,6 +45,7 @@ type SubscriptionRow = {
   billing_period: "month" | "year" | null;
   entitled: number;
   has_private_feed: number;
+  has_stripe_billing: number;
 };
 
 export interface ListenerIdentity {
@@ -57,6 +58,7 @@ export interface ListenerIdentity {
     billingPeriod: SubscriptionRow["billing_period"];
     entitled: boolean;
     hasPrivateFeed: boolean;
+    hasStripeBilling: boolean;
     show: {
       id: string;
       slug: string;
@@ -523,7 +525,16 @@ async function loadListenerIdentity(
              f.listener_id = s.listener_id
              AND f.show_id = s.show_id
              AND f.revoked_at IS NULL
-         ) AS has_private_feed
+         ) AS has_private_feed,
+         EXISTS (
+           SELECT 1
+           FROM subscription_entitlement_sources es
+           WHERE
+             es.listener_id = s.listener_id
+             AND es.show_id = s.show_id
+             AND es.provider = 'stripe'
+             AND es.provider_customer_id IS NOT NULL
+         ) AS has_stripe_billing
        FROM subscriptions s
        JOIN shows sh ON sh.id = s.show_id
        LEFT JOIN show_prices p ON p.id = s.price_id
@@ -542,6 +553,7 @@ async function loadListenerIdentity(
       billingPeriod: subscription.billing_period,
       entitled: subscription.entitled === 1,
       hasPrivateFeed: subscription.has_private_feed === 1,
+      hasStripeBilling: subscription.has_stripe_billing === 1,
       show: {
         id: subscription.show_id,
         slug: subscription.show_slug,

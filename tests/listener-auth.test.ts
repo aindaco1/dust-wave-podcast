@@ -90,6 +90,7 @@ describe("listener passwordless authentication", () => {
         subscriptions: Array<{
           entitled: boolean;
           hasPrivateFeed: boolean;
+          hasStripeBilling: boolean;
           show: { slug: string };
         }>;
       };
@@ -108,6 +109,7 @@ describe("listener passwordless authentication", () => {
     expect(payload.identity.subscriptions[0]).toMatchObject({
       entitled: true,
       hasPrivateFeed: true,
+      hasStripeBilling: true,
       show: { slug: "opera-en-la-selva" }
     });
     expect(batchStatements).toHaveLength(1);
@@ -219,7 +221,8 @@ function authenticationDatabase({
                 show_title: "Ópera en la Selva",
                 billing_period: "month",
                 entitled: 1,
-                has_private_feed: 1
+                has_private_feed: 1,
+                has_stripe_billing: 1
               }]
             };
           }

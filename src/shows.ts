@@ -32,7 +32,7 @@ export async function listPublicShows(db: D1Database): Promise<PublicShow[]> {
 
   const priceResult = await db
     .prepare(
-      `SELECT show_id, billing_period, amount_cents, currency
+      `SELECT id, show_id, billing_period, amount_cents, currency
        FROM show_prices WHERE active = 1 ORDER BY amount_cents`
     )
     .all<PriceRow & { show_id: string }>();
@@ -62,7 +62,7 @@ export async function getPublicShow(db: D1Database, slug: string): Promise<Publi
   const [priceResult, episodeResult] = await Promise.all([
     db
       .prepare(
-        `SELECT billing_period, amount_cents, currency
+        `SELECT id, billing_period, amount_cents, currency
          FROM show_prices WHERE show_id = ? AND active = 1 ORDER BY amount_cents`
       )
       .bind(show.id)

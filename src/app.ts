@@ -75,7 +75,10 @@ import {
   createListenerBillingPortal,
   createSubscriptionCheckout
 } from "./subscription-checkout";
-import { quoteSubscriptionTax } from "./tax-quotes";
+import {
+  quoteSubscriptionTax,
+  subscriptionCheckoutConfigured
+} from "./tax-quotes";
 import {
   abortMultipartUpload,
   completeMultipartUpload,
@@ -185,7 +188,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     && (method === "GET" || method === "HEAD")
   ) {
     const shows = await listPublicShows(env.DB);
-    return json(request, env.ALLOWED_ORIGINS, { shows });
+    return json(request, env.ALLOWED_ORIGINS, {
+      shows,
+      checkoutEnabled: subscriptionCheckoutConfigured(env)
+    });
   }
 
   const showTaxQuoteMatch = url.pathname.match(SHOW_TAX_QUOTE_PATH);
@@ -207,7 +213,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
         { status: 404 }
       );
     }
-    return json(request, env.ALLOWED_ORIGINS, { show });
+    return json(request, env.ALLOWED_ORIGINS, {
+      show,
+      checkoutEnabled: subscriptionCheckoutConfigured(env)
+    });
   }
 
   const feedMatch = url.pathname.match(FEED_PATH);

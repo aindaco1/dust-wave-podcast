@@ -10,7 +10,7 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 |---|---|---|
 | `GET`, `HEAD` | `/health` | Runtime and environment health |
 | `GET`, `HEAD` | `/v1/shows` | Non-archived shows, including coming-soon shows |
-| `GET`, `HEAD` | `/v1/shows/{slug}` | Show, configured prices, and public episodes |
+| `GET`, `HEAD` | `/v1/shows/{slug}` | Show, internal price choices, global Checkout gate, and public episodes |
 | `GET`, `HEAD` | `/{rss-slug}/rss.xml` | Canonical public RSS |
 | `GET`, `HEAD` | `/v1/feeds/{rss-slug}/rss.xml` | RSS alias for staging and diagnostics |
 | `GET`, `HEAD` | `/episodes/{episode-id}/audio` | Public R2-backed audio with byte ranges |
@@ -41,6 +41,11 @@ secret, approved assigned rate, active Stripe Price, and challenge
 configuration must all pass before a provider request is possible. Automatic
 Stripe Tax and dynamic manual-rate selection remain off.
 
+Public show prices include the non-secret internal `id` required by the tax
+quote and Checkout routes. The top-level `checkoutEnabled` boolean reports
+only whether the global environment gate is ready; destination-specific tax
+resolution and every request-time security check still fail closed.
+
 ## Passwordless listener authentication
 
 1. `POST /v1/member/auth/start` with `email`, `preferredLanguage`, and a
@@ -53,7 +58,8 @@ Stripe Tax and dynamic manual-rate selection remain off.
 4. The response sets a `Secure`, `HttpOnly`, `SameSite=Lax` cookie scoped to
    `/v1/member` and returns a CSRF token for in-memory use.
 5. `GET /v1/member/session` rotates CSRF state and returns only the listener
-   ID plus non-secret subscription/show status.
+   ID plus non-secret subscription/show status, including whether a
+   show-scoped Stripe billing source exists.
 6. `POST /v1/member/logout` requires same-origin CSRF and revokes the session.
 
 Listener login tokens expire after 15 minutes and are single-use. Sessions
@@ -309,6 +315,7 @@ created-time pagination, and campaign qualification history.
 ## Provider modes
 
 `GITHUB_PUBLISH_MODE` and `YOUTUBE_PUBLISH_MODE` default to `dry_run`. A dry-run
-publication exercises state transitions without an external write. The
-Podcast checkout endpoint is not exposed until member authentication and
-accountant-approved manual tax configuration pass their launch gates.
+publication exercises state transitions without an external write. Podcast
+Checkout remains inert until the explicit global gate, accountant-approved
+manual tax configuration, isolated Stripe bindings, and request-time security
+checks all pass.
