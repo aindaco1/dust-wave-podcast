@@ -152,6 +152,41 @@ describe("podcast API", () => {
     expect(payload.checkoutEnabled).toBe(false);
   });
 
+  it("routes public transcript slugs and conceals unavailable episodes", async () => {
+    let lookupCount = 0;
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/shows/opera-en-la-selva/"
+        + "episodes/unavailable-episode/transcripts"
+      ),
+      createEnv({
+        DB: {
+          prepare(query: string) {
+            expect(query).toContain("FROM episodes e");
+            expect(query).toContain("e.media_status = 'ready'");
+            return {
+              bind(showSlug: string, episodeSlug: string) {
+                expect(showSlug).toBe("opera-en-la-selva");
+                expect(episodeSlug).toBe("unavailable-episode");
+                return this;
+              },
+              async first() {
+                lookupCount += 1;
+                return null;
+              }
+            };
+          }
+        } as unknown as D1Database
+      })
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await response.json()).toEqual({ error: "episode_not_found" });
+    expect(lookupCount).toBe(1);
+  });
+
   it("keeps admin routes private without a session", async () => {
     for (const path of [
       "/v1/admin/shows",
