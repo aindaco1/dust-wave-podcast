@@ -114,6 +114,29 @@ only its episode epoch, show metadata/setup increments only its show epoch, and
 a global directory edit increments only the global epoch. Replay migrations
 from zero and keep `PRAGMA foreign_key_check` empty.
 
+For migration `0035`, verify one default `show_audio_qc_policies` row per show,
+the new-show seed trigger, all three run indexes (including one-active-source-
+policy uniqueness), strict policy bounds, and the queued/running/succeeded/
+failed state checks. Replay from zero and keep foreign keys clean. Staging
+should still have zero QC runs until a real rights-cleared source exists.
+
+After this workflow is present on a dispatchable branch, queue the current
+source from Production and run:
+
+```sh
+gh workflow run process-audio-qc.yml \
+  --ref release/0.1.0 \
+  -f run_id="qc_REPLACE_WITH_QUEUED_ID"
+```
+
+Before claiming evidence, confirm the workflow fetched the exact private
+manifest/source through signed Worker routes, fully decoded the source,
+retained only `callback.json`, and returned a report whose source, manifest,
+and report hashes match D1. Refresh Production and verify bounded findings,
+policy revision, and resource/version evidence. Change the current source ETag
+or policy revision and confirm a new run is required. Never upload a fabricated
+episode to shared staging merely to make this path green.
+
 Using an isolated fully reviewed fixture, confirm
 `GET /v1/admin/episodes/{id}/readiness` returns 14 ordered nodes, the existing
 legacy Publish checks pass unchanged, every current review target is counted,

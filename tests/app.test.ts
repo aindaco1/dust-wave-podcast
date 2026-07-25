@@ -191,6 +191,7 @@ describe("podcast API", () => {
     for (const path of [
       "/v1/admin/shows",
       "/v1/admin/shows/show_opera_en_la_selva/episodes",
+      "/v1/admin/episodes/episode_fixture/audio-qc",
       "/v1/admin/episodes/episode_fixture/transcripts",
       "/v1/admin/episodes/episode_fixture/clips"
     ]) {

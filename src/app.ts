@@ -42,6 +42,14 @@ import {
   submitAdminEpisodeAdPlan
 } from "./ad-plans";
 import {
+  completeAudioQcRun,
+  getAdminEpisodeAudioQc,
+  getAudioQcProcessorManifest,
+  getAudioQcProcessorSource,
+  queueAdminEpisodeAudioQc,
+  updateAdminShowAudioQcPolicy
+} from "./audio-qc";
+import {
   issueAdminStagingAdDecision,
   recordTrustedAdQualificationCallback,
   serveStagingAdDecisionAudio
@@ -167,6 +175,8 @@ const MEMBER_SHOW_NOTIFICATIONS_PATH =
 const MEMBER_POOL_REDEMPTION_PATH = "/v1/member/redemptions/pool";
 const INTERNAL_POOL_GRANTS_PATH = "/v1/internal/pool/grants";
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
+const ADMIN_SHOW_AUDIO_QC_POLICY_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/audio-qc-policy$/;
 const ADMIN_SHOW_CLIPS_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/clips$/;
 const ADMIN_SHOW_EPISODES_PATH =
@@ -180,6 +190,8 @@ const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_READINESS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/readiness$/;
+const ADMIN_EPISODE_AUDIO_QC_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-qc$/;
 const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
 const ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH =
@@ -247,6 +259,12 @@ const PROCESSOR_CLIP_RENDER_SOURCE_PATH =
   /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/source$/;
 const PROCESSOR_CLIP_RENDER_OUTPUT_PATH =
   /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/output$/;
+const PROCESSOR_AUDIO_QC_COMPLETE_PATH =
+  /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/complete$/;
+const PROCESSOR_AUDIO_QC_MANIFEST_PATH =
+  /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/manifest$/;
+const PROCESSOR_AUDIO_QC_SOURCE_PATH =
+  /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/source$/;
 const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
@@ -565,6 +583,16 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       adminShowDistributionDestinationMatch[2]
     );
   }
+  const adminShowAudioQcPolicyMatch = url.pathname.match(
+    ADMIN_SHOW_AUDIO_QC_POLICY_PATH
+  );
+  if (adminShowAudioQcPolicyMatch && method === "PATCH") {
+    return updateAdminShowAudioQcPolicy(
+      request,
+      env,
+      adminShowAudioQcPolicyMatch[1]
+    );
+  }
   const adminShowEpisodesMatch = url.pathname.match(ADMIN_SHOW_EPISODES_PATH);
   if (adminShowEpisodesMatch) {
     if (method === "GET") {
@@ -608,6 +636,25 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       env,
       adminEpisodeReadinessMatch[1]
     );
+  }
+  const adminEpisodeAudioQcMatch = url.pathname.match(
+    ADMIN_EPISODE_AUDIO_QC_PATH
+  );
+  if (adminEpisodeAudioQcMatch) {
+    if (method === "GET") {
+      return getAdminEpisodeAudioQc(
+        request,
+        env,
+        adminEpisodeAudioQcMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return queueAdminEpisodeAudioQc(
+        request,
+        env,
+        adminEpisodeAudioQcMatch[1]
+      );
+    }
   }
   const adminEpisodeDistributionMatch = url.pathname.match(
     ADMIN_EPISODE_DISTRIBUTION_PATH
@@ -963,6 +1010,36 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       processorClipRenderOutputMatch[1]
     );
   }
+  const processorAudioQcCompleteMatch = url.pathname.match(
+    PROCESSOR_AUDIO_QC_COMPLETE_PATH
+  );
+  if (processorAudioQcCompleteMatch && method === "POST") {
+    return completeAudioQcRun(
+      request,
+      env,
+      processorAudioQcCompleteMatch[1]
+    );
+  }
+  const processorAudioQcManifestMatch = url.pathname.match(
+    PROCESSOR_AUDIO_QC_MANIFEST_PATH
+  );
+  if (processorAudioQcManifestMatch && method === "POST") {
+    return getAudioQcProcessorManifest(
+      request,
+      env,
+      processorAudioQcManifestMatch[1]
+    );
+  }
+  const processorAudioQcSourceMatch = url.pathname.match(
+    PROCESSOR_AUDIO_QC_SOURCE_PATH
+  );
+  if (processorAudioQcSourceMatch && method === "POST") {
+    return getAudioQcProcessorSource(
+      request,
+      env,
+      processorAudioQcSourceMatch[1]
+    );
+  }
 
   const knownPath = url.pathname === "/health"
     || url.pathname.startsWith("/v1/shows")
@@ -972,6 +1049,7 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     || url.pathname.startsWith("/v1/internal")
     || url.pathname.startsWith("/v1/member")
     || url.pathname.startsWith("/v1/private")
+    || url.pathname.startsWith("/v1/processor")
     || Boolean(feedMatch)
     || Boolean(mediaMatch)
     || Boolean(privateFeedMatch)

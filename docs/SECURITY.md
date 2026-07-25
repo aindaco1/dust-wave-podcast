@@ -334,6 +334,33 @@ matching both output and manifest digests. A callback for a stale revision may
 preserve historical evidence but cannot change the current clip. There is no
 public clip route.
 
+## Source-audio QC boundary
+
+Source-audio QC reuses the clip processor's dedicated staging HMAC secret but
+uses separate purpose-bound request bodies and routes. Signature, timestamp,
+content type, declared size, and actual body size are checked before D1.
+Production exposes none of the manifest, source, or completion routes.
+
+An authenticated Producer queues only the episode's current completed
+`source_audio` upload. Before D1 mutation, the Worker checks private R2 bytes,
+ETag, and MIME against the upload record. The immutable manifest includes the
+source snapshot, show-policy revision, fixed callback path, and SHA-256. The
+processor receives audio only through an ETag-conditional no-store Worker
+stream and never receives R2 credentials.
+
+The shared media contract validates all measurements and deterministically
+recomputes findings. The callback cannot lower warning/blocker totals, change
+the snapshotted policy, or substitute a source. Success re-heads R2 before
+committing. Stored reports are bounded to 250 KB; failure uses a fixed code,
+not free-form processor output. Audit metadata contains IDs, counts, sizes,
+policy/manifest/report/source hashes, and duration, but no object key, filename,
+raw FFmpeg log, or audio.
+
+The pinned processor uses argument arrays rather than a shell, bounds process
+output and runtime, fully decodes the source, and retains only the non-secret
+callback report as a 30-day GitHub artifact. It cannot write R2, approve a
+working master, change delivery audio, or publish.
+
 The separately authorized Shorts test stores one publication per render and
 revalidates the current revision plus the same D1/R2 evidence before any
 provider call. The confirmed URL must match both show metadata and the

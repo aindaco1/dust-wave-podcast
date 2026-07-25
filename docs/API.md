@@ -188,6 +188,7 @@ including under concurrent requests.
 |---|---|---|---|
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
+| `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
 | `GET` | `/v1/admin/shows/{id}/episodes` | analyst+ | Draft, scheduled, and published episode workbench rows |
 | `GET` | `/v1/admin/shows/{id}/clips` | analyst+ | Bounded, filterable cross-episode private clip library |
@@ -195,6 +196,8 @@ including under concurrent requests.
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent snapshot-aware publish/schedule; blocker override requires recently authenticated admin+ |
 | `GET` | `/v1/admin/episodes/{id}/readiness` | analyst+ | Stable exact-evidence snapshot plus the environment's `legacy`, `shadow`, or `enforce` gate projection |
+| `GET` | `/v1/admin/episodes/{id}/audio-qc` | analyst+ | Current source/policy, up to 20 private QC summaries, and the latest bounded full report |
+| `POST` | `/v1/admin/episodes/{id}/audio-qc` | producer+ | Staging-only queue of one exact source/policy manifest; does not modify or publish audio |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
@@ -550,6 +553,37 @@ revision may retain historical evidence but cannot mark a newer clip ready.
 No public URL or YouTube upload is produced by the render-processor boundary;
 the separately authorized controlled test above consumes only its verified
 ready evidence.
+
+### Source-audio quality control
+
+The source-audio QC boundary is non-destructive and staging-only for its first
+processor slice. Queueing requires a completed `source_audio` upload that is
+still the episode's current source. The Worker heads private R2, snapshots
+object key/bytes/ETag/MIME plus the current show-policy revision, and returns a
+non-secret workflow/run/digest descriptor for a stored SHA-256-bound
+`audio-qc-job-v1` manifest. The full manifest is available only through the
+signed processor route. A second active or successful run for the same source
+ETag and policy revision is rejected.
+
+The shared `@dustwave/media-core/audio-qc` contract is used by both Worker and
+processor. It defines bounded mono/stereo LUFS targets, tolerance, maximum true
+peak, DC offset, channel imbalance, silence thresholds, normalized media
+measurements, ordered findings, resource evidence, and manifest/report
+digests. The Worker recomputes findings from returned measurements; it does
+not trust processor-supplied blocker or warning totals.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/audio-qc/{runId}/manifest` | Return the rebuilt exact manifest after a signed `manifest` request |
+| `POST` | `/v1/processor/audio-qc/{runId}/source` | Stream only the ETag-pinned private source after a signed `source` request |
+| `POST` | `/v1/processor/audio-qc/{runId}/complete` | Commit one signed bounded success report or failure code idempotently |
+
+All three processor routes are absent outside staging. Success re-heads R2,
+validates the shared report, recomputes its SHA-256 and findings, and writes
+summary/report state plus content-minimized audit metadata. The source object
+key is not included in the workbench response or audit metadata. This slice
+deliberately does not approve a working master, generate enhancement previews,
+replace delivery audio, or alter publication readiness.
 
 ### Sponsor decision preview
 

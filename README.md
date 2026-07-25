@@ -128,6 +128,13 @@ GitHub environment. It does not receive R2 credentials: signed source and
 output routes stream through the Worker's private R2 binding. See
 [`docs/CLIP_RENDER_GATE.md`](docs/CLIP_RENDER_GATE.md).
 
+Source-audio QC uses the same isolated secret and credential-free streaming
+pattern with separate `audio-qc` request purposes. The pinned manual workflow
+fully decodes the current immutable source, submits a shared-contract report,
+and retains no audio artifact. It only measures the source; working-master
+approval, enhancement previews, peaks, delivery rendering, and publication
+gating remain separate follow-up boundaries.
+
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.
 Publish and readiness now share one pure root-publication planner: RSS and News

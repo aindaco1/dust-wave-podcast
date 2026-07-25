@@ -54,8 +54,14 @@ iHeartRadio, and Deezer.
   per language, render it as safe plain timed text, and seek the shared Digest
   player from accessible timestamps. Draft/future/premium-only content stays
   outside the public projection; word-linked controls remain alignment-gated.
-- Process source audio, validate delivery files, extract duration/loudness, and
-  generate player peaks.
+- The first source-audio QC slice now snapshots a completed private source and
+  show policy, fully decodes it in the pinned staging FFmpeg workflow, and
+  records normalized codec/duration/sample/channel/bitrate, LUFS/LRA,
+  sample/true-peak, clipping, DC-offset, channel-balance, silence, checksum,
+  and resource evidence through the shared `@dustwave/media-core` contract.
+  It is non-destructive and does not yet approve a working master, generate
+  enhancement previews/player peaks, change delivery audio, or feed
+  publication readiness.
 - Transcribe Spanish and English, expose confidence, and block approval unless
   the word-alignment quality gate passes or a super-admin records an audited
   override.
