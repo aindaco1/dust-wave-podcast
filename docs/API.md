@@ -74,6 +74,7 @@ customer/subscription ID, or private-feed token.
 | `POST` | `/v1/member/shows/{show-slug}/feed` | Create the entitled listener's first private feed |
 | `POST` | `/v1/member/shows/{show-slug}/feed/rotate` | Revoke the prior URL and return a replacement |
 | `POST` | `/v1/member/shows/{show-slug}/billing/portal` | Create a scoped Stripe Customer Portal session |
+| `POST` | `/v1/member/redemptions/pool` | Redeem one email-bound Pool benefit code |
 | `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/rss.xml` | Entitlement-gated premium RSS |
 | `GET`, `HEAD` | `/v1/private/{token}/episodes/{episode-id}/audio` | Entitlement-gated byte-range audio |
 
@@ -94,6 +95,23 @@ The billing-portal endpoint requires the listener cookie, same-origin CSRF,
 one Stripe entitlement source for that show, an explicitly configured Portal
 profile, and an atomic per-session rate limit. Pool-code redemption remains a
 separate gated endpoint.
+
+### Pool benefit bridge
+
+`POST /v1/internal/pool/grants` accepts only a bounded JSON body signed over
+`{timestamp}.{exact body}` with the dedicated Pool–Podcast bridge secret. A
+grant carries a stable event/grant ID, show slug, recipient email, high-entropy
+code, optional redemption deadline, and optional benefit duration. Podcast
+stores only HMACs of the normalized email and code. Event IDs are replay-safe;
+conflicting reuse fails, revocation is final even if it arrives before a grant,
+and a later regrant requires a new grant ID.
+
+An authenticated listener redeems the code on the Dust Wave member site. The
+cookie, current CSRF token, exact recipient email HMAC, code state/deadline,
+single-use trigger, and atomic session/code rate limits must all pass. Success
+writes an independent `pool` entitlement source and recomputes aggregate show
+access. Revocation cancels only the matching current Pool source, so it cannot
+cancel an unrelated Stripe or manual entitlement.
 
 ## Passwordless admin authentication
 

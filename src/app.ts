@@ -70,6 +70,10 @@ import {
   createListenerPrivateFeed,
   rotateListenerPrivateFeed
 } from "./private-feeds";
+import {
+  handlePoolGrantEvent,
+  redeemPoolCode
+} from "./pool-redemptions";
 import { getPublicShow, listPublicShows } from "./shows";
 import {
   createListenerBillingPortal,
@@ -104,6 +108,8 @@ const MEMBER_SHOW_FEED_ROTATE_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed\/rotate$/;
 const MEMBER_SHOW_PORTAL_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/billing\/portal$/;
+const MEMBER_POOL_REDEMPTION_PATH = "/v1/member/redemptions/pool";
+const INTERNAL_POOL_GRANTS_PATH = "/v1/internal/pool/grants";
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
 const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
@@ -319,6 +325,9 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       memberShowPortalMatch[1]
     );
   }
+  if (url.pathname === MEMBER_POOL_REDEMPTION_PATH && method === "POST") {
+    return redeemPoolCode(request, env);
+  }
   if (url.pathname === "/v1/admin/auth/start" && method === "POST") {
     return startAdminLogin(request, env, await readJsonObject(request));
   }
@@ -365,6 +374,9 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
   if (url.pathname === "/v1/webhooks/stripe" && method === "POST") {
     return handleStripeWebhook(request, env);
+  }
+  if (url.pathname === INTERNAL_POOL_GRANTS_PATH && method === "POST") {
+    return handlePoolGrantEvent(request, env);
   }
   if (
     url.pathname === "/v1/internal/ad-qualifications"

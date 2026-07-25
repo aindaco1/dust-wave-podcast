@@ -15,6 +15,7 @@ They do gate the indicated production action.
 | Turnstile staging key pair | Staging admin login | Existing infrastructure is operational; configure the secret in the Worker and the site key in the admin shell |
 | Accountant-approved registrations, taxability, rates, evidence, and effective dates | Purchasable Stripe prices | Awaiting professional approval |
 | Podcast-only Stripe Customer Portal profile with address/rate-changing controls disabled | First controlled Portal session | Staging configured; production profile remains a promotion-time action |
+| Pool benefit product/tier mapping and entitlement duration for each podcast | First controlled Pool-code grant | Awaiting selection; the bridge and Dust Wave redemption flow remain mapping-independent |
 | Sponsor contract/disclosure/creative for the first direct campaign | Direct campaign activation | Not yet required |
 
 Do not put credentials or personal identifiers in this file. Provider secret

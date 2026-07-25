@@ -85,6 +85,32 @@ self-service actions and must not allow customer-address/rate changes until
 renewal-time Store-tax re-evaluation is implemented. Never reuse a Store order
 or Pool pledge Portal configuration implicitly.
 
+Required for the Pool supporter-benefit bridge:
+
+- a newly generated `POOL_PODCAST_BRIDGE_SECRET`, installed independently in
+  the Pool and Podcast staging runtimes;
+- a Podcast-only `POOL_REDEMPTION_CODE_PEPPER`;
+- the listener email-HMAC pepper listed above;
+- `POOL_REDEMPTION_ENABLED=false` until the controlled bridge test.
+
+Do not reuse a Stripe webhook secret, listener/admin session secret, or an
+existing Pool/Store signing key. Before enabling the bridge, create a
+non-production Pool benefit mapping with an explicit show and duration, then:
+
+1. Send one signed grant to the staging bridge and retry the exact event;
+   confirm one HMAC-only code row and an idempotent response.
+2. Redeem it through an owner-controlled listener session; confirm the code
+   works once, only for the intended verified email, and creates an independent
+   `pool` entitlement source.
+3. Confirm the same code, a wrong email, malformed signatures, stale
+   timestamps, and conflicting event reuse all fail without revealing state.
+4. Revoke the grant and confirm only its matching current Pool source is
+   canceled; an unrelated Stripe/manual fixture must remain active.
+5. Exercise revoke-before-grant ordering and confirm a later grant with the
+   same grant ID remains revoked.
+6. Disable the bridge again and delete the synthetic Pool mapping after saving
+   redacted evidence.
+
 Before the first controlled Checkout:
 
 1. Back up D1 and apply every pending migration.
@@ -188,6 +214,9 @@ Verify:
 - News and YouTube jobs report `dry-run`;
 - the canonical website remains unchanged;
 - Stripe rejects unsigned and wrong-mode events.
+- the disabled Pool bridge returns `404` before D1 access; during its controlled
+  test, signed grant/retry/redeem/revoke behavior matches the sequence above
+  without persisting raw emails or codes.
 - unsigned ad-plan processor callbacks return `401` before D1 lookup; a
   reviewed fixture workflow produces private frame-aligned segments, moves the
   plan only to `needs_review`, and requires an authenticated producer approval.

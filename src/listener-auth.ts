@@ -9,6 +9,7 @@ import {
 import { verifyTurnstile } from "@dustwave/worker-core/turnstile";
 
 import type { PodcastEnv } from "./env";
+import { poolRedemptionConfigured } from "./feature-config";
 import { privateJson } from "./http";
 import {
   consumePasswordlessRateLimit,
@@ -342,6 +343,7 @@ export async function exchangeListenerLogin(
     {
       authenticated: true,
       identity: await loadListenerIdentity(env.DB, consumed.listener_id),
+      poolRedemptionEnabled: poolRedemptionConfigured(env),
       csrfToken,
       expiresInSeconds: SESSION_TTL_SECONDS
     },
@@ -450,6 +452,7 @@ export async function getListenerSession(
   return privateJson(request, env.ALLOWED_ORIGINS, {
     authenticated: true,
     identity: auth.authorization.identity,
+    poolRedemptionEnabled: poolRedemptionConfigured(env),
     csrfToken,
     expiresInSeconds: SESSION_TTL_SECONDS
   });

@@ -26,6 +26,7 @@ import {
   RequestValidationError,
   validIdentifier
 } from "./validation";
+import { consumeSubscriptionRateLimit } from "./subscription-rate-limits";
 
 const CHECKOUT_CLIENT_LIMIT = {
   action: "checkout_client",
@@ -94,7 +95,11 @@ export async function createSubscriptionCheckout(
     env.TAX_QUOTE_HASH_SECRET || "",
     "hex"
   );
-  if (!await consumeBillingRateLimit(env.DB, CHECKOUT_CLIENT_LIMIT, clientHash)) {
+  if (!await consumeSubscriptionRateLimit(
+    env.DB,
+    CHECKOUT_CLIENT_LIMIT,
+    clientHash
+  )) {
     return rateLimitedResponse(request, env, CHECKOUT_CLIENT_LIMIT.windowSeconds);
   }
 
@@ -121,7 +126,11 @@ export async function createSubscriptionCheckout(
     env.LISTENER_EMAIL_LOOKUP_PEPPER || "",
     "hex"
   );
-  if (!await consumeBillingRateLimit(env.DB, CHECKOUT_EMAIL_LIMIT, emailHash)) {
+  if (!await consumeSubscriptionRateLimit(
+    env.DB,
+    CHECKOUT_EMAIL_LIMIT,
+    emailHash
+  )) {
     return rateLimitedResponse(request, env, CHECKOUT_EMAIL_LIMIT.windowSeconds);
   }
 
@@ -419,7 +428,7 @@ export async function createListenerBillingPortal(
       { status: 503 }
     );
   }
-  if (!await consumeBillingRateLimit(
+  if (!await consumeSubscriptionRateLimit(
     env.DB,
     PORTAL_LIMIT,
     await hmacSha256(
@@ -546,38 +555,6 @@ function createPodcastStripeClient(env: PodcastEnv) {
       }));
     }
   });
-}
-
-async function consumeBillingRateLimit(
-  db: D1Database,
-  limit: {
-    action: string;
-    windowSeconds: number;
-    maximum: number;
-  },
-  identityHash: string
-): Promise<boolean> {
-  const currentSeconds = Math.floor(Date.now() / 1_000);
-  const windowStartedAt =
-    Math.floor(currentSeconds / limit.windowSeconds) * limit.windowSeconds;
-  const expiresAt = windowStartedAt + limit.windowSeconds * 2;
-  const bucket = await db
-    .prepare(
-      `INSERT INTO subscription_billing_rate_limits (
-         action, identity_hash, window_started_at, attempt_count, expires_at
-       ) VALUES (?, ?, ?, 1, datetime(?, 'unixepoch'))
-       ON CONFLICT (action, identity_hash, window_started_at)
-       DO UPDATE SET attempt_count = attempt_count + 1
-       WHERE attempt_count <= ${limit.maximum}
-       RETURNING attempt_count`
-    )
-    .bind(limit.action, identityHash, windowStartedAt, expiresAt)
-    .first<{ attempt_count: number }>();
-  return Boolean(
-    bucket
-    && Number.isInteger(bucket.attempt_count)
-    && bucket.attempt_count <= limit.maximum
-  );
 }
 
 async function recordCheckoutFailure(

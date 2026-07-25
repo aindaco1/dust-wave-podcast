@@ -467,7 +467,7 @@ async function upsertStripeSource(
   );
 }
 
-async function recomputeSubscriptionProjection(
+export async function recomputeSubscriptionProjection(
   db: D1Database,
   listenerId: string,
   showId: string

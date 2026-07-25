@@ -30,6 +30,10 @@ benchmark evidence remain gated. Checkout code remains disabled pending
 accountant-approved tax/provider evidence; dynamic audio assembly, clips, and
 live YouTube/GitHub publishing remain roadmap work.
 
+Pool supporter benefits use a separately gated, signed grant/revoke bridge and
+email-bound one-time codes redeemed through the authenticated Dust Wave member
+site. The bridge is disabled in every environment by default.
+
 Migration `0012` adds an isolated staging decision exercise: an authenticated
 Producer can persist one deterministic immutable manifest and receive an
 HMAC-bound, expiring URL that streams only that snapshotted rendition. The

@@ -109,6 +109,14 @@
   entitlement sources and recompute one show-access projection. Canceling one
   source cannot revoke another active source. D1 never stores a full Stripe
   event payload.
+- Pool benefit grants use a dedicated timestamped HMAC back channel. Raw
+  recipient email and redemption code are accepted only in that authenticated
+  request and are reduced to independent HMACs before D1. Redemption requires
+  the verified listener session/CSRF, exact email binding, two atomic rate
+  limits, and a D1 trigger that enforces active, unexpired, single-use state.
+- Pool revocation is an irreversible tombstone for one provider grant ID and
+  cancels only a matching current Pool source. It cannot mutate Stripe/manual
+  sources, and an out-of-order grant cannot revive the tombstoned benefit.
 - Customer Portal requires an authenticated listener, same-origin CSRF,
   show-scoped Stripe customer, rate limit, and explicit
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must
