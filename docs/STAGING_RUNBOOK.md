@@ -107,6 +107,25 @@ Confirm readiness counts only current targets, publish enforcement remains
 false, comment text never enters audit metadata, unauthorized/CSRF-cross-origin
 writes fail before mutation, and foreign keys remain clean.
 
+For the read-only publication-readiness slice, no migration is expected.
+Using an isolated fully reviewed fixture, confirm
+`GET /v1/admin/episodes/{id}/readiness` returns 14 ordered nodes, the existing
+legacy Publish checks pass unchanged, every current review target is counted,
+the candidate is ready, and repeated reads return the same `snapshotDigest`
+despite different `generatedAt` values. Confirm Analyst access succeeds,
+anonymous access is `401`, non-GET methods are `405`, allowlisted preflight is
+credentialed, and private/no-store/noindex/nosniff headers are present.
+
+Then mutate only disposable evidence: advance a transcript revision without
+alignment/review, change the delivery-audio ETag under an ad plan/clip, leave
+one current review target unreviewed, add an open blocker, fail one
+current-revision root job, disable directory owner setup, and exercise
+audio-only and `premium_bonus` access. Confirm the corresponding nodes become
+stale/pending/failed/not-applicable, the snapshot digest changes, raw keys,
+digests, review bodies, and job errors are absent, and neither a queue nor an
+external provider is touched. `publishingEnforced` and `overrideAvailable`
+must remain false, and the existing Publish contract must remain unchanged.
+
 For the public transcript projection, use an isolated published/due/public
 episode with ready media and one immutable approved English or Spanish
 revision. Confirm `GET` returns only plain timed text, confirmed speaker names,

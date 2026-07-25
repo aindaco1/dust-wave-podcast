@@ -1,9 +1,11 @@
-import { sha256Hex } from "@dustwave/worker-core/crypto";
-
 import { requireAdmin } from "./admin-auth";
 import { recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import {
+  publicationFingerprint,
+  publicationPrerequisiteFailures
+} from "./publication-contract";
 import type { EpisodeAccess, EpisodeStatus, PodcastJob, ShowStatus } from "./types";
 import {
   optionalText,
@@ -516,16 +518,16 @@ export async function publishAdminEpisode(
     showId: episode.show_id
   });
   if (!auth.ok) return auth.response;
-  const missing = [
-    !episode.title && "title",
-    !episode.summary && "summary",
-    !episode.guid && "guid",
-    !episode.audio_key && "delivery audio",
-    !episode.audio_mime_type && "audio MIME type",
-    !episode.audio_bytes && "audio byte length",
-    !episode.duration_seconds && "duration",
-    episode.media_status !== "ready" && "ready media"
-  ].filter(Boolean);
+  const missing = publicationPrerequisiteFailures({
+    title: episode.title,
+    summary: episode.summary,
+    guid: episode.guid,
+    audioKey: episode.audio_key,
+    audioMimeType: episode.audio_mime_type,
+    audioBytes: episode.audio_bytes,
+    durationSeconds: episode.duration_seconds,
+    mediaStatus: episode.media_status
+  });
   if (missing.length > 0) {
     return privateJson(
       request,
@@ -539,7 +541,7 @@ export async function publishAdminEpisode(
   const status: EpisodeStatus = new Date(publicAt).getTime() > Date.now()
     ? "scheduled"
     : "published";
-  const fingerprint = await sha256Hex(JSON.stringify({
+  const fingerprint = await publicationFingerprint({
     id: episodeId,
     showId: episode.show_id,
     showSlug: episode.show_slug,
@@ -556,7 +558,7 @@ export async function publishAdminEpisode(
     videoSourceKey: episode.video_source_key,
     publicAt,
     canonicalUrl: episode.canonical_url
-  }));
+  });
   const scheduledAt = publicAt;
   const destinations = await env.DB
     .prepare(

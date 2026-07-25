@@ -59,8 +59,12 @@ Production review is a separate private collaboration layer over the same
 versioned audio, transcript, chapter, clip, and ad-plan targets. Timestamped
 plain-text notes, open/resolved blockers, assignment, and the four review
 states retain the exact target revision/digest and become historical when that
-target changes. The readiness result is evidence-only until the later
-dependency-staleness publication gate is deliberately connected.
+target changes. A separate read-only publication snapshot now combines the
+unchanged legacy Publish prerequisites with strict launch-candidate evidence
+for timing, bilingual transcripts, word alignment, chapters, every current
+review target, clip/ad freshness, News, RSS, YouTube applicability, and the
+10+ directory checklist. Its digest is stable for the same evidence, but the
+candidate result remains explicitly non-enforcing with no override.
 
 The first clip-factory boundary now turns an approved transcript cue range
 into a versioned 9:16, 1:1, or 16:9 `captioned-waveform-v1` recipe. Producer

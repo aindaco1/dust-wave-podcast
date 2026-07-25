@@ -154,6 +154,13 @@ iHeartRadio, and Deezer.
   transcripts, chapters, clips, and ad plans: timestamp/range notes,
   assignment, open/resolved blockers, four simple review states, historical
   staleness, and non-enforcing readiness before a later publication gate.
+- Keep the implemented read-only publication snapshot DRY with the current
+  Publish prerequisites while explaining strict launch-candidate state across
+  release timing, bilingual transcript/alignment, chapters, every current
+  review target, clip/ad freshness, News/RSS/YouTube, and directory setup.
+  Preserve stable evidence hashing, no external I/O, no override, and
+  non-enforcement until the exact-snapshot publication gate is separately
+  designed and tested.
 
 ### Post-launch
 

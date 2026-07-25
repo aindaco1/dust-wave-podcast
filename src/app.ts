@@ -74,6 +74,9 @@ import {
   updateAdminProductionReviewComment
 } from "./production-reviews";
 import {
+  getAdminEpisodePublicationReadiness
+} from "./publication-readiness";
+import {
   approveAdminClipYouTubePublication,
   createAdminClipYouTubeDraft
 } from "./clip-youtube";
@@ -175,6 +178,8 @@ const ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH =
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
+const ADMIN_EPISODE_READINESS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/readiness$/;
 const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
 const ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH =
@@ -593,6 +598,16 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const adminEpisodePublishMatch = url.pathname.match(ADMIN_EPISODE_PUBLISH_PATH);
   if (adminEpisodePublishMatch && method === "POST") {
     return publishAdminEpisode(request, env, adminEpisodePublishMatch[1]);
+  }
+  const adminEpisodeReadinessMatch = url.pathname.match(
+    ADMIN_EPISODE_READINESS_PATH
+  );
+  if (adminEpisodeReadinessMatch && method === "GET") {
+    return getAdminEpisodePublicationReadiness(
+      request,
+      env,
+      adminEpisodeReadinessMatch[1]
+    );
   }
   const adminEpisodeDistributionMatch = url.pathname.match(
     ADMIN_EPISODE_DISTRIBUTION_PATH

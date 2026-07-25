@@ -194,6 +194,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |
+| `GET` | `/v1/admin/episodes/{id}/readiness` | analyst+ | Read-only exact-evidence snapshot of legacy Publish checks and the non-enforcing launch candidate |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
@@ -377,9 +378,41 @@ blocker. Audit metadata records IDs, revisions, state, blocker, range-presence,
 and assignment-presence only—never comment text.
 
 The list response marks exact current versus historical targets and summarizes
-current approvals/open blockers. `reviewReady` is evidence only and
-`publishingEnforced` remains false until dependency-staleness and
-exact-publication-revision gates are connected and tested.
+current approvals/open blockers. `reviewReady` requires one approved review
+for every exact current target, zero open blockers, and complete bounded
+evidence; a partial or truncated set fails closed. `publishingEnforced` remains
+false.
+
+### Publication readiness snapshot
+
+`GET /v1/admin/episodes/{id}/readiness` is a show-scoped, private/no-store,
+read-only projection. The Worker first applies the same DRY prerequisite
+function used by `POST .../publish`, returning that unchanged result as
+`legacyGate`. It then derives 14 bounded nodes across core release metadata and
+audio; access timing; primary and bilingual transcript approvals; matching
+word alignment; optional chapter and clip evidence; complete exact-revision
+production review; conditionally required dynamic-ad evidence; canonical News
+and RSS contracts/current jobs; YouTube applicability; and one-time directory
+setup. For a scheduled or published episode, the core metadata node recomputes
+the same publication fingerprint used by Publish and becomes `stale` when the
+current content no longer matches that revision.
+
+Each node has a stable ID/group, `ready|missing|pending|stale|failed|
+not_applicable` status, `blocker|warning|info` severity, plain summary, and
+non-secret evidence. Audio object keys, transcript/chapter/recipe digests,
+review text, job errors, credentials, and listener data are not returned. The
+top-level `snapshotDigest` is SHA-256 over the publication revision, legacy
+gate, and ordered node evidence; `generatedAt` is excluded, so identical
+evidence produces an identical digest.
+
+`candidateGate.ready` means no blocker node is unresolved. It is an
+explanation, not authorization: `publishingEnforced` and `overrideAvailable`
+are both false. The endpoint performs only D1 reads and never heads R2, calls a
+provider, queues work, mutates a review, or changes Publish behavior. Current
+release jobs replace preflight contract state only for the exact
+`publicationRevision`. Premium bonuses explicitly show the missing News teaser
+publisher and make YouTube not applicable; audio-only episodes likewise make
+YouTube not applicable.
 
 ### Clip recipes and private render evidence
 

@@ -91,6 +91,17 @@ type CommentRow = {
   updated_at: string;
 };
 
+export type ProductionReviewReadiness = {
+  currentTargetCount: number;
+  currentReviewCount: number;
+  approvedCurrentReviewCount: number;
+  unreviewedCurrentTargetCount: number;
+  openBlockerCount: number;
+  evidenceTruncated: boolean;
+  reviewReady: boolean;
+  publishingEnforced: false;
+};
+
 type ReviewAuthorization = {
   authorization: AdminAuthorization;
   review: ReviewRow;
@@ -812,13 +823,21 @@ async function presentEpisodeReviews(
     };
   });
   const currentReviews = presented.filter(({ isCurrent }) => isCurrent);
-  const openBlockers = currentReviews.reduce(
-    (total, review) =>
-      total + review.comments.filter(
-        ({ blocker, resolutionStatus }) =>
-          blocker && resolutionStatus === "open"
-      ).length,
-    0
+  const currentReviewIds = new Set(currentReviews.map(({ id }) => id));
+  const readiness = summarizeProductionReviewReadiness(
+    targets,
+    currentReviews.map((review) => ({
+      id: review.id,
+      status: review.status
+    })),
+    boundedComments
+      .filter((comment) => currentReviewIds.has(comment.review_id))
+      .map((comment) => ({
+        reviewId: comment.review_id,
+        blocker: comment.blocker === 1,
+        resolutionStatus: comment.resolution_status
+      })),
+    truncated
   );
   return {
     episodeId,
@@ -831,17 +850,105 @@ async function presentEpisodeReviews(
     })),
     reviews: presented,
     truncated,
-    readiness: {
-      currentReviewCount: currentReviews.length,
-      approvedCurrentReviewCount: currentReviews.filter(
-        ({ status }) => status === "approved"
-      ).length,
-      openBlockerCount: openBlockers,
-      reviewReady: currentReviews.length > 0
-        && openBlockers === 0
-        && currentReviews.every(({ status }) => status === "approved"),
-      publishingEnforced: false
-    }
+    readiness
+  };
+}
+
+export async function getProductionReviewReadiness(
+  db: D1Database,
+  episodeId: string
+): Promise<ProductionReviewReadiness> {
+  const [targets, reviewRows] = await Promise.all([
+    loadCurrentReviewTargets(db, episodeId),
+    db.prepare(
+      `SELECT
+         id, episode_id, target_type, target_id, target_revision,
+         target_digest, status, revision, assigned_to_admin_user_id,
+         approved_by_admin_user_id, approved_at,
+         created_by_admin_user_id, updated_by_admin_user_id,
+         created_at, updated_at
+       FROM production_reviews
+       WHERE episode_id = ?
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 101`
+    ).bind(episodeId).all<ReviewRow>()
+  ]);
+  const evidenceTruncated = reviewRows.results.length > 100;
+  const currentTargets = new Set(targets.map(targetKey));
+  const currentReviews = reviewRows.results.slice(0, 100).filter((review) =>
+    currentTargets.has(targetKey({
+      type: review.target_type,
+      id: review.target_id,
+      revision: review.target_revision,
+      digest: review.target_digest,
+      label: ""
+    }))
+  );
+  const commentRows = currentReviews.length === 0
+    ? { results: [] as Array<{
+        review_id: string;
+        blocker: number;
+        resolution_status: string;
+      }> }
+    : await db.prepare(
+        `SELECT review_id, blocker, resolution_status
+         FROM production_review_comments
+         WHERE review_id IN (${currentReviews.map(() => "?").join(",")})
+         LIMIT ${MAXIMUM_REVIEW_COMMENTS + 1}`
+      ).bind(...currentReviews.map(({ id }) => id)).all<{
+        review_id: string;
+        blocker: number;
+        resolution_status: string;
+      }>();
+  return summarizeProductionReviewReadiness(
+    targets,
+    currentReviews,
+    commentRows.results.slice(0, MAXIMUM_REVIEW_COMMENTS).map((comment) => ({
+      reviewId: comment.review_id,
+      blocker: comment.blocker === 1,
+      resolutionStatus: comment.resolution_status
+    })),
+    evidenceTruncated
+      || commentRows.results.length > MAXIMUM_REVIEW_COMMENTS
+  );
+}
+
+export function summarizeProductionReviewReadiness(
+  targets: Array<Pick<ReviewTarget, "type" | "id" | "revision" | "digest">>,
+  currentReviews: Array<{ id: string; status: string }>,
+  comments: Array<{
+    reviewId: string;
+    blocker: boolean;
+    resolutionStatus: string;
+  }>,
+  evidenceTruncated = false
+): ProductionReviewReadiness {
+  const currentReviewIds = new Set(currentReviews.map(({ id }) => id));
+  const openBlockerCount = comments.filter((comment) =>
+    currentReviewIds.has(comment.reviewId)
+    && comment.blocker
+    && comment.resolutionStatus === "open"
+  ).length;
+  const approvedCurrentReviewCount = currentReviews.filter(
+    ({ status }) => status === "approved"
+  ).length;
+  const unreviewedCurrentTargetCount = Math.max(
+    0,
+    targets.length - currentReviews.length
+  );
+  return {
+    currentTargetCount: targets.length,
+    currentReviewCount: currentReviews.length,
+    approvedCurrentReviewCount,
+    unreviewedCurrentTargetCount,
+    openBlockerCount,
+    evidenceTruncated,
+    reviewReady: targets.length > 0
+      && unreviewedCurrentTargetCount === 0
+      && openBlockerCount === 0
+      && !evidenceTruncated
+      && approvedCurrentReviewCount === targets.length,
+    publishingEnforced: false
   };
 }
 

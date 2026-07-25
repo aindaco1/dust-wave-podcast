@@ -247,9 +247,29 @@ Every review stores that immutable reference, stale references remain
 historical, and stale targets cannot be newly approved. Comment ranges are
 bounded by episode duration; text is normalized plain text with body/count and
 control/bidirectional-override limits. Optimistic mutations are replay-safe and
-content-digested. Audit events intentionally omit comment bodies. Readiness is
-explicitly non-enforcing until a later publication gate receives separate
-staleness, rollback, and exact-revision coverage.
+content-digested. Audit events intentionally omit comment bodies. Readiness
+requires every exact current target, not merely every review record that
+happens to exist, and fails closed when its bounded evidence is truncated. It
+remains explicitly non-enforcing.
+
+## Publication-readiness boundary
+
+Publication readiness is a role-scoped Analyst+ `GET` with credentialed
+allowlisted CORS, private/no-store/noindex headers, and no CSRF exception
+because it cannot mutate state. It uses the same prerequisite function as the
+legacy Publish route, then composes bounded D1 evidence; it performs no R2
+head, GitHub/YouTube request, queue send, audit write, or provider lookup.
+
+The response exposes booleans, counts, statuses, revision numbers, configured
+mode labels, and a content digest. It omits object keys, raw ETags, source
+digests, transcript/chapter/clip text, review notes, job errors, credentials,
+and listener data. The exact publication-fingerprint function is shared with
+Publish so post-schedule content drift becomes stale evidence. Snapshot hashing
+excludes wall-clock time. Missing,
+incomplete, stale, failed, or safety-truncated evidence is never promoted to
+ready. The candidate is deliberately non-enforcing and offers no override;
+connecting it to publication requires a separate recent-auth, reasoned,
+audited, exact-snapshot approval and rollback change.
 
 ## Clip-render boundary
 
