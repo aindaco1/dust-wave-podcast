@@ -3,7 +3,9 @@
 The clip processor turns one approved, versioned transcript selection and one
 immutable delivery MP3 into a private captioned-waveform MP4. It is
 staging-only. Passing this gate does not publish a clip, expose an object URL,
-or upload a YouTube Short.
+or itself upload a YouTube Short. A separate recent-super-admin controlled-test
+boundary may consume only a current `ready` result after repeating D1/R2
+evidence checks.
 
 ## Implemented boundary
 
@@ -82,6 +84,9 @@ gh workflow run process-clip-render.yml \
 - ready preview/download requires show-scoped admin authorization, revalidates
   D1 and R2 checksum/manifest evidence, and serves only private no-store,
   noindex, single-range MP4 responses without exposing the object key.
+- a Shorts draft/approval never runs in production, never accepts public
+  visibility, defaults to no-provider dry run, and streams a ready object only
+  after recent-super-admin approval plus explicit controlled-test credentials.
 
 Local runtime evidence on July 25, 2026 passed the complete
 Worker+D1+R2 source/render/upload/callback path for a 12-second 9:16 fixture:

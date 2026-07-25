@@ -1,6 +1,7 @@
 import type { PodcastEnv } from "./env";
 import { publishEpisodeNewsSnapshot } from "./github";
 import type { PodcastJob } from "./types";
+import { processClipYouTubePublication } from "./clip-youtube";
 
 type DueJob = {
   id: string;
@@ -47,6 +48,10 @@ export async function processPodcastJob(
   env: PodcastEnv,
   job: PodcastJob
 ): Promise<void> {
+  if (job.type === "publish-youtube-clip") {
+    await processClipYouTubePublication(env, job);
+    return;
+  }
   if (!job.episodeId) throw new Error("Publication job is missing episodeId");
   const state = await env.DB
     .prepare(

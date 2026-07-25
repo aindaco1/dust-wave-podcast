@@ -62,6 +62,10 @@ import {
   uploadClipRenderProcessorOutput
 } from "./clips";
 import {
+  approveAdminClipYouTubePublication,
+  createAdminClipYouTubeDraft
+} from "./clip-youtube";
+import {
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "./diagnostics";
@@ -150,6 +154,10 @@ const ADMIN_CLIP_RENDER_PATH =
   /^\/v1\/admin\/clips\/([A-Za-z0-9_-]+)\/render$/;
 const ADMIN_CLIP_RENDER_MEDIA_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/media$/;
+const ADMIN_CLIP_RENDER_YOUTUBE_PATH =
+  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/youtube$/;
+const ADMIN_CLIP_YOUTUBE_APPROVE_PATH =
+  /^\/v1\/admin\/clip-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_EPISODE_AD_PLAN_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
 const ADMIN_UPLOAD_PART_PATH =
@@ -547,6 +555,26 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       adminClipRenderMediaMatch[1]
+    );
+  }
+  const adminClipRenderYouTubeMatch = url.pathname.match(
+    ADMIN_CLIP_RENDER_YOUTUBE_PATH
+  );
+  if (adminClipRenderYouTubeMatch && method === "POST") {
+    return createAdminClipYouTubeDraft(
+      request,
+      env,
+      adminClipRenderYouTubeMatch[1]
+    );
+  }
+  const adminClipYouTubeApproveMatch = url.pathname.match(
+    ADMIN_CLIP_YOUTUBE_APPROVE_PATH
+  );
+  if (adminClipYouTubeApproveMatch && method === "POST") {
+    return approveAdminClipYouTubePublication(
+      request,
+      env,
+      adminClipYouTubeApproveMatch[1]
     );
   }
   const adminEpisodeAdPlanMatch = url.pathname.match(

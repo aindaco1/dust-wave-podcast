@@ -138,6 +138,17 @@ type ClipRow = {
   render_failure_code: string | null;
   render_requested_at: string | null;
   render_completed_at: string | null;
+  youtube_publication_id: string | null;
+  youtube_channel_url: string | null;
+  youtube_channel_id: string | null;
+  youtube_privacy_status: string | null;
+  youtube_title: string | null;
+  youtube_description: string | null;
+  youtube_status: string | null;
+  youtube_provider_video_id: string | null;
+  youtube_failure_code: string | null;
+  youtube_requested_at: string | null;
+  youtube_completed_at: string | null;
 };
 
 type ClipRevisionRow = {
@@ -1643,7 +1654,18 @@ function clipSelect(where: string): string {
       r.processor_version AS render_processor_version,
       r.failure_code AS render_failure_code,
       r.requested_at AS render_requested_at,
-      r.completed_at AS render_completed_at
+      r.completed_at AS render_completed_at,
+      yp.id AS youtube_publication_id,
+      yp.channel_url AS youtube_channel_url,
+      yp.channel_id AS youtube_channel_id,
+      yp.privacy_status AS youtube_privacy_status,
+      yp.title AS youtube_title,
+      yp.description AS youtube_description,
+      yp.status AS youtube_status,
+      yp.provider_video_id AS youtube_provider_video_id,
+      yp.failure_code AS youtube_failure_code,
+      yp.requested_at AS youtube_requested_at,
+      yp.completed_at AS youtube_completed_at
     FROM clips c
     JOIN episodes e ON e.id = c.episode_id
     LEFT JOIN clip_renders r
@@ -1654,6 +1676,7 @@ function clipSelect(where: string): string {
         ORDER BY candidate.clip_revision DESC, candidate.requested_at DESC
         LIMIT 1
       )
+    LEFT JOIN clip_youtube_publications yp ON yp.render_id = r.id
     ${where}`;
 }
 
@@ -1981,6 +2004,22 @@ function presentClip(row: ClipRow): Record<string, unknown> {
           ...(row.render_status === "ready"
             ? clipRenderMediaPaths(row.render_id)
             : {})
+        }
+      : null,
+    youtubePublication: row.youtube_publication_id
+      ? {
+          id: row.youtube_publication_id,
+          renderId: row.render_id,
+          channelUrl: row.youtube_channel_url,
+          channelId: row.youtube_channel_id,
+          privacyStatus: row.youtube_privacy_status,
+          title: row.youtube_title,
+          description: row.youtube_description,
+          status: row.youtube_status,
+          providerVideoId: row.youtube_provider_video_id,
+          failureCode: row.youtube_failure_code,
+          requestedAt: row.youtube_requested_at,
+          completedAt: row.youtube_completed_at
         }
       : null,
     createdAt: row.created_at,

@@ -36,5 +36,9 @@ export type PodcastEnv = Env & {
   TAX_QUOTE_HASH_SECRET?: string;
   TURNSTILE_SECRET_KEY?: string;
   VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN?: string;
+  YOUTUBE_CHANNEL_ID?: string;
+  YOUTUBE_CLIENT_ID?: string;
+  YOUTUBE_CLIENT_SECRET?: string;
   YOUTUBE_PUBLISH_MODE?: string;
+  YOUTUBE_REFRESH_TOKEN?: string;
 };

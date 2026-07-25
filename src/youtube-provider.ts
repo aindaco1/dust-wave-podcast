@@ -1,0 +1,301 @@
+import type { PodcastEnv } from "./env";
+
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const VIDEO_UPLOAD_URL =
+  "https://www.googleapis.com/upload/youtube/v3/videos"
+  + "?uploadType=resumable&part=snippet,status";
+const VIDEO_LOOKUP_URL = "https://www.googleapis.com/youtube/v3/videos";
+const MAXIMUM_PROVIDER_RESPONSE_BYTES = 64_000;
+const TOKEN_TIMEOUT_MS = 10_000;
+const METADATA_TIMEOUT_MS = 15_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+type YouTubeProviderConfig = {
+  channelId: string;
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+};
+
+type JsonObject = Record<string, unknown>;
+
+export class YouTubeProviderError extends Error {
+  code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "YouTubeProviderError";
+    this.code = code;
+  }
+}
+
+export function youtubeProviderConfigured(env: PodcastEnv): boolean {
+  return youtubeProviderConfig(env) !== null;
+}
+
+export async function uploadUnlistedYouTubeVideo(
+  env: PodcastEnv,
+  {
+    title,
+    description,
+    privacyStatus,
+    contentLength,
+    body
+  }: {
+    title: string;
+    description: string;
+    privacyStatus: "private" | "unlisted";
+    contentLength: number;
+    body: ReadableStream;
+  }
+): Promise<{ videoId: string }> {
+  const config = youtubeProviderConfig(env);
+  if (!config) {
+    throw new YouTubeProviderError("youtube_not_configured");
+  }
+  const accessToken = await refreshAccessToken(config);
+  const initiation = await fetch(VIDEO_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json; charset=utf-8",
+      "x-upload-content-length": String(contentLength),
+      "x-upload-content-type": "video/mp4"
+    },
+    body: JSON.stringify({
+      snippet: {
+        title,
+        description,
+        categoryId: "22"
+      },
+      status: {
+        privacyStatus,
+        selfDeclaredMadeForKids: false
+      }
+    }),
+    redirect: "error",
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS)
+  }).catch(() => {
+    throw new YouTubeProviderError("youtube_upload_session_failed");
+  });
+  if (!initiation.ok) {
+    throw new YouTubeProviderError("youtube_upload_session_failed");
+  }
+  const uploadUrl = validUploadSessionUrl(
+    initiation.headers.get("location")
+  );
+  const upload = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-length": String(contentLength),
+      "content-type": "video/mp4"
+    },
+    body,
+    redirect: "error",
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS)
+  }).catch(() => {
+    throw new YouTubeProviderError("youtube_upload_failed");
+  });
+  if (!upload.ok) {
+    throw new YouTubeProviderError(
+      upload.status === 308
+        ? "youtube_upload_incomplete"
+        : "youtube_upload_failed"
+    );
+  }
+  const uploaded = await boundedJson(upload, "youtube_upload_response_invalid");
+  const videoId = validVideoId(uploaded.id);
+  await verifyUploadedVideo(
+    accessToken,
+    videoId,
+    config.channelId,
+    privacyStatus
+  );
+  return { videoId };
+}
+
+function youtubeProviderConfig(
+  env: PodcastEnv
+): YouTubeProviderConfig | null {
+  if (
+    !env.YOUTUBE_CLIENT_ID
+    || !env.YOUTUBE_CLIENT_SECRET
+    || !env.YOUTUBE_REFRESH_TOKEN
+    || !env.YOUTUBE_CHANNEL_ID
+    || !/^[A-Za-z0-9_-]{6,200}$/.test(env.YOUTUBE_CHANNEL_ID)
+  ) {
+    return null;
+  }
+  return {
+    channelId: env.YOUTUBE_CHANNEL_ID,
+    clientId: env.YOUTUBE_CLIENT_ID,
+    clientSecret: env.YOUTUBE_CLIENT_SECRET,
+    refreshToken: env.YOUTUBE_REFRESH_TOKEN
+  };
+}
+
+async function refreshAccessToken(
+  config: YouTubeProviderConfig
+): Promise<string> {
+  const response = await fetch(OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: config.refreshToken,
+      grant_type: "refresh_token"
+    }),
+    redirect: "error",
+    signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS)
+  }).catch(() => {
+    throw new YouTubeProviderError("youtube_oauth_failed");
+  });
+  if (!response.ok) {
+    throw new YouTubeProviderError("youtube_oauth_failed");
+  }
+  const payload = await boundedJson(response, "youtube_oauth_failed");
+  const accessToken = typeof payload.access_token === "string"
+    ? payload.access_token
+    : "";
+  const tokenType = typeof payload.token_type === "string"
+    ? payload.token_type
+    : "";
+  if (
+    !accessToken
+    || accessToken.length > 4096
+    || tokenType.toLowerCase() !== "bearer"
+  ) {
+    throw new YouTubeProviderError("youtube_oauth_failed");
+  }
+  return accessToken;
+}
+
+async function verifyUploadedVideo(
+  accessToken: string,
+  videoId: string,
+  expectedChannelId: string,
+  expectedPrivacyStatus: "private" | "unlisted"
+): Promise<void> {
+  const url = new URL(VIDEO_LOOKUP_URL);
+  url.searchParams.set("part", "snippet,status");
+  url.searchParams.set("id", videoId);
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${accessToken}` },
+    redirect: "error",
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS)
+  }).catch(() => {
+    throw new YouTubeProviderError("youtube_verification_failed");
+  });
+  if (!response.ok) {
+    throw new YouTubeProviderError("youtube_verification_failed");
+  }
+  const payload = await boundedJson(
+    response,
+    "youtube_verification_failed"
+  );
+  const item = Array.isArray(payload.items)
+    ? jsonObject(payload.items[0])
+    : null;
+  const snippet = jsonObject(item?.snippet);
+  const status = jsonObject(item?.status);
+  if (
+    !item
+    || String(snippet?.channelId ?? "") !== expectedChannelId
+    || String(status?.privacyStatus ?? "") !== expectedPrivacyStatus
+  ) {
+    throw new YouTubeProviderError("youtube_verification_failed");
+  }
+}
+
+function validUploadSessionUrl(value: string | null): string {
+  try {
+    const url = new URL(String(value ?? ""));
+    if (
+      url.origin !== "https://www.googleapis.com"
+      || url.pathname !== "/upload/youtube/v3/videos"
+      || !url.searchParams.has("upload_id")
+    ) {
+      throw new Error("invalid");
+    }
+    return url.toString();
+  } catch {
+    throw new YouTubeProviderError("youtube_upload_session_failed");
+  }
+}
+
+function validVideoId(value: unknown): string {
+  const videoId = typeof value === "string" ? value : "";
+  if (!/^[A-Za-z0-9_-]{6,64}$/.test(videoId)) {
+    throw new YouTubeProviderError("youtube_upload_response_invalid");
+  }
+  return videoId;
+}
+
+async function boundedJson(
+  response: Response,
+  errorCode: string
+): Promise<JsonObject> {
+  const declaredLength = Number(
+    response.headers.get("content-length") ?? "0"
+  );
+  if (
+    Number.isFinite(declaredLength)
+    && declaredLength > MAXIMUM_PROVIDER_RESPONSE_BYTES
+  ) {
+    throw new YouTubeProviderError(errorCode);
+  }
+  const bytes = await boundedResponseBytes(response, errorCode);
+  try {
+    const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    const object = jsonObject(value);
+    if (!object) {
+      throw new Error("invalid");
+    }
+    return object;
+  } catch {
+    throw new YouTubeProviderError(errorCode);
+  }
+}
+
+async function boundedResponseBytes(
+  response: Response,
+  errorCode: string
+): Promise<Uint8Array> {
+  if (!response.body) {
+    throw new YouTubeProviderError(errorCode);
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      totalBytes += result.value.byteLength;
+      if (totalBytes > MAXIMUM_PROVIDER_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new YouTubeProviderError(errorCode);
+      }
+      chunks.push(result.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function jsonObject(value: unknown): JsonObject | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as JsonObject
+    : null;
+}

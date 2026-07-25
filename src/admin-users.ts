@@ -1,6 +1,10 @@
 import { hmacSha256, normalizeEmail } from "@dustwave/worker-core/crypto";
 
-import { type AdminRole, requireAdmin } from "./admin-auth";
+import {
+  type AdminRole,
+  requireAdmin,
+  requireRecentAdminAuthentication
+} from "./admin-auth";
 import { prepareAdminAudit, recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
@@ -364,25 +368,15 @@ async function requireLifecycleAdmin(
     requireCsrf: true
   });
   if (!auth.ok) return auth;
-  const recent = await env.DB
-    .prepare(
-      `SELECT 1 AS recent
-       FROM admin_users
-       WHERE id = ?
-         AND status = 'active'
-         AND last_authenticated_at >= datetime('now', '-15 minutes')`
-    )
-    .bind(auth.authorization.identity.id)
-    .first<{ recent: number }>();
-  if (!recent) {
+  const recentError = await requireRecentAdminAuthentication(
+    request,
+    env,
+    auth.authorization.identity.id
+  );
+  if (recentError) {
     return {
       ok: false as const,
-      response: privateJson(
-        request,
-        env.ALLOWED_ORIGINS,
-        { error: "recent_authentication_required" },
-        { status: 403 }
-      )
+      response: recentError
     };
   }
   return auth;

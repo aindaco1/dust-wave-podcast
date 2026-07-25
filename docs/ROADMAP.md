@@ -66,8 +66,12 @@ iHeartRadio, and Deezer.
   outputs now have an authenticated, show-scoped, range-safe admin preview and
   MP4 download path. The Marketing tab now adds one bounded, keyset-paginated
   cross-episode library with episode, aspect, and current-render-state filters
-  while reusing that exact preview/download boundary. A remote workflow run
-  and private/unlisted Shorts path remain gated follow-ups.
+  while reusing that exact preview/download boundary. The staging-only Shorts
+  path now supports an immutable Producer draft, recent-super-admin dry run,
+  and explicitly gated private/unlisted queue with provider channel/privacy
+  verification and terminal duplicate prevention. A remote clip workflow run,
+  installation of launch-channel OAuth secrets, and one tightly controlled
+  unlisted production-channel test remain evidence gates.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
 - Publish audio-only or native-video episodes to the configurable YouTube

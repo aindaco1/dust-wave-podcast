@@ -165,6 +165,8 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
 | `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
 | `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
+| `POST` | `/v1/admin/clip-renders/{renderId}/youtube` | producer+ | Staging-only immutable private/unlisted YouTube test draft for a current ready render |
+| `POST` | `/v1/admin/clip-youtube-publications/{id}/approve` | recently authenticated super-admin | Record the default dry run or queue the explicitly enabled controlled test |
 | `GET` | `/v1/admin/distribution` | analyst+ | Directory registry |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Per-episode destination state |
 | `POST` | `/v1/admin/uploads` | producer+ | Start R2 multipart upload |
@@ -259,6 +261,42 @@ episode, `9:16|1:1|16:9`, and the current revision's
 show-scoped clip ID. Returned ready actions reuse the private media route
 above; no object key or public media URL is included.
 
+### Controlled YouTube clip test
+
+The YouTube test routes exist only when `ENVIRONMENT=staging`; production
+returns the same private `404` contract as an unknown resource. Draft creation
+requires CSRF, Producer-or-higher access to the render's show, one current
+`ready` revision, complete render evidence, an immutable publication ID, and
+an exact confirmation of both the show's current `youtube_channel_url` and the
+runtime's configured launch channel. The only accepted privacy values are
+`private` and `unlisted`.
+
+One render has at most one provider-publication record. With the committed
+`YOUTUBE_PUBLISH_MODE=dry_run`, a recently authenticated super-admin approval
+re-heads private R2 evidence and records an audited `dry_run` without a
+provider request. That same immutable record may later be promoted once to
+`controlled_test`; it is not copied into a second provider attempt.
+
+Controlled mode additionally requires Worker secrets
+`YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`, and
+`YOUTUBE_CHANNEL_ID`. Approval records the expected channel ID and queues a
+plain serializable job; no provider upload happens in the request. The consumer
+rechecks D1 revision state, R2 bytes/MIME/native checksum/custom checksum and
+manifest digest, conditionally streams the exact private object into a
+hard-pinned Google resumable-upload session, then verifies the returned video
+channel and privacy through the YouTube API before atomically recording D1
+provider evidence and the admin audit.
+
+Provider JSON is streamed through a 64 KB response cap and OAuth/metadata/media
+requests have explicit timeouts with redirects disabled. Credentials, access
+tokens, upload-session URLs, private object keys, and provider bodies are
+never returned or logged. Restoring dry-run mode before consumption marks a
+queued test `youtube_mode_disabled` without reading R2 or calling Google.
+Queue/provider failures become terminal state rather than automatic duplicate
+uploads. If Google accepts a video but verification or the D1 commit fails,
+operators must reconcile the unlisted/private item manually; automatic retry
+is intentionally disabled at that boundary.
+
 The staging processor surface is private and purpose-bound:
 
 | Method | Path | Purpose |
@@ -284,7 +322,9 @@ exact 1080×1920, 1080×1080, or 1920×1080 dimensions, recipe duration within
 250 ms, `video/mp4`, the predetermined R2 key, byte count, and private R2
 custom metadata for both output SHA-256 and render-manifest SHA-256. An old
 revision may retain historical evidence but cannot mark a newer clip ready.
-No public URL or YouTube upload is produced by this boundary.
+No public URL or YouTube upload is produced by the render-processor boundary;
+the separately authorized controlled test above consumes only its verified
+ready evidence.
 
 ### Sponsor decision preview
 
@@ -429,7 +469,10 @@ created-time pagination, and campaign qualification history.
 ## Provider modes
 
 `GITHUB_PUBLISH_MODE` and `YOUTUBE_PUBLISH_MODE` default to `dry_run`. A dry-run
-publication exercises state transitions without an external write. Podcast
-Checkout remains inert until the explicit global gate, accountant-approved
-manual tax configuration, isolated Stripe bindings, and request-time security
-checks all pass.
+publication exercises state transitions without an external write. The only
+implemented non-dry YouTube mode is the staging-only, recent-super-admin
+`controlled_test` for an immutable private/unlisted ready clip described
+above; `public` is not accepted and production routes remain unavailable.
+Podcast Checkout remains inert until the explicit global gate,
+accountant-approved manual tax configuration, isolated Stripe bindings, and
+request-time security checks all pass.

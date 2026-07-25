@@ -54,7 +54,12 @@ the local Worker+D1+R2 runtime gate; the remote GitHub workflow still requires
 the reviewed workflow to exist on the default branch and a queued staging
 render. Ready renders have authenticated range-safe preview/download plus a
 bounded, filterable cross-episode Marketing library; neither route exposes an
-R2 key. No public clip or YouTube Shorts upload is enabled.
+R2 key. A separate staging-only Shorts boundary now lets Producer+ prepare one
+immutable private/unlisted draft for the current ready render. Approval
+requires a recently authenticated super-admin. The committed mode records only
+a dry run; an actual upload additionally requires explicit `controlled_test`
+mode and launch-channel OAuth secrets, and public visibility is structurally
+rejected. No public clip route or production Shorts upload is enabled.
 
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member

@@ -459,6 +459,30 @@ export async function requireAdmin(
   };
 }
 
+export async function requireRecentAdminAuthentication(
+  request: Request,
+  env: PodcastEnv,
+  adminUserId: string
+): Promise<Response | null> {
+  const recent = await env.DB
+    .prepare(
+      `SELECT 1 AS recent
+       FROM admin_users
+       WHERE id = ?
+         AND status = 'active'
+         AND last_authenticated_at >= datetime('now', '-15 minutes')`
+    )
+    .bind(adminUserId)
+    .first<{ recent: number }>();
+  if (recent) return null;
+  return privateJson(
+    request,
+    env.ALLOWED_ORIGINS,
+    { error: "recent_authentication_required" },
+    { status: 403 }
+  );
+}
+
 export async function pruneAdminAuthState(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare(

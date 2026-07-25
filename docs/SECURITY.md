@@ -130,8 +130,14 @@
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must
   keep address/rate-changing controls disabled until renewal-time manual-tax
   re-evaluation is implemented and approved.
-- GitHub and YouTube writes are dry-run by default. Live mode requires
-  least-privilege provider credentials and an audited environment change.
+- GitHub and YouTube writes are dry-run by default. The only implemented
+  YouTube exception is a staging-only controlled clip test: Producer+ may
+  prepare immutable evidence, but only a recently authenticated super-admin
+  may approve; private/unlisted are the only accepted states and production
+  routes return `404`. The consumer requires launch-channel OAuth secrets,
+  hard-pins Google origins, disables redirects, bounds provider JSON, streams
+  the private R2 body, verifies returned channel/privacy, and fails closed if
+  the mode is restored before consumption.
 - Resend receives the raw destination only at send time. Delivery failures are
   logged by internal admin/listener ID, never by email address.
 - Resend calls have an eight-second timeout and a token-hash idempotency key;
@@ -209,4 +215,15 @@ The completion callback is replay-safe. Ready state re-heads R2 and requires
 exact MP4 dimensions/duration, byte count, native checksum, and custom metadata
 matching both output and manifest digests. A callback for a stale revision may
 preserve historical evidence but cannot change the current clip. There is no
-public clip route or YouTube action in this slice.
+public clip route.
+
+The separately authorized Shorts test stores one publication per render and
+revalidates the current revision plus the same D1/R2 evidence before any
+provider call. The confirmed URL must match both show metadata and the
+configured launch credential. Dry-run evidence may be promoted once to the
+controlled queue without creating a second publication. Queue/provider
+failures are terminal to prevent at-least-once delivery from silently
+duplicating a video. A provider success followed by verification or D1/audit
+failure requires manual channel reconciliation before any new attempt; secrets,
+OAuth tokens, upload-session URLs, object keys, and provider bodies are never
+logged or returned.

@@ -71,7 +71,15 @@ Required for later provider tests:
 - `STRIPE_WEBHOOK_SECRET`
 - non-secret `STRIPE_PORTAL_CONFIGURATION_ID` for the committed Podcast-only
   staging profile
-- YouTube OAuth client, secret, and refresh token
+- `YOUTUBE_CLIENT_ID`
+- `YOUTUBE_CLIENT_SECRET`
+- `YOUTUBE_REFRESH_TOKEN`
+- `YOUTUBE_CHANNEL_ID`
+
+Do not install the YouTube values for an ordinary dry run. They are required
+only during the bounded controlled-test window and must resolve to the same
+channel represented by the selected show's `youtube_channel_url` and the
+committed `YOUTUBE_CHANNEL_URL`.
 
 Required for subscription Checkout:
 
@@ -234,6 +242,9 @@ Verify:
 - Cloudflare automatic invocation URL logs remain disabled and saved smoke
   evidence contains no private bearer URL;
 - News and YouTube jobs report `dry-run`;
+- a Producer can prepare one immutable private/unlisted Shorts draft for a
+  current ready clip; recent-super-admin approval records `dry_run`, issues no
+  Google request, and a `public` value is rejected;
 - the canonical website remains unchanged;
 - Stripe rejects unsigned and wrong-mode events.
 - the disabled Pool bridge returns `404` before D1 access; during its controlled
@@ -275,9 +286,33 @@ Do not attach `feeds.dustwave.xyz` or `media.dustwave.xyz` during this step.
 ## 6. Controlled external tests
 
 Live GitHub publication targets only the release branch and requires a reviewed
-fixture. A YouTube test requires a recently authenticated super-admin,
-explicitly enabled live mode, and an unlisted item on the production channel.
-Record the provider ID, audit event, cleanup result, and mode restoration.
+fixture.
+
+For the YouTube clip test:
+
+1. Leave `YOUTUBE_PUBLISH_MODE=dry_run`, prepare the immutable current-render
+   draft in Marketing, and have a recently authenticated super-admin approve
+   it. Confirm D1/audit status `dry_run` and zero provider calls.
+2. Confirm the D1 backup/restore drill, current render checksum evidence, exact
+   show/runtime channel URL, production-channel ownership, and a cleanup owner.
+3. Install the four YouTube Worker secrets listed above. Temporarily change
+   only the staging environment to `YOUTUBE_PUBLISH_MODE=controlled_test`,
+   validate a dry-run bundle, and deploy the exact reviewed commit.
+4. Reopen the existing dry-run record and approve it once. Prefer `unlisted`;
+   `private` is allowed, while `public` is structurally rejected. The request
+   should return `202` before any provider upload completes.
+5. Record the publication ID, provider video ID, verified channel/privacy,
+   upload audit event, Queue outcome, and manual inspection result. Delete or
+   retain the test video according to the recorded owner decision.
+6. Restore staging `YOUTUBE_PUBLISH_MODE=dry_run` first and redeploy the exact
+   reviewed configuration. Any still-queued job then fails closed as
+   `youtube_mode_disabled` without R2/provider access. Remove or rotate the
+   temporary provider secrets if they are not needed.
+
+If Google accepted a video but verification or the D1/audit commit failed, do
+not retry automatically. Reconcile the channel manually and record cleanup
+before authorizing a new render. Production Worker configuration, routes, D1,
+R2, Queue, and DNS remain untouched throughout this test.
 
 ## 7. Rollback
 
