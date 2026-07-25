@@ -172,6 +172,22 @@
   execution, imports heavyweight libraries only inside selected adapters, and
   atomically refuses conflicting result writes. Raw transcripts and audio are
   not included in GitHub Actions or committed benchmark evidence.
+- Alignment processing is staging-only and uses the existing purpose-bound
+  media-processor HMAC secret. The GitHub job receives no Cloudflare/R2 token;
+  signed routes expose only one exact private source and accept one bounded
+  result. The workflow does not retain source audio, transcript projections,
+  callback bodies, or raw results as artifacts.
+- The Worker treats alignment output as untrusted. It revalidates exact
+  source/transcript/projection/adapter/runner hashes, stable word identity and
+  order, cue/source bounds, monotonic intervals, confidence, provenance,
+  omissions, resource evidence, R2 native checksum metadata, and a 16 MiB
+  result cap. Invalid intervals fail; interpolation and explained omissions
+  remain review-only. Completion can produce only `needs_review`.
+- Alignment approval requires exact current inputs, structural eligibility,
+  and a clean passed bilingual benchmark matching every adapter/model/settings
+  and runner identity. D1 triggers enforce the rule and require approval before
+  `passed`, so there is no direct SQL or super-admin override. Transcript edits
+  and working-master replacement stale or supersede dependent evidence.
 
 ## Transcription boundary
 

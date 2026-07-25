@@ -24,7 +24,9 @@ webhook/readiness boundary. Draft/approval/kill sponsor
 operations, deterministic targeting preview, bounded creative validation, and
 the signed processor/producer-review boundary for frame-aligned episode ad
 plans are implemented without connecting public audio assembly. The bilingual word-alignment
-storage contract and executable launch-quality evaluator are also implemented;
+storage contract, executable launch-quality evaluator, signed staging
+processor bridge, and normalized stable-ts/WhisperX runner are also
+implemented;
 the source-language Workers AI transcription adapter is now implemented behind
 an immutable working-master snapshot, Queue recovery, private R2 evidence, and
 versioned transcript review. A real rights-cleared transcription run plus the
@@ -63,6 +65,21 @@ non-overlapping core ownership with conservative boundary-token deduplication.
 The working master and public enclosure are never changed. Production
 processor routes remain absent until the owner-controlled large-source gate
 passes.
+
+Forced alignment is a separate immutable job after transcript approval. It
+binds the exact approved transcript content/projection hashes, current
+working-master bytes, adapter/model/settings, and pinned runner revision. The
+credential-minimized `process-alignment.yml` workflow receives no Cloudflare
+or R2 token: signed purpose-bound Worker routes provide the exact private
+source and accept one bounded result. The Worker independently validates every
+stable word ID, cue, lexical value, interval, omission, confidence,
+provenance, resource record, and digest before storing private evidence and
+moving the revision only to `needs_review`. Interpolated or unexplained timing
+never unlocks word controls. Final approval requires an exact matching
+English/Spanish benchmark that passed in a clean environment; D1 triggers
+enforce the same rule even if application code is bypassed. Production
+processor routes remain `404`, and no candidate is represented as having
+passed real audio yet.
 
 The chapter workbench wraps the original normalized `episode_chapters` rows
 with optimistic mutations, immutable revision snapshots, Admin approval, and

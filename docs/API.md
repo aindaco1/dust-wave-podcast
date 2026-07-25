@@ -210,6 +210,9 @@ including under concurrent requests.
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific enabled/setup state plus a credential-free owner/submission checklist |
 | `GET` | `/v1/admin/episodes/{id}/transcription-jobs` | analyst+ | Current working-master/source-language readiness and up to 20 immutable transcription jobs |
 | `POST` | `/v1/admin/episodes/{id}/transcription-jobs` | producer+ | Idempotently queue the explicit source language against an exact approved working master |
+| `GET` | `/v1/admin/episodes/{id}/alignments` | analyst+ | Exact approved-transcript/current-master candidates, up to 30 immutable alignment jobs, workflow identity, and H1 gate state |
+| `POST` | `/v1/admin/episodes/{id}/alignments` | producer+ | Staging-only idempotent queue of one exact English/Spanish transcript/master/adapter/runner fingerprint |
+| `POST` | `/v1/admin/episodes/{id}/alignments/{jobId}/approve` | admin+ | Approve only a current, structurally eligible result with an exact passed clean bilingual benchmark |
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
@@ -260,6 +263,25 @@ credential.
 | `POST` | `/v1/processor/transcription-chunks/{runId}/source` | Stream the immutable private working master after manifest authorization |
 | `PUT` | `/v1/processor/transcription-chunks/{runId}/chunks/{index}` | Store one signed, SHA-256-checked MP3 chunk no larger than 16 MiB |
 | `POST` | `/v1/processor/transcription-chunks/{runId}/complete` | Validate the deterministic plan, every R2 object, report digest, and bounded failure/success transition |
+
+### Isolated-staging word-alignment processor
+
+These HMAC-authenticated routes are also `404` in production. The manual
+workflow receives only the existing media-processor callback secret; it
+receives no Cloudflare API token, R2 credential, or deploy credential.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/alignments/{jobId}/manifest` | Atomically claim an attempt and return the canonical source/transcript/adapter/runner contract |
+| `POST` | `/v1/processor/alignments/{jobId}/source` | Stream only the exact private working master after signed manifest authorization |
+| `POST` | `/v1/processor/alignments/{jobId}/complete` | Accept one signed bounded success/failure result and project normalized words to private D1/R2 evidence |
+
+Each signed request binds its action and job ID. Manifest rebuild must match
+the stored manifest hash, attempts stop at five, inputs are rechecked before
+completion, and retryable failures reuse the same immutable job fingerprint.
+The workflow retains only content-free digest/quality/resource evidence; it
+does not upload audio, transcript projections, or raw alignment output as a
+GitHub artifact.
 
 The publish operation hashes all publication-relevant episode state. Repeating
 the request without a change returns the existing revision. A changed episode
@@ -403,6 +425,34 @@ truth. Editing a newer working revision clears current approval but does not
 rewrite or remove the last approved immutable snapshot. The public endpoint
 changes only after another exact revision is approved, at which point its
 content-derived ETag also changes.
+
+### Word-alignment review
+
+Queue requests require `requestId`, `expectedWorkingMasterId`,
+`expectedTranscriptRevision`, `language`, and `adapter` (`whisperx` or
+`stable-ts`). The Worker re-resolves an approved English/Spanish transcript and
+current zero-blocker working master, then builds a deterministic lexical
+projection with stable word IDs. The input fingerprint binds both the
+transcript content SHA-256 and canonical projection SHA-256 so a semantically
+different projection cannot reuse a job.
+
+The external runner contract is schema version 2. Result validation requires
+the exact job, alignment revision, source, transcript, projection, adapter,
+model/settings, and runner identities. Every projected word must appear once
+and in order. Timings must be monotonic, positive, inside their cue and source,
+and carry bounded confidence/provenance; an omitted word needs an explicit
+bounded reason. Interpolated timing and omissions may be retained for review
+but set `structurallyEligible: false`. Invalid intervals fail the job.
+Successful validation stores the raw bounded result privately, inserts one
+word per exact alignment revision/position, and stops at `needs_review`.
+
+Approval is intentionally a second action. It requires job `ready`, alignment
+`needs_review`, exact current transcript/master identities,
+`structurallyEligible: true`, and a passed clean-environment benchmark whose
+adapter, version, model, model version, settings version, and runner digest all
+match. Both application checks and D1 triggers enforce this. A transcript edit
+or working-master replacement makes the job stale/superseded. There is no
+override path and no production processor route.
 
 ### Chapter review
 

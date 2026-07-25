@@ -68,9 +68,13 @@ iHeartRadio, and Deezer.
 - Generate a full-length enhanced derivative only after preview selection,
   run it through the same QC contract, require explicit master approval, and
   then render delivery audio and player peaks from that approved revision.
-- Transcribe Spanish and English, expose confidence, and block approval unless
-  the word-alignment quality gate passes or a super-admin records an audited
-  override.
+- Transcribe Spanish and English and expose bounded confidence/provenance. The
+  signed staging alignment bridge now binds the exact approved transcript,
+  working master, normalized projection, adapter, and pinned runner; validates
+  every returned word; and stops at human review. Approval has no override:
+  it requires a matching real English/Spanish benchmark and clean-environment
+  reproduction, with the same rule enforced by D1 triggers. Real
+  rights-cleared corpus/model evidence remains the promotion gate.
 - Generate captioned clips and audiograms locally or on existing Cloudflare
   infrastructure, with templates and safe-area previews.
 - The first clip contract now versions approved-transcript cue selections,

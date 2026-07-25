@@ -145,6 +145,14 @@ import {
   subscriptionCheckoutConfigured
 } from "./tax-quotes";
 import {
+  approveAdminEpisodeAlignment,
+  completeAlignmentProcessorJob,
+  getAlignmentProcessorManifest,
+  getAlignmentProcessorSource,
+  listAdminEpisodeAlignmentJobs,
+  queueAdminEpisodeAlignmentJob
+} from "./alignment-jobs";
+import {
   completeTranscriptionChunkRun,
   getTranscriptionChunkProcessorManifest,
   getTranscriptionChunkProcessorSource,
@@ -231,6 +239,10 @@ const ADMIN_EPISODE_TRANSCRIPTS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts$/;
 const ADMIN_EPISODE_TRANSCRIPTION_JOBS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcription-jobs$/;
+const ADMIN_EPISODE_ALIGNMENTS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/alignments$/;
+const ADMIN_EPISODE_ALIGNMENT_APPROVE_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/alignments\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_EPISODE_TRANSCRIPT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)$/;
 const ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH =
@@ -312,6 +324,12 @@ const PROCESSOR_TRANSCRIPTION_CHUNK_SOURCE_PATH =
   /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/source$/;
 const PROCESSOR_TRANSCRIPTION_CHUNK_OUTPUT_PATH =
   /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/chunks\/([0-9]{1,3})$/;
+const PROCESSOR_ALIGNMENT_COMPLETE_PATH =
+  /^\/v1\/processor\/alignments\/([A-Za-z0-9_-]+)\/complete$/;
+const PROCESSOR_ALIGNMENT_MANIFEST_PATH =
+  /^\/v1\/processor\/alignments\/([A-Za-z0-9_-]+)\/manifest$/;
+const PROCESSOR_ALIGNMENT_SOURCE_PATH =
+  /^\/v1\/processor\/alignments\/([A-Za-z0-9_-]+)\/source$/;
 const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
@@ -901,6 +919,36 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       );
     }
   }
+  const adminEpisodeAlignmentApproveMatch = url.pathname.match(
+    ADMIN_EPISODE_ALIGNMENT_APPROVE_PATH
+  );
+  if (adminEpisodeAlignmentApproveMatch && method === "POST") {
+    return approveAdminEpisodeAlignment(
+      request,
+      env,
+      adminEpisodeAlignmentApproveMatch[1],
+      adminEpisodeAlignmentApproveMatch[2]
+    );
+  }
+  const adminEpisodeAlignmentsMatch = url.pathname.match(
+    ADMIN_EPISODE_ALIGNMENTS_PATH
+  );
+  if (adminEpisodeAlignmentsMatch) {
+    if (method === "GET") {
+      return listAdminEpisodeAlignmentJobs(
+        request,
+        env,
+        adminEpisodeAlignmentsMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return queueAdminEpisodeAlignmentJob(
+        request,
+        env,
+        adminEpisodeAlignmentsMatch[1]
+      );
+    }
+  }
   const adminEpisodeTranscriptsMatch = url.pathname.match(
     ADMIN_EPISODE_TRANSCRIPTS_PATH
   );
@@ -1245,6 +1293,36 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       env,
       processorTranscriptionChunkOutputMatch[1],
       processorTranscriptionChunkOutputMatch[2]
+    );
+  }
+  const processorAlignmentCompleteMatch = url.pathname.match(
+    PROCESSOR_ALIGNMENT_COMPLETE_PATH
+  );
+  if (processorAlignmentCompleteMatch && method === "POST") {
+    return completeAlignmentProcessorJob(
+      request,
+      env,
+      processorAlignmentCompleteMatch[1]
+    );
+  }
+  const processorAlignmentManifestMatch = url.pathname.match(
+    PROCESSOR_ALIGNMENT_MANIFEST_PATH
+  );
+  if (processorAlignmentManifestMatch && method === "POST") {
+    return getAlignmentProcessorManifest(
+      request,
+      env,
+      processorAlignmentManifestMatch[1]
+    );
+  }
+  const processorAlignmentSourceMatch = url.pathname.match(
+    PROCESSOR_ALIGNMENT_SOURCE_PATH
+  );
+  if (processorAlignmentSourceMatch && method === "POST") {
+    return getAlignmentProcessorSource(
+      request,
+      env,
+      processorAlignmentSourceMatch[1]
     );
   }
 

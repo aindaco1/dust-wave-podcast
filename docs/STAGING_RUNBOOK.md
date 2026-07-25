@@ -137,6 +137,16 @@ chunk-run/chunk tables, both indexes, job-to-run staleness trigger, 16 MiB
 per-chunk cap, exact core/media/encoded-duration bounds, and clean foreign
 keys. Replay both from zero.
 
+For migration `0039`, verify `transcript_alignment_jobs`,
+`transcript_alignment_approvals`, both alignment-job indexes, both word
+indexes, and the four approval/pass/staleness triggers. Confirm the same
+position can exist in two different alignment revisions but not twice in one
+revision. A direct `passed` update must abort without an exact approval; an
+approval must abort for a failed, dirty-environment, mismatched-adapter, stale
+transcript, stale master, or structurally ineligible result. Replay all 39
+migrations from zero and keep both `PRAGMA quick_check` and
+`PRAGMA foreign_key_check` clean.
+
 After this workflow is present on a dispatchable branch, queue the current
 source from Production and run:
 
@@ -173,6 +183,39 @@ revision, source-relative monotonic segment cues, no word/alignment rows, no
 transcript text in audits, and unchanged working-master/public-media objects.
 Do not expose the production processor routes until this rehearsal passes with
 rights-cleared English and Spanish sources.
+
+After both reviewed transcript languages and an exact working master exist,
+queue an alignment from the Production workbench in isolated staging. Copy the
+displayed job ID and dispatch only from the reviewed release branch:
+
+```sh
+gh workflow run process-alignment.yml \
+  --ref agent/launch-configuration \
+  -f job_id="alignment_job_REPLACE_WITH_QUEUED_ID"
+```
+
+Before dispatch, confirm the runner submodule is the exact revision displayed
+by the API and the repository secret is only
+`MEDIA_PROCESSOR_CALLBACK_SECRET`. The run must use Ubuntu 24.04, install the
+selected adapter from the committed `uv.lock`, fetch the exact signed
+manifest/source, and retain only content-free evidence. Confirm the source
+audio, transcript projection, raw result, and callback are absent from
+artifacts and logs.
+
+Refresh the workbench and verify the job reaches `ready` while the alignment
+revision stops at `needs_review`. Check every stored word belongs to the exact
+revision and has stable position/cue identity; invalid/interpolated/omitted
+words must not be structurally eligible. Replay the same callback and queue
+request and confirm no duplicate word rows or new billable job. Force one
+bounded retryable failure and confirm the same job reopens; force five claimed
+attempts and confirm the sixth claim fails closed. Change the transcript or
+working master and confirm the original job becomes stale.
+
+Do not click approval or claim H1 until the 24 rights-cleared English/Spanish
+fixtures, 100 unclipped preview reviews, both 60-minute resource runs,
+idempotency checks, and clean-environment reproduction have produced one exact
+passed benchmark row for this adapter/model/settings/runner digest. Production
+alignment processor routes must remain `404`.
 
 After a real zero-blocker current QC run exists, approve the exact source from
 the Production tab with a bounded reason and acknowledgement. Confirm a stale

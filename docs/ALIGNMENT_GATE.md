@@ -56,8 +56,9 @@ The Python/model runtime belongs in a pinned GitHub or owner-controlled runner,
 not in the public Worker. The Worker owns job fingerprints, state, policy,
 result validation, and D1/R2 projection.
 
-The owner-controlled runtime is pinned as the `alignment-runner` submodule on
-its `release/0.1.0` branch. Its core CI does not download models. It validates
+The owner-controlled runtime is package version `0.2.0`, pinned by an exact
+commit in the `alignment-runner` submodule on its `release/0.2.0` branch. Its
+core CI does not download models. It validates
 bounded checksummed input, rejects input-root and model-reference traversal,
 rechecks audio after inference, projects every adapter result to stable word
 IDs, and writes canonical mode-`0600` evidence with atomic no-overwrite
@@ -68,6 +69,25 @@ Benchmark integrity is fail-closed: duplicate fixture IDs, duplicate gold
 words, invalid result/audio/transcript digests, repeated or unknown preview
 samples, invalid timing provenance/confidence, and duplicate or unknown
 idempotency checks cannot satisfy H1.
+
+## Operational staging bridge
+
+Migration `0039_alignment_orchestration.sql` records one immutable job per
+source/transcript/projection/adapter/runner fingerprint, permits the same word
+position across distinct alignment revisions, and makes current jobs stale
+when their transcript or working master changes. D1 independently rejects an
+alignment `passed` transition without an exact approval and rejects an
+approval unless the result is structurally eligible and its current inputs and
+clean bilingual benchmark all match.
+
+The Podcast admin queues the selected approved language and displays the exact
+manual workflow handoff. `process-alignment.yml` is staging-only, pinned to
+Ubuntu 24.04 and the exact runner submodule revision, installs only the
+selected locked adapter extra, and uses purpose-bound signed Worker routes. It
+receives no Cloudflare/R2 credential and retains no audio, transcript, or raw
+result artifact. The Worker validates and stores the result but can move it
+only to `needs_review`; an Admin/Super-admin approval button remains disabled
+until the benchmark row matches.
 
 ## Current evidence state
 
