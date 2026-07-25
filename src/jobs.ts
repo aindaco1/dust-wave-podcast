@@ -23,7 +23,7 @@ export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
     .prepare(
       `SELECT
          j.id, e.show_id, j.episode_id, j.destination,
-         e.publication_revision
+         j.publication_revision
        FROM distribution_jobs j
        JOIN episodes e ON e.id = j.episode_id
        WHERE j.status = 'queued'
@@ -57,9 +57,11 @@ export async function processPodcastJob(
     .prepare(
       `SELECT status, scheduled_at
        FROM distribution_jobs
-       WHERE id = ? AND episode_id = ?`
+       WHERE id = ?
+         AND episode_id = ?
+         AND publication_revision = ?`
     )
-    .bind(job.id, job.episodeId)
+    .bind(job.id, job.episodeId, job.publicationRevision ?? 0)
     .first<{ status: string; scheduled_at: string }>();
   if (!state || state.status === "succeeded" || state.status === "canceled") return;
   if (parseDatabaseDate(state.scheduled_at).getTime() > Date.now()) {

@@ -621,8 +621,9 @@ export async function publishAdminEpisode(
     ...queueJobs.map((job) =>
     env.DB.prepare(
       `INSERT OR IGNORE INTO distribution_jobs (
-         id, episode_id, destination, status, scheduled_at, idempotency_key
-       ) VALUES (?, ?, ?, 'queued', ?, ?)`
+         id, episode_id, destination, status, scheduled_at,
+         publication_revision, idempotency_key
+       ) VALUES (?, ?, ?, 'queued', ?, ?, ?)`
     ).bind(
       job.id,
       episodeId,
@@ -632,6 +633,7 @@ export async function publishAdminEpisode(
           ? "news"
           : "youtube",
       scheduledAt,
+      revision,
       `${job.type}:${episodeId}:${revision}`
     )
     )

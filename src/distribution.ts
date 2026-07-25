@@ -113,6 +113,50 @@ export async function listDistributionDestinations(
        ORDER BY d.display_order`
     ).bind(showId).all<DistributionDestinationRow>();
   const destinations = result.results.map(presentDistributionDestination);
+  const channelResult = episodeId
+    ? await env.DB
+      .prepare(
+        `SELECT
+           j.destination,
+           j.status,
+           j.scheduled_at,
+           j.started_at,
+           j.completed_at,
+           j.provider_id,
+           j.attempt_count,
+           j.last_error,
+           j.publication_revision,
+           sp.status AS site_status,
+           sp.github_commit_sha,
+           sp.github_run_id,
+           sp.last_error AS site_error
+         FROM distribution_jobs j
+         LEFT JOIN site_publications sp
+           ON j.destination = 'news'
+           AND sp.episode_id = j.episode_id
+           AND sp.publication_revision = j.publication_revision
+         WHERE j.episode_id = ?
+           AND j.publication_revision = (
+             SELECT MAX(latest.publication_revision)
+             FROM distribution_jobs latest
+             WHERE latest.episode_id = ?
+           )
+         ORDER BY CASE j.destination
+           WHEN 'rss' THEN 10
+           WHEN 'news' THEN 20
+           WHEN 'youtube' THEN 30
+           WHEN 'email' THEN 40
+           ELSE 50
+         END`
+      )
+      .bind(episodeId, episodeId)
+      .all<ReleaseChannelRow>()
+    : { results: [] as ReleaseChannelRow[] };
+  const channels = channelResult.results.map(presentReleaseChannel);
+  const publicationRevision = channels.reduce(
+    (maximum, channel) => Math.max(maximum, channel.publicationRevision),
+    0
+  );
   return privateJson(request, env.ALLOWED_ORIGINS, {
     showId,
     showTitle: show.title,
@@ -138,7 +182,24 @@ export async function listDistributionDestinations(
         ({ publicationStatus }) => publicationStatus === "failed"
       ).length
     },
-    destinations
+    destinations,
+    release: episodeId
+      ? {
+          publicationRevision,
+          status: channels.length === 0
+            ? "not_published"
+            : channels.some(({ status }) => status === "failed")
+              ? "needs_attention"
+              : channels.every(({ status }) => status === "succeeded")
+                ? "complete"
+                : "in_progress",
+          succeeded: channels.filter(
+            ({ status }) => status === "succeeded"
+          ).length,
+          failed: channels.filter(({ status }) => status === "failed").length,
+          channels
+        }
+      : null
   });
 }
 
@@ -281,6 +342,22 @@ type DistributionDestinationRow = {
   publication_revision: number | null;
 };
 
+type ReleaseChannelRow = {
+  destination: string;
+  status: string;
+  scheduled_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  provider_id: string | null;
+  attempt_count: number;
+  last_error: string | null;
+  publication_revision: number;
+  site_status: string | null;
+  github_commit_sha: string | null;
+  github_run_id: string | null;
+  site_error: string | null;
+};
+
 function presentDistributionDestination(
   row: DistributionDestinationRow
 ): {
@@ -315,6 +392,50 @@ function presentDistributionDestination(
     lastObservedAt: row.last_observed_at,
     publicationError: row.publication_error
   };
+}
+
+function presentReleaseChannel(row: ReleaseChannelRow): {
+  id: string;
+  name: string;
+  status: string;
+  scheduledAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  attemptCount: number;
+  publicationRevision: number;
+  providerEvidence: string | null;
+  error: string | null;
+  siteStatus: string | null;
+  siteCommitSha: string | null;
+  siteRunId: string | null;
+} {
+  const labels: Record<string, string> = {
+    rss: "Canonical RSS",
+    news: "Canonical News page",
+    youtube: "YouTube",
+    email: "Premium notification"
+  };
+  return {
+    id: row.destination,
+    name: labels[row.destination] || row.destination,
+    status: row.status,
+    scheduledAt: row.scheduled_at,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    attemptCount: Math.max(0, Number(row.attempt_count) || 0),
+    publicationRevision: Math.max(0, Number(row.publication_revision) || 0),
+    providerEvidence: boundedEvidence(row.provider_id, 200),
+    error: boundedEvidence(row.last_error, 500)
+      || boundedEvidence(row.site_error, 500),
+    siteStatus: row.site_status,
+    siteCommitSha: boundedEvidence(row.github_commit_sha, 64),
+    siteRunId: boundedEvidence(row.github_run_id, 100)
+  };
+}
+
+function boundedEvidence(value: unknown, maximum: number): string | null {
+  const text = String(value ?? "").trim();
+  return text ? Array.from(text).slice(0, maximum).join("") : null;
 }
 
 function exactBoolean(value: unknown, field: string): boolean {

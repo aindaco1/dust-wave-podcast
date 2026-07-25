@@ -91,6 +91,62 @@ describe("streamlined publishing directory registry", () => {
     ).toBe(false);
   });
 
+  it("reports the latest root release channels without hiding failures", async () => {
+    const fixture = await distributionFixture({ role: "analyst" });
+    const response = await listDistributionDestinations(
+      fixture.request(
+        "/v1/admin/episodes/episode_opera/distribution"
+      ),
+      fixture.env,
+      "episode_opera"
+    );
+    const payload = await response.json() as {
+      release: {
+        publicationRevision: number;
+        status: string;
+        succeeded: number;
+        failed: number;
+        channels: Array<Record<string, unknown>>;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.release).toMatchObject({
+      publicationRevision: 3,
+      status: "needs_attention",
+      succeeded: 2,
+      failed: 1
+    });
+    expect(payload.release.channels).toEqual([
+      expect.objectContaining({
+        id: "rss",
+        name: "Canonical RSS",
+        status: "succeeded",
+        providerEvidence: "dynamic-feed"
+      }),
+      expect.objectContaining({
+        id: "news",
+        name: "Canonical News page",
+        status: "succeeded",
+        siteStatus: "succeeded",
+        siteCommitSha: "abc123"
+      }),
+      expect.objectContaining({
+        id: "youtube",
+        name: "YouTube",
+        status: "failed",
+        error: "controlled test is not configured"
+      })
+    ]);
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("FROM distribution_jobs")
+        && query.includes("MAX(latest.publication_revision)")
+        && values.join(",") === "episode_opera,episode_opera"
+      )
+    ).toBe(true);
+  });
+
   it("lets a show-scoped admin record owner setup without provider secrets", async () => {
     const fixture = await distributionFixture({ role: "admin" });
     const response = await updateShowDistributionDestination(
@@ -250,6 +306,27 @@ async function distributionFixture({
               ]
             };
           }
+          if (query.includes("FROM distribution_jobs")) {
+            return {
+              results: [
+                releaseChannelRow({
+                  destination: "rss",
+                  provider_id: "dynamic-feed"
+                }),
+                releaseChannelRow({
+                  destination: "news",
+                  site_status: "succeeded",
+                  github_commit_sha: "abc123"
+                }),
+                releaseChannelRow({
+                  destination: "youtube",
+                  status: "failed",
+                  provider_id: null,
+                  last_error: "controlled test is not configured"
+                })
+              ]
+            };
+          }
           return { results: [] };
         },
         async run() {
@@ -312,6 +389,27 @@ function destinationRow(
     last_observed_at: null,
     publication_error: null,
     publication_revision: null,
+    ...overrides
+  };
+}
+
+function releaseChannelRow(
+  overrides: Partial<Record<string, unknown>>
+): Record<string, unknown> {
+  return {
+    destination: "rss",
+    status: "succeeded",
+    scheduled_at: "2026-07-25 00:00:00",
+    started_at: "2026-07-25 00:00:01",
+    completed_at: "2026-07-25 00:00:02",
+    provider_id: "fixture",
+    attempt_count: 1,
+    last_error: null,
+    publication_revision: 3,
+    site_status: null,
+    github_commit_sha: null,
+    github_run_id: null,
+    site_error: null,
     ...overrides
   };
 }

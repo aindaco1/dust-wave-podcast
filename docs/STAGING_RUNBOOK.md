@@ -51,6 +51,12 @@ empty. Keep every owner state `not_started` until an authorized operator
 actually completes that platform's one-time setup; do not mark a directory
 `verified` merely because its submission page or RSS feed is reachable.
 
+For migration `0028`, verify `distribution_jobs.publication_revision` exists,
+the episode/revision/destination index is present, every existing job received
+its episode's current revision, and foreign-key checks remain empty. Exercise
+the scheduler with a later episode revision and confirm it still enqueues the
+revision stored on each durable job.
+
 ## 3. Configure non-secret test state
 
 - Associate the inactive Stripe test product and inactive $5/month and

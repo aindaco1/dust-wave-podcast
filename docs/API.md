@@ -169,7 +169,7 @@ including under concurrent requests.
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
-| `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest per-directory state for one role-scoped episode |
+| `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific owner setup, enabled state, and optional HTTPS listing |
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
@@ -215,6 +215,14 @@ provider's ingestion time. After setup, one reviewed publication updates the
 canonical RSS feed and creates a monitored `waiting_for_feed` state for every
 enabled RSS-following directory. The registry keeps the directory submission
 URL and optional observed listing URL separate.
+
+The episode response also returns the latest immutable root publication
+revision and its bounded RSS, News, YouTube, and optional notification job
+states. Job status, schedule/start/completion times, attempts, bounded failure
+text, dry-run/provider evidence, and News site-publication evidence are kept
+separate from directory observation. Migration `0028` stores the revision on
+the durable job itself so a later episode edit cannot cause an older queued job
+to execute against the wrong revision.
 
 Multipart clients should use 32 MiB parts; the API currently caps each request
 at 100 MiB and each logical media object at 20 GiB. Parts are streamed to R2 and

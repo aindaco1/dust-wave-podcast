@@ -105,6 +105,9 @@ action updates the canonical feed/News/YouTube job graph and creates monitored
 per-directory ingestion states, while preserving the truth that Spotify,
 Apple Podcasts, and the other launch directories require one-time owner setup
 and normally follow RSS rather than accepting a direct Dust Wave upload.
+The same role-scoped episode view reports the immutable RSS, canonical News,
+and YouTube root-job revision/status separately, including bounded failure
+evidence, so directory lag cannot hide a failed publication channel.
 
 The permanent feed and media origins are reserved as `feeds.dustwave.xyz` and
 `media.dustwave.xyz`. Both will terminate at the Podcast Worker; R2 remains
