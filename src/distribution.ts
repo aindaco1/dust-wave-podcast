@@ -4,6 +4,10 @@ import { recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
+  publicationJobType,
+  type PublicationDestination
+} from "./jobs";
+import {
   optionalText,
   readJsonObject,
   RequestValidationError,
@@ -13,6 +17,13 @@ import {
 
 const READ_ROLES = ["super_admin", "admin", "producer", "analyst"] as const;
 const SHOW_EDIT_ROLES = ["super_admin", "admin"] as const;
+const PUBLICATION_EDIT_ROLES = ["super_admin", "admin", "producer"] as const;
+const PUBLICATION_DESTINATIONS = new Set<PublicationDestination>([
+  "rss",
+  "news",
+  "youtube",
+  "email"
+]);
 
 export async function listDistributionDestinations(
   request: Request,
@@ -325,6 +336,238 @@ export async function updateShowDistributionDestination(
   });
 }
 
+export async function retryDistributionJob(
+  request: Request,
+  env: PodcastEnv,
+  episodeIdValue: string,
+  destinationValue: string
+): Promise<Response> {
+  const access = await authorizeAdminEpisode(
+    request,
+    env,
+    episodeIdValue,
+    [...PUBLICATION_EDIT_ROLES],
+    { requireCsrf: true }
+  );
+  if (access instanceof Response) return access;
+  const destination = validIdentifier(
+    destinationValue,
+    "destination"
+  ) as PublicationDestination;
+  if (!PUBLICATION_DESTINATIONS.has(destination)) {
+    throw new RequestValidationError("destination is not retryable");
+  }
+  const body = await readJsonObject(request, 10_000);
+  if (
+    Object.keys(body).some((field) => field !== "publicationRevision")
+  ) {
+    throw new RequestValidationError(
+      "Only publicationRevision may be supplied"
+    );
+  }
+  const publicationRevision = Number(body.publicationRevision);
+  if (
+    !Number.isSafeInteger(publicationRevision)
+    || publicationRevision <= 0
+  ) {
+    throw new RequestValidationError(
+      "publicationRevision must be a positive integer"
+    );
+  }
+  const job = await env.DB
+    .prepare(
+      `SELECT
+         j.id,
+         j.status,
+         j.attempt_count,
+         e.publication_revision AS current_publication_revision
+       FROM episodes e
+       LEFT JOIN distribution_jobs j
+         ON j.episode_id = e.id
+         AND j.destination = ?
+         AND j.publication_revision = ?
+       WHERE e.id = ?`
+    )
+    .bind(destination, publicationRevision, access.episode.id)
+    .first<{
+      id: string | null;
+      status: string | null;
+      attempt_count: number | null;
+      current_publication_revision: number;
+    }>();
+  if (
+    !job
+    || job.current_publication_revision !== publicationRevision
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      {
+        error: "stale_publication_revision",
+        currentPublicationRevision:
+          Math.max(0, Number(job?.current_publication_revision) || 0)
+      },
+      { status: 409 }
+    );
+  }
+  if (!job.id || !job.status) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "release_job_not_found" },
+      { status: 404 }
+    );
+  }
+  if (job.status === "queued" || job.status === "running") {
+    return privateJson(request, env.ALLOWED_ORIGINS, {
+      queued: true,
+      idempotent: true,
+      episodeId: access.episode.id,
+      destination,
+      publicationRevision
+    });
+  }
+  if (job.status !== "failed") {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "release_job_not_retryable", status: job.status },
+      { status: 409 }
+    );
+  }
+
+  const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
+  const statements = [
+    env.DB.prepare(
+      `INSERT INTO admin_audit_events (
+         id, admin_user_id, action, target_type, target_id, metadata_json
+       )
+       SELECT ?, ?, ?, ?, ?, ?
+       FROM distribution_jobs
+       WHERE id = ?
+         AND publication_revision = ?
+         AND status = 'failed'`
+    ).bind(
+      auditId,
+      access.authorization.identity.id,
+      "distribution.job_retried",
+      "distribution_job",
+      job.id,
+      JSON.stringify({
+        episodeId: access.episode.id,
+        destination,
+        publicationRevision,
+        priorAttempts: Math.max(0, Number(job.attempt_count) || 0)
+      }),
+      job.id,
+      publicationRevision
+    )
+  ];
+  if (destination === "news") {
+    statements.push(
+      env.DB.prepare(
+        `UPDATE site_publications
+         SET
+           status = 'queued',
+           github_commit_sha = NULL,
+           github_run_id = NULL,
+           last_error = NULL,
+           updated_at = datetime('now')
+         WHERE episode_id = ?
+           AND publication_revision = ?
+           AND status = 'failed'
+           AND EXISTS (
+             SELECT 1
+             FROM distribution_jobs
+             WHERE id = ?
+               AND publication_revision = ?
+               AND status = 'failed'
+           )`
+      ).bind(
+        access.episode.id,
+        publicationRevision,
+        job.id,
+        publicationRevision
+      )
+    );
+  }
+  statements.push(
+    env.DB.prepare(
+      `UPDATE distribution_jobs
+       SET
+         status = 'queued',
+         scheduled_at = datetime('now'),
+         started_at = NULL,
+         completed_at = NULL,
+         provider_id = NULL,
+         last_error = NULL
+       WHERE id = ?
+         AND publication_revision = ?
+         AND status = 'failed'`
+    ).bind(job.id, publicationRevision)
+  );
+  const results = await env.DB.batch(statements);
+  const retryResult = results[results.length - 1];
+  if (Number(retryResult?.meta?.changes ?? 0) !== 1) {
+    const current = await env.DB
+      .prepare(
+        `SELECT status
+         FROM distribution_jobs
+         WHERE id = ? AND publication_revision = ?`
+      )
+      .bind(job.id, publicationRevision)
+      .first<{ status: string }>();
+    if (current?.status === "queued" || current?.status === "running") {
+      return privateJson(request, env.ALLOWED_ORIGINS, {
+        queued: true,
+        idempotent: true,
+        episodeId: access.episode.id,
+        destination,
+        publicationRevision
+      });
+    }
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "release_job_retry_conflict" },
+      { status: 409 }
+    );
+  }
+
+  let delivery: "immediate" | "scheduled" = "immediate";
+  try {
+    await env.JOBS.send({
+      id: job.id,
+      type: publicationJobType(destination),
+      showId: access.episode.showId,
+      episodeId: access.episode.id,
+      publicationRevision,
+      requestedAt: new Date().toISOString()
+    });
+  } catch {
+    delivery = "scheduled";
+    console.error(JSON.stringify({
+      level: "error",
+      event: "distribution_retry_queue_deferred",
+      jobId: job.id,
+      destination
+    }));
+  }
+  return privateJson(
+    request,
+    env.ALLOWED_ORIGINS,
+    {
+      queued: true,
+      idempotent: false,
+      delivery,
+      episodeId: access.episode.id,
+      destination,
+      publicationRevision
+    },
+    { status: 202 }
+  );
+}
+
 type DistributionDestinationRow = {
   id: string;
   name: string;
@@ -408,6 +651,7 @@ function presentReleaseChannel(row: ReleaseChannelRow): {
   siteStatus: string | null;
   siteCommitSha: string | null;
   siteRunId: string | null;
+  retryable: boolean;
 } {
   const labels: Record<string, string> = {
     rss: "Canonical RSS",
@@ -429,7 +673,8 @@ function presentReleaseChannel(row: ReleaseChannelRow): {
       || boundedEvidence(row.site_error, 500),
     siteStatus: row.site_status,
     siteCommitSha: boundedEvidence(row.github_commit_sha, 64),
-    siteRunId: boundedEvidence(row.github_run_id, 100)
+    siteRunId: boundedEvidence(row.github_run_id, 100),
+    retryable: row.status === "failed"
   };
 }
 

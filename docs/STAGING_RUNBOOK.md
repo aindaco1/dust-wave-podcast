@@ -57,6 +57,17 @@ its episode's current revision, and foreign-key checks remain empty. Exercise
 the scheduler with a later episode revision and confirm it still enqueues the
 revision stored on each durable job.
 
+For release recovery, use only a current-revision failed fixture. Confirm an
+Analyst cannot retry it, a Producer/Admin/Super-admin requires same-origin CSRF,
+two concurrent requests create one conditional audit/mutation and at most one
+immediate send, and queued/running retries are idempotent. Confirm a stale
+revision and succeeded/canceled job return `409`. For News, only the matching
+`site_publications` revision may reset to `queued`. A simulated Queue-send
+failure must leave the durable row queued for Cron, and a 15-minute stale
+`running` fixture must be reclaimed without allowing two processors to own it.
+Migration `0029` must add the partial `distribution_jobs_running_lease` index;
+verify its predicate is `status = 'running'` and foreign-key checks stay empty.
+
 ## 3. Configure non-secret test state
 
 - Associate the inactive Stripe test product and inactive $5/month and

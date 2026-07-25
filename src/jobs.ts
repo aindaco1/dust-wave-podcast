@@ -3,15 +3,29 @@ import { publishEpisodeNewsSnapshot } from "./github";
 import type { PodcastJob } from "./types";
 import { processClipYouTubePublication } from "./clip-youtube";
 
+export type PublicationDestination = "rss" | "youtube" | "news" | "email";
+
 type DueJob = {
   id: string;
   show_id: string;
   episode_id: string;
-  destination: "rss" | "youtube" | "news" | "email";
+  destination: PublicationDestination;
   publication_revision: number;
 };
 
 export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
+  await env.DB
+    .prepare(
+      `UPDATE distribution_jobs
+       SET
+         status = 'queued',
+         started_at = NULL,
+         completed_at = NULL,
+         last_error = 'Previous attempt did not finish; queued for safe recovery.'
+       WHERE status = 'running'
+         AND started_at <= datetime('now', '-15 minutes')`
+    )
+    .run();
   await env.DB
     .prepare(
       `UPDATE episodes
@@ -35,7 +49,7 @@ export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
   for (const job of due.results) {
     await env.JOBS.send({
       id: job.id,
-      type: destinationJobType(job.destination),
+      type: publicationJobType(job.destination),
       showId: job.show_id,
       episodeId: job.episode_id,
       publicationRevision: job.publication_revision,
@@ -55,51 +69,82 @@ export async function processPodcastJob(
   if (!job.episodeId) throw new Error("Publication job is missing episodeId");
   const state = await env.DB
     .prepare(
-      `SELECT status, scheduled_at
-       FROM distribution_jobs
-       WHERE id = ?
-         AND episode_id = ?
-         AND publication_revision = ?`
+      `SELECT
+         j.status,
+         j.scheduled_at,
+         sp.status AS site_status,
+         sp.github_commit_sha
+       FROM distribution_jobs j
+       LEFT JOIN site_publications sp
+         ON j.destination = 'news'
+         AND sp.episode_id = j.episode_id
+         AND sp.publication_revision = j.publication_revision
+       WHERE j.id = ?
+         AND j.episode_id = ?
+         AND j.publication_revision = ?`
     )
     .bind(job.id, job.episodeId, job.publicationRevision ?? 0)
-    .first<{ status: string; scheduled_at: string }>();
-  if (!state || state.status === "succeeded" || state.status === "canceled") return;
+    .first<{
+      status: string;
+      scheduled_at: string;
+      site_status: string | null;
+      github_commit_sha: string | null;
+    }>();
+  if (
+    !state
+    || state.status === "succeeded"
+    || state.status === "canceled"
+    || state.status === "running"
+  ) return;
   if (parseDatabaseDate(state.scheduled_at).getTime() > Date.now()) {
     throw new Error("Publication job is not due");
   }
-  await env.DB
+  const claim = await env.DB
     .prepare(
       `UPDATE distribution_jobs
        SET
          status = 'running',
-         started_at = COALESCE(started_at, datetime('now')),
+         started_at = datetime('now'),
+         completed_at = NULL,
          attempt_count = attempt_count + 1,
          last_error = NULL
-       WHERE id = ?`
+       WHERE id = ?
+         AND episode_id = ?
+         AND publication_revision = ?
+         AND status IN ('queued', 'failed')`
     )
-    .bind(job.id)
+    .bind(job.id, job.episodeId, job.publicationRevision ?? 0)
     .run();
+  if (Number(claim.meta?.changes ?? 0) !== 1) return;
 
   try {
     let providerId = "";
     if (job.type === "publish-news") {
-      const result = await publishEpisodeNewsSnapshot(
-        env,
-        job.episodeId,
-        job.publicationRevision ?? 0
-      );
-      providerId = result.dryRun ? "dry-run" : result.commitSha ?? "";
-      await env.DB
-        .prepare(
-          `UPDATE site_publications
-           SET
-             status = 'succeeded',
-             github_commit_sha = ?,
-             updated_at = datetime('now')
-           WHERE episode_id = ? AND publication_revision = ?`
-        )
-        .bind(result.commitSha ?? null, job.episodeId, job.publicationRevision ?? 0)
-        .run();
+      if (state.site_status === "succeeded") {
+        providerId = state.github_commit_sha || "site-publication-succeeded";
+      } else {
+        const result = await publishEpisodeNewsSnapshot(
+          env,
+          job.episodeId,
+          job.publicationRevision ?? 0
+        );
+        providerId = result.dryRun ? "dry-run" : result.commitSha ?? "";
+        await env.DB
+          .prepare(
+            `UPDATE site_publications
+             SET
+               status = 'succeeded',
+               github_commit_sha = ?,
+               updated_at = datetime('now')
+             WHERE episode_id = ? AND publication_revision = ?`
+          )
+          .bind(
+            result.commitSha ?? null,
+            job.episodeId,
+            job.publicationRevision ?? 0
+          )
+          .run();
+      }
     } else if (job.type === "publish-youtube") {
       if (String(env.YOUTUBE_PUBLISH_MODE) === "live") {
         throw new Error("Live YouTube publishing adapter is not enabled");
@@ -117,9 +162,9 @@ export async function processPodcastJob(
            status = 'succeeded',
            completed_at = datetime('now'),
            provider_id = ?
-         WHERE id = ?`
+         WHERE id = ? AND publication_revision = ?`
       )
-      .bind(providerId, job.id)
+      .bind(providerId, job.id, job.publicationRevision ?? 0)
       .run();
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_job_error";
@@ -127,9 +172,9 @@ export async function processPodcastJob(
       .prepare(
         `UPDATE distribution_jobs
          SET status = 'failed', last_error = ?, completed_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ? AND publication_revision = ?`
       )
-      .bind(message.slice(0, 500), job.id)
+      .bind(message.slice(0, 500), job.id, job.publicationRevision ?? 0)
       .run();
     if (job.type === "publish-news") {
       await env.DB
@@ -145,7 +190,9 @@ export async function processPodcastJob(
   }
 }
 
-function destinationJobType(destination: DueJob["destination"]): PodcastJob["type"] {
+export function publicationJobType(
+  destination: PublicationDestination
+): PodcastJob["type"] {
   if (destination === "rss") return "publish-rss";
   if (destination === "news") return "publish-news";
   if (destination === "youtube") return "publish-youtube";

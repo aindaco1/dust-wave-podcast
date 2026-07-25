@@ -70,6 +70,7 @@ import {
 } from "./diagnostics";
 import {
   listDistributionDestinations,
+  retryDistributionJob,
   updateShowDistributionDestination
 } from "./distribution";
 import { servePrivateFeed, servePublicFeed } from "./feed";
@@ -155,6 +156,8 @@ const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
+const ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)\/retry$/;
 const ADMIN_EPISODE_TRANSCRIPTS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts$/;
 const ADMIN_EPISODE_TRANSCRIPT_PATH =
@@ -525,6 +528,17 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       adminEpisodeDistributionMatch[1]
+    );
+  }
+  const adminEpisodeDistributionRetryMatch = url.pathname.match(
+    ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH
+  );
+  if (adminEpisodeDistributionRetryMatch && method === "POST") {
+    return retryDistributionJob(
+      request,
+      env,
+      adminEpisodeDistributionRetryMatch[1],
+      adminEpisodeDistributionRetryMatch[2]
     );
   }
   const adminEpisodeTranscriptApproveMatch = url.pathname.match(

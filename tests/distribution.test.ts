@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   listDistributionDestinations,
+  retryDistributionJob,
   updateShowDistributionDestination
 } from "../src/distribution";
 import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
@@ -135,6 +136,7 @@ describe("streamlined publishing directory registry", () => {
         id: "youtube",
         name: "YouTube",
         status: "failed",
+        retryable: true,
         error: "controlled test is not configured"
       })
     ]);
@@ -145,6 +147,87 @@ describe("streamlined publishing directory registry", () => {
         && values.join(",") === "episode_opera,episode_opera"
       )
     ).toBe(true);
+  });
+
+  it("retries one failed current-revision root job with audit and queue evidence", async () => {
+    const fixture = await distributionFixture({ role: "producer" });
+    const response = await retryDistributionJob(
+      fixture.request(
+        "/v1/admin/episodes/episode_opera/distribution/youtube/retry",
+        {
+          method: "POST",
+          body: { publicationRevision: 3 }
+        }
+      ),
+      fixture.env,
+      "episode_opera",
+      "youtube"
+    );
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      queued: true,
+      idempotent: false,
+      delivery: "immediate",
+      episodeId: "episode_opera",
+      destination: "youtube",
+      publicationRevision: 3
+    });
+    expect(fixture.sentJobs).toEqual([
+      expect.objectContaining({
+        id: "job_youtube_revision_3",
+        type: "publish-youtube",
+        episodeId: "episode_opera",
+        publicationRevision: 3
+      })
+    ]);
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("distribution.job_retried")
+        || (
+          query.includes("INSERT INTO admin_audit_events")
+          && values.includes("distribution.job_retried")
+        )
+      )
+    ).toBe(true);
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("status = 'queued'")
+        && query.includes("status = 'failed'")
+        && values.join(",") === "job_youtube_revision_3,3"
+      )
+    ).toBe(true);
+  });
+
+  it("rejects a stale release retry without mutating or queueing", async () => {
+    const fixture = await distributionFixture({
+      role: "producer",
+      currentPublicationRevision: 4
+    });
+    const response = await retryDistributionJob(
+      fixture.request(
+        "/v1/admin/episodes/episode_opera/distribution/news/retry",
+        {
+          method: "POST",
+          body: { publicationRevision: 3 }
+        }
+      ),
+      fixture.env,
+      "episode_opera",
+      "news"
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "stale_publication_revision",
+      currentPublicationRevision: 4
+    });
+    expect(fixture.sentJobs).toEqual([]);
+    expect(
+      fixture.queries.some(({ query }) =>
+        query.includes("INSERT INTO admin_audit_events")
+      )
+    ).toBe(false);
   });
 
   it("lets a show-scoped admin record owner setup without provider secrets", async () => {
@@ -221,16 +304,19 @@ describe("streamlined publishing directory registry", () => {
 async function distributionFixture({
   role,
   roleShowId = "show_opera_en_la_selva",
-  episodeShowId = "show_opera_en_la_selva"
+  episodeShowId = "show_opera_en_la_selva",
+  currentPublicationRevision = 3
 }: {
-  role: "admin" | "analyst";
+  role: "admin" | "producer" | "analyst";
   roleShowId?: string;
   episodeShowId?: string;
+  currentPublicationRevision?: number;
 }) {
   const sessionSecret = "distribution-session-secret";
   const csrfToken = "distribution-csrf-token";
   const csrfTokenHash = await sha256Hex(`${sessionSecret}:${csrfToken}`);
   const queries: Array<{ query: string; values: unknown[] }> = [];
+  const sentJobs: Array<Record<string, unknown>> = [];
   const db = {
     prepare(query: string) {
       let values: unknown[] = [];
@@ -260,6 +346,17 @@ async function distributionFixture({
               audio_etag: "etag",
               audio_mime_type: "audio/mpeg",
               media_status: "ready"
+            };
+          }
+          if (
+            query.includes("LEFT JOIN distribution_jobs j")
+            && query.includes("current_publication_revision")
+          ) {
+            return {
+              id: "job_youtube_revision_3",
+              status: "failed",
+              attempt_count: 3,
+              current_publication_revision: currentPublicationRevision
             };
           }
           if (query.includes("SELECT id, title, rss_slug")) {
@@ -334,6 +431,9 @@ async function distributionFixture({
           return { success: true, meta: { changes: 1 } };
         }
       };
+    },
+    async batch(statements: Array<{ run(): Promise<unknown> }>) {
+      return Promise.all(statements.map((statement) => statement.run()));
     }
   } as unknown as D1Database;
   const env = {
@@ -341,11 +441,17 @@ async function distributionFixture({
     SITE_ORIGIN: "https://dustwave.xyz",
     FEED_ORIGIN: "https://feeds.dustwave.xyz",
     ALLOWED_ORIGINS: "https://dustwave.xyz",
-    ADMIN_SESSION_SECRET: sessionSecret
+    ADMIN_SESSION_SECRET: sessionSecret,
+    JOBS: {
+      async send(job: Record<string, unknown>) {
+        sentJobs.push(job);
+      }
+    }
   } as unknown as PodcastEnv;
   return {
     env,
     queries,
+    sentJobs,
     request(
       path: string,
       {

@@ -108,6 +108,10 @@ and normally follow RSS rather than accepting a direct Dust Wave upload.
 The same role-scoped episode view reports the immutable RSS, canonical News,
 and YouTube root-job revision/status separately, including bounded failure
 evidence, so directory lag cannot hide a failed publication channel.
+Producer, Admin, and Super-admin roles can explicitly retry one failed root job
+for the exact current revision. Conditional audit/requeue state, atomic worker
+claims, Cron fallback, and a bounded stale-running lease keep recovery
+idempotent without creating a new episode revision.
 
 The permanent feed and media origins are reserved as `feeds.dustwave.xyz` and
 `media.dustwave.xyz`. Both will terminate at the Podcast Worker; R2 remains
