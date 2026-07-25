@@ -68,6 +68,15 @@ failure must leave the durable row queued for Cron, and a 15-minute stale
 Migration `0029` must add the partial `distribution_jobs_running_lease` index;
 verify its predicate is `status = 'running'` and foreign-key checks stay empty.
 
+For migration `0030`, verify the three nullable directory-evidence columns,
+their constrained source values, the admin-user foreign key, and clean
+foreign-key checks. With an isolated current-revision fixture, confirm Analyst
+is read-only; Producer+ requires same-origin CSRF; `observed` rejects missing or
+unsafe evidence URLs; `failed` rejects an empty detail; stale revisions and
+incomplete owner setup return `409`; and replaying identical evidence is
+idempotent. Never mark ingestion observed merely because the canonical feed or
+directory submission page is reachable.
+
 ## 3. Configure non-secret test state
 
 - Associate the inactive Stripe test product and inactive $5/month and

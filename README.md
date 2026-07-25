@@ -112,6 +112,10 @@ Producer, Admin, and Super-admin roles can explicitly retry one failed root job
 for the exact current revision. Conditional audit/requeue state, atomic worker
 claims, Cron fallback, and a bounded stale-running lease keep recovery
 idempotent without creating a new episode revision.
+After owner setup, Producer+ operators can reconcile a current episode revision
+as observed only with a bounded HTTPS listing/dashboard evidence link, or as
+failed with a bounded detail. Stale revisions, incomplete setup, and disabled
+directories fail closed; the audit trail stores no evidence text or URL.
 
 The permanent feed and media origins are reserved as `feeds.dustwave.xyz` and
 `media.dustwave.xyz`. Both will terminate at the Podcast Worker; R2 remains

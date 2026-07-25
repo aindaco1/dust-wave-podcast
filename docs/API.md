@@ -170,6 +170,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
+| `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
 | `POST` | `/v1/admin/episodes/{id}/distribution/{rss\|news\|youtube\|email}/retry` | producer+ | Requeue one failed job for the exact current publication revision |
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific owner setup, enabled state, and optional HTTPS listing |
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
@@ -216,6 +217,18 @@ provider's ingestion time. After setup, one reviewed publication updates the
 canonical RSS feed and creates a monitored `waiting_for_feed` state for every
 enabled RSS-following directory. The registry keeps the directory submission
 URL and optional observed listing URL separate.
+Changing owner setup atomically reconciles only each episode's current,
+unobserved `setup_required|waiting_for_feed|disabled` row; prior revisions and
+observed/failed evidence are never rewritten.
+
+Episode directory reconciliation accepts only the current publication revision
+and `observed` or `failed`. `observed` requires an HTTPS episode/provider
+evidence URL without credentials or fragments. `failed` requires a bounded
+operator detail and may include the same kind of evidence URL. The destination
+must be enabled with verified/not-required owner setup, and `setup_required` or
+`disabled` rows cannot be bypassed. Migration `0030` stores only the evidence
+URL, fixed source classification, and reviewing admin ID; the audit event stores
+only content-free presence/status metadata.
 
 The episode response also returns the latest immutable root publication
 revision and its bounded RSS, News, YouTube, and optional notification job

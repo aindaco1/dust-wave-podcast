@@ -71,6 +71,7 @@ import {
 import {
   listDistributionDestinations,
   retryDistributionJob,
+  updateEpisodeDistributionObservation,
   updateShowDistributionDestination
 } from "./distribution";
 import { servePrivateFeed, servePublicFeed } from "./feed";
@@ -158,6 +159,8 @@ const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
 const ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)\/retry$/;
+const ADMIN_EPISODE_DISTRIBUTION_DESTINATION_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_TRANSCRIPTS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts$/;
 const ADMIN_EPISODE_TRANSCRIPT_PATH =
@@ -539,6 +542,17 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       env,
       adminEpisodeDistributionRetryMatch[1],
       adminEpisodeDistributionRetryMatch[2]
+    );
+  }
+  const adminEpisodeDistributionDestinationMatch = url.pathname.match(
+    ADMIN_EPISODE_DISTRIBUTION_DESTINATION_PATH
+  );
+  if (adminEpisodeDistributionDestinationMatch && method === "PATCH") {
+    return updateEpisodeDistributionObservation(
+      request,
+      env,
+      adminEpisodeDistributionDestinationMatch[1],
+      adminEpisodeDistributionDestinationMatch[2]
     );
   }
   const adminEpisodeTranscriptApproveMatch = url.pathname.match(

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   listDistributionDestinations,
   retryDistributionJob,
+  updateEpisodeDistributionObservation,
   updateShowDistributionDestination
 } from "../src/distribution";
 import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
@@ -230,6 +231,121 @@ describe("streamlined publishing directory registry", () => {
     ).toBe(false);
   });
 
+  it("records current-revision directory observation with bounded HTTPS evidence", async () => {
+    const fixture = await distributionFixture({ role: "producer" });
+    const response = await updateEpisodeDistributionObservation(
+      fixture.request(
+        "/v1/admin/episodes/episode_opera/distribution/spotify",
+        {
+          method: "PATCH",
+          body: {
+            publicationRevision: 3,
+            status: "observed",
+            evidenceUrl:
+              "https://open.spotify.com/episode/dust-wave-fixture",
+            error: ""
+          }
+        }
+      ),
+      fixture.env,
+      "episode_opera",
+      "spotify"
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      updated: true,
+      idempotent: false,
+      episodeId: "episode_opera",
+      destinationId: "spotify",
+      publicationRevision: 3,
+      status: "observed",
+      evidenceUrl:
+        "https://open.spotify.com/episode/dust-wave-fixture"
+    });
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("distribution.directory_observed")
+        || (
+          query.includes("INSERT INTO admin_audit_events")
+          && values.includes("distribution.directory_observed")
+        )
+      )
+    ).toBe(true);
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("UPDATE episode_publications")
+        && query.includes("evidence_source = 'manual_review'")
+        && values.includes(
+          "https://open.spotify.com/episode/dust-wave-fixture"
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("requires evidence for an observed directory before any state mutation", async () => {
+    const fixture = await distributionFixture({ role: "producer" });
+    await expect(
+      updateEpisodeDistributionObservation(
+        fixture.request(
+          "/v1/admin/episodes/episode_opera/distribution/spotify",
+          {
+            method: "PATCH",
+            body: {
+              publicationRevision: 3,
+              status: "observed",
+              evidenceUrl: "",
+              error: ""
+            }
+          }
+        ),
+        fixture.env,
+        "episode_opera",
+        "spotify"
+      )
+    ).rejects.toThrow(/evidenceUrl is required/);
+    expect(
+      fixture.queries.some(({ query }) =>
+        query.includes("UPDATE episode_publications")
+      )
+    ).toBe(false);
+  });
+
+  it("rejects observation while owner setup is incomplete", async () => {
+    const fixture = await distributionFixture({
+      role: "producer",
+      observationOwnerSetupStatus: "pending"
+    });
+    const response = await updateEpisodeDistributionObservation(
+      fixture.request(
+        "/v1/admin/episodes/episode_opera/distribution/spotify",
+        {
+          method: "PATCH",
+          body: {
+            publicationRevision: 3,
+            status: "failed",
+            evidenceUrl: "",
+            error: "The provider dashboard still shows setup pending."
+          }
+        }
+      ),
+      fixture.env,
+      "episode_opera",
+      "spotify"
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "directory_not_ready_for_observation",
+      ownerSetupStatus: "pending"
+    });
+    expect(
+      fixture.queries.some(({ query }) =>
+        query.includes("UPDATE episode_publications")
+      )
+    ).toBe(false);
+  });
+
   it("lets a show-scoped admin record owner setup without provider secrets", async () => {
     const fixture = await distributionFixture({ role: "admin" });
     const response = await updateShowDistributionDestination(
@@ -258,7 +374,8 @@ describe("streamlined publishing directory registry", () => {
       enabled: true,
       ownerSetupStatus: "verified",
       listingUrl:
-        "https://open.spotify.com/show/dust-wave-fixture"
+        "https://open.spotify.com/show/dust-wave-fixture",
+      reconciledPublications: 1
     });
     expect(
       fixture.queries.some(({ query, values }) =>
@@ -270,6 +387,14 @@ describe("streamlined publishing directory registry", () => {
     expect(
       fixture.queries.some(({ query }) =>
         query.includes("INSERT INTO admin_audit_events")
+      )
+    ).toBe(true);
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("UPDATE episode_publications")
+        && query.includes("e.publication_revision")
+        && values.join(",")
+          === "1,verified,spotify,show_opera_en_la_selva"
       )
     ).toBe(true);
   });
@@ -305,12 +430,14 @@ async function distributionFixture({
   role,
   roleShowId = "show_opera_en_la_selva",
   episodeShowId = "show_opera_en_la_selva",
-  currentPublicationRevision = 3
+  currentPublicationRevision = 3,
+  observationOwnerSetupStatus = "verified"
 }: {
   role: "admin" | "producer" | "analyst";
   roleShowId?: string;
   episodeShowId?: string;
   currentPublicationRevision?: number;
+  observationOwnerSetupStatus?: string;
 }) {
   const sessionSecret = "distribution-session-secret";
   const csrfToken = "distribution-csrf-token";
@@ -357,6 +484,22 @@ async function distributionFixture({
               status: "failed",
               attempt_count: 3,
               current_publication_revision: currentPublicationRevision
+            };
+          }
+          if (
+            query.includes("LEFT JOIN episode_publications p")
+            && query.includes("current_publication_revision")
+          ) {
+            return {
+              id: "publication_spotify_revision_3",
+              status: "waiting_for_feed",
+              last_error: null,
+              evidence_url: null,
+              evidence_source: null,
+              current_publication_revision: currentPublicationRevision,
+              destination_id: "spotify",
+              enabled: 1,
+              owner_setup_status: observationOwnerSetupStatus
             };
           }
           if (query.includes("SELECT id, title, rss_slug")) {
@@ -494,6 +637,8 @@ function destinationRow(
     publication_status: null,
     last_observed_at: null,
     publication_error: null,
+    evidence_url: null,
+    evidence_source: null,
     publication_revision: null,
     ...overrides
   };

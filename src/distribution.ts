@@ -1,6 +1,6 @@
 import { requireAdmin } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
-import { recordAdminAudit } from "./audit";
+import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
@@ -86,6 +86,8 @@ export async function listDistributionDestinations(
          p.status AS publication_status,
          p.last_observed_at,
          p.last_error AS publication_error,
+         p.evidence_url,
+         p.evidence_source,
          p.publication_revision
        FROM distribution_destinations d
        LEFT JOIN show_distribution_destinations sd
@@ -117,6 +119,8 @@ export async function listDistributionDestinations(
          NULL AS publication_status,
          NULL AS last_observed_at,
          NULL AS publication_error,
+         NULL AS evidence_url,
+         NULL AS evidence_source,
          NULL AS publication_revision
        FROM distribution_destinations d
        LEFT JOIN show_distribution_destinations sd
@@ -277,8 +281,8 @@ export async function updateShowDistributionDestination(
   const listingUrl = "listingUrl" in body
     ? validOptionalHttpsUrl(body.listingUrl, "listingUrl")
     : current.listing_url;
-  await env.DB
-    .prepare(
+  const results = await env.DB.batch([
+    env.DB.prepare(
       `INSERT INTO show_distribution_destinations (
          show_id,
          destination_id,
@@ -311,28 +315,56 @@ export async function updateShowDistributionDestination(
       ownerSetupStatus,
       listingUrl,
       ownerSetupStatus
-    )
-    .run();
-  await recordAdminAudit(env.DB, {
-    adminUserId: auth.authorization.identity.id,
-    action: "distribution.setup_updated",
-    targetType: "show_distribution_destination",
-    targetId: `${showId}:${destinationId}`,
-    metadata: {
-      showId,
-      destinationId,
-      enabled,
+    ),
+    env.DB.prepare(
+      `UPDATE episode_publications
+       SET
+         status = CASE
+           WHEN ? = 0 THEN 'disabled'
+           WHEN ? IN ('verified', 'not_required') THEN 'waiting_for_feed'
+           ELSE 'setup_required'
+         END,
+         updated_at = datetime('now')
+       WHERE destination_id = ?
+         AND status IN ('setup_required', 'waiting_for_feed', 'disabled')
+         AND publication_revision = (
+           SELECT e.publication_revision
+           FROM episodes e
+           WHERE e.id = episode_publications.episode_id
+             AND e.show_id = ?
+         )`
+    ).bind(
+      enabled ? 1 : 0,
       ownerSetupStatus,
-      hasListingUrl: Boolean(listingUrl)
-    }
-  });
+      destinationId,
+      showId
+    ),
+    prepareAdminAudit(env.DB, {
+      adminUserId: auth.authorization.identity.id,
+      action: "distribution.setup_updated",
+      targetType: "show_distribution_destination",
+      targetId: `${showId}:${destinationId}`,
+      metadata: {
+        showId,
+        destinationId,
+        enabled,
+        ownerSetupStatus,
+        hasListingUrl: Boolean(listingUrl)
+      }
+    })
+  ]);
+  const reconciledPublications = Math.max(
+    0,
+    Number(results[1]?.meta?.changes ?? 0)
+  );
   return privateJson(request, env.ALLOWED_ORIGINS, {
     updated: true,
     showId,
     destinationId,
     enabled,
     ownerSetupStatus,
-    listingUrl
+    listingUrl,
+    reconciledPublications
   });
 }
 
@@ -568,6 +600,252 @@ export async function retryDistributionJob(
   );
 }
 
+export async function updateEpisodeDistributionObservation(
+  request: Request,
+  env: PodcastEnv,
+  episodeIdValue: string,
+  destinationIdValue: string
+): Promise<Response> {
+  const access = await authorizeAdminEpisode(
+    request,
+    env,
+    episodeIdValue,
+    [...PUBLICATION_EDIT_ROLES],
+    { requireCsrf: true }
+  );
+  if (access instanceof Response) return access;
+  const destinationId = validIdentifier(
+    destinationIdValue,
+    "destinationId"
+  );
+  const body = await readJsonObject(request, 20_000);
+  const allowedFields = new Set([
+    "publicationRevision",
+    "status",
+    "evidenceUrl",
+    "error"
+  ]);
+  if (Object.keys(body).some((field) => !allowedFields.has(field))) {
+    throw new RequestValidationError(
+      "Only publicationRevision, status, evidenceUrl, and error may be supplied"
+    );
+  }
+  const publicationRevision = Number(body.publicationRevision);
+  if (
+    !Number.isSafeInteger(publicationRevision)
+    || publicationRevision <= 0
+  ) {
+    throw new RequestValidationError(
+      "publicationRevision must be a positive integer"
+    );
+  }
+  const status = requiredText(body.status, "status", 16);
+  if (!["observed", "failed"].includes(status)) {
+    throw new RequestValidationError(
+      "status must be observed or failed"
+    );
+  }
+  const evidenceUrl = validOptionalHttpsUrl(
+    body.evidenceUrl,
+    "evidenceUrl"
+  );
+  const error = optionalText(body.error, "error", 500);
+  if (status === "observed" && !evidenceUrl) {
+    throw new RequestValidationError(
+      "evidenceUrl is required when status is observed"
+    );
+  }
+  if (status === "observed" && error) {
+    throw new RequestValidationError(
+      "error must be empty when status is observed"
+    );
+  }
+  if (status === "failed" && !error) {
+    throw new RequestValidationError(
+      "error is required when status is failed"
+    );
+  }
+
+  const publication = await env.DB
+    .prepare(
+      `SELECT
+         p.id,
+         p.status,
+         p.last_error,
+         p.evidence_url,
+         p.evidence_source,
+         e.publication_revision AS current_publication_revision,
+         d.id AS destination_id,
+         COALESCE(sd.enabled, d.enabled) AS enabled,
+         COALESCE(sd.owner_setup_status, d.owner_setup_status)
+           AS owner_setup_status
+       FROM episodes e
+       LEFT JOIN distribution_destinations d ON d.id = ?
+       LEFT JOIN show_distribution_destinations sd
+         ON sd.show_id = e.show_id
+         AND sd.destination_id = d.id
+       LEFT JOIN episode_publications p
+         ON p.episode_id = e.id
+         AND p.destination_id = d.id
+         AND p.publication_revision = ?
+       WHERE e.id = ?`
+    )
+    .bind(destinationId, publicationRevision, access.episode.id)
+    .first<{
+      id: string | null;
+      status: string | null;
+      last_error: string | null;
+      evidence_url: string | null;
+      evidence_source: string | null;
+      current_publication_revision: number;
+      destination_id: string | null;
+      enabled: number | null;
+      owner_setup_status: string | null;
+    }>();
+  if (
+    !publication
+    || publication.current_publication_revision !== publicationRevision
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      {
+        error: "stale_publication_revision",
+        currentPublicationRevision:
+          Math.max(
+            0,
+            Number(publication?.current_publication_revision) || 0
+          )
+      },
+      { status: 409 }
+    );
+  }
+  if (
+    !publication.id
+    || !publication.destination_id
+    || !publication.status
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "directory_publication_not_found" },
+      { status: 404 }
+    );
+  }
+  if (
+    publication.enabled !== 1
+    || !["verified", "not_required"].includes(
+      publication.owner_setup_status || ""
+    )
+    || ["setup_required", "disabled"].includes(publication.status)
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      {
+        error: "directory_not_ready_for_observation",
+        status: publication.status,
+        ownerSetupStatus: publication.owner_setup_status
+      },
+      { status: 409 }
+    );
+  }
+  const nextError = status === "failed" ? error : null;
+  const idempotent = publication.status === status
+    && (publication.evidence_url || null) === evidenceUrl
+    && (publication.last_error || null) === nextError
+    && publication.evidence_source === "manual_review";
+  if (idempotent) {
+    return privateJson(request, env.ALLOWED_ORIGINS, {
+      updated: true,
+      idempotent: true,
+      episodeId: access.episode.id,
+      destinationId,
+      publicationRevision,
+      status,
+      evidenceUrl
+    });
+  }
+
+  const priorStatus = publication.status;
+  const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO admin_audit_events (
+         id, admin_user_id, action, target_type, target_id, metadata_json
+       )
+       SELECT ?, ?, ?, ?, ?, ?
+       FROM episode_publications
+       WHERE id = ?
+         AND publication_revision = ?
+         AND status = ?`
+    ).bind(
+      auditId,
+      access.authorization.identity.id,
+      status === "observed"
+        ? "distribution.directory_observed"
+        : "distribution.directory_failed",
+      "episode_publication",
+      publication.id,
+      JSON.stringify({
+        episodeId: access.episode.id,
+        destinationId,
+        publicationRevision,
+        priorStatus,
+        status,
+        hasEvidenceUrl: Boolean(evidenceUrl),
+        hasError: Boolean(nextError)
+      }),
+      publication.id,
+      publicationRevision,
+      priorStatus
+    ),
+    env.DB.prepare(
+      `UPDATE episode_publications
+       SET
+         status = ?,
+         evidence_url = ?,
+         evidence_source = 'manual_review',
+         evidence_admin_user_id = ?,
+         last_observed_at = CASE
+           WHEN ? = 'observed' THEN datetime('now')
+           ELSE last_observed_at
+         END,
+         last_error = ?,
+         updated_at = datetime('now')
+       WHERE id = ?
+         AND publication_revision = ?
+         AND status = ?`
+    ).bind(
+      status,
+      evidenceUrl,
+      access.authorization.identity.id,
+      status,
+      nextError,
+      publication.id,
+      publicationRevision,
+      priorStatus
+    )
+  ]);
+  if (Number(results[1]?.meta?.changes ?? 0) !== 1) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "directory_observation_conflict" },
+      { status: 409 }
+    );
+  }
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    updated: true,
+    idempotent: false,
+    episodeId: access.episode.id,
+    destinationId,
+    publicationRevision,
+    status,
+    evidenceUrl
+  });
+}
+
 type DistributionDestinationRow = {
   id: string;
   name: string;
@@ -582,6 +860,8 @@ type DistributionDestinationRow = {
   publication_status: string | null;
   last_observed_at: string | null;
   publication_error: string | null;
+  evidence_url: string | null;
+  evidence_source: string | null;
   publication_revision: number | null;
 };
 
@@ -618,6 +898,8 @@ function presentDistributionDestination(
   publicationRevision: number | null;
   lastObservedAt: string | null;
   publicationError: string | null;
+  evidenceUrl: string | null;
+  evidenceSource: string | null;
 } {
   return {
     id: row.id,
@@ -633,7 +915,9 @@ function presentDistributionDestination(
     publicationStatus: row.publication_status,
     publicationRevision: row.publication_revision,
     lastObservedAt: row.last_observed_at,
-    publicationError: row.publication_error
+    publicationError: row.publication_error,
+    evidenceUrl: boundedEvidence(row.evidence_url, 2_048),
+    evidenceSource: boundedEvidence(row.evidence_source, 32)
   };
 }
 
