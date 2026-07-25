@@ -172,7 +172,7 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
 | `POST` | `/v1/admin/episodes/{id}/distribution/{rss\|news\|youtube\|email}/retry` | producer+ | Requeue one failed job for the exact current publication revision |
-| `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific owner setup, enabled state, and optional HTTPS listing |
+| `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific enabled/setup state plus a credential-free owner/submission checklist |
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
@@ -220,6 +220,14 @@ URL and optional observed listing URL separate.
 Changing owner setup atomically reconciles only each episode's current,
 unobserved `setup_required|waiting_for_feed|disabled` row; prior revisions and
 observed/failed evidence are never rewritten.
+
+Migration `0031` extends that show-specific record with a bounded responsible
+account label, ISO submission date, safe HTTPS receipt/dashboard URL, and
+bounded operational notes. These fields are workflow evidence, not a credential
+vault: provider passwords, verification codes, URL credentials/fragments, and
+control-character spoofing are rejected or explicitly prohibited. Audit
+metadata records only field presence, state, and booleans—not checklist text or
+URLs.
 
 Episode directory reconciliation accepts only the current publication revision
 and `observed` or `failed`. `observed` requires an HTTPS episode/provider

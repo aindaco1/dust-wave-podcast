@@ -77,6 +77,15 @@ incomplete owner setup return `409`; and replaying identical evidence is
 idempotent. Never mark ingestion observed merely because the canonical feed or
 directory submission page is reachable.
 
+For migration `0031`, verify the four nullable owner-checklist columns and their
+length/date constraints. Exercise an Admin/Super-admin update with a harmless
+account label, ISO date, HTTPS receipt/dashboard URL, and non-secret note;
+confirm Analysts/Producers cannot mutate it, foreign keys stay clean, and audit
+metadata contains only presence booleans. Reject URL credentials/fragments,
+invalid calendar dates, multiline account labels, control characters, unknown
+fields, passwords, and verification codes. Do not fabricate a provider
+submission merely to exercise staging.
+
 ## 3. Configure non-secret test state
 
 - Associate the inactive Stripe test product and inactive $5/month and

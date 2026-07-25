@@ -51,6 +51,11 @@ describe("streamlined publishing directory registry", () => {
         enabled: true,
         ownerSetupStatus: "verified",
         submissionUrl: "https://podcasters.spotify.com/",
+        ownerAccountLabel: "Dust Wave operations",
+        submissionDate: "2026-07-24",
+        submissionEvidenceUrl:
+          "https://podcasters.spotify.com/show/dust-wave-fixture",
+        setupNotes: "Ownership verified without storing credentials.",
         publicationStatus: null
       }),
       expect.objectContaining({
@@ -357,7 +362,13 @@ describe("streamlined publishing directory registry", () => {
             enabled: true,
             ownerSetupStatus: "verified",
             listingUrl:
-              "https://open.spotify.com/show/dust-wave-fixture"
+              "https://open.spotify.com/show/dust-wave-fixture",
+            ownerAccountLabel: "Dust Wave operations",
+            submissionDate: "2026-07-24",
+            submissionEvidenceUrl:
+              "https://podcasters.spotify.com/show/dust-wave-fixture",
+            setupNotes:
+              "Ownership verified. Do not store passwords or codes."
           }
         }
       ),
@@ -375,6 +386,11 @@ describe("streamlined publishing directory registry", () => {
       ownerSetupStatus: "verified",
       listingUrl:
         "https://open.spotify.com/show/dust-wave-fixture",
+      ownerAccountLabel: "Dust Wave operations",
+      submissionDate: "2026-07-24",
+      submissionEvidenceUrl:
+        "https://podcasters.spotify.com/show/dust-wave-fixture",
+      setupNotes: "Ownership verified. Do not store passwords or codes.",
       reconciledPublications: 1
     });
     expect(
@@ -382,6 +398,8 @@ describe("streamlined publishing directory registry", () => {
         query.includes("INSERT INTO show_distribution_destinations")
         && values.includes("verified")
         && values.includes("https://open.spotify.com/show/dust-wave-fixture")
+        && values.includes("Dust Wave operations")
+        && values.includes("2026-07-24")
       )
     ).toBe(true);
     expect(
@@ -397,6 +415,32 @@ describe("streamlined publishing directory registry", () => {
           === "1,verified,spotify,show_opera_en_la_selva"
       )
     ).toBe(true);
+  });
+
+  it("keeps the owner checklist read-only for producers", async () => {
+    const fixture = await distributionFixture({ role: "producer" });
+    const response = await updateShowDistributionDestination(
+      fixture.request(
+        "/v1/admin/shows/show_opera_en_la_selva/distribution/spotify",
+        {
+          method: "PATCH",
+          body: {
+            ownerAccountLabel: "Dust Wave operations",
+            submissionDate: "2026-07-24"
+          }
+        }
+      ),
+      fixture.env,
+      "show_opera_en_la_selva",
+      "spotify"
+    );
+
+    expect(response.status).toBe(403);
+    expect(
+      fixture.queries.some(({ query }) =>
+        query.includes("INSERT INTO show_distribution_destinations")
+      )
+    ).toBe(false);
   });
 
   it("rejects unsafe listing URLs before changing setup state", async () => {
@@ -418,6 +462,46 @@ describe("streamlined publishing directory registry", () => {
         "spotify"
       )
     ).rejects.toThrow(/HTTPS URL/);
+    expect(
+      fixture.queries.some(({ query }) =>
+        query.includes("INSERT INTO show_distribution_destinations")
+      )
+    ).toBe(false);
+  });
+
+  it("rejects credential-like checklist fields and invalid submission evidence", async () => {
+    const fixture = await distributionFixture({ role: "admin" });
+    for (const [body, message] of [
+      [
+        { ownerAccountLabel: "Dust Wave\noperations" },
+        /unsupported control characters/
+      ],
+      [{ submissionDate: "2026-02-30" }, /ISO date/],
+      [
+        { submissionEvidenceUrl: "https://user:pass@example.com/" },
+        /HTTPS URL/
+      ],
+      [
+        { setupNotes: "verification code: 123456" },
+        /must not contain provider credentials or verification codes/
+      ],
+      [
+        { providerPassword: "secret" },
+        /Only enabled, ownerSetupStatus/
+      ]
+    ] as const) {
+      await expect(
+        updateShowDistributionDestination(
+          fixture.request(
+            "/v1/admin/shows/show_opera_en_la_selva/distribution/spotify",
+            { method: "PATCH", body }
+          ),
+          fixture.env,
+          "show_opera_en_la_selva",
+          "spotify"
+        )
+      ).rejects.toThrow(message);
+    }
     expect(
       fixture.queries.some(({ query }) =>
         query.includes("INSERT INTO show_distribution_destinations")
@@ -517,7 +601,11 @@ async function distributionFixture({
               id: "spotify",
               enabled: 1,
               owner_setup_status: "not_started",
-              listing_url: null
+              listing_url: null,
+              owner_account_label: null,
+              submission_date: null,
+              submission_evidence_url: null,
+              setup_notes: null
             };
           }
           return null;
@@ -631,6 +719,11 @@ function destinationRow(
     owner_setup_status: "not_started",
     submission_url: "https://podcasters.spotify.com/",
     listing_url: null,
+    owner_account_label: "Dust Wave operations",
+    submission_date: "2026-07-24",
+    submission_evidence_url:
+      "https://podcasters.spotify.com/show/dust-wave-fixture",
+    setup_notes: "Ownership verified without storing credentials.",
     owner_verified_at: null,
     last_checked_at: null,
     setup_error: null,

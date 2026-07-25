@@ -124,6 +124,10 @@ iHeartRadio, and Deezer.
 
 - Track setup, submission, ingestion, observation, and failure state for each
   directory rather than implying direct file upload to RSS-following apps.
+- Keep a credential-free owner-action checklist per show/directory: responsible
+  account label, verification state, submission date, provider receipt or
+  dashboard URL, public listing, and bounded notes. Never store provider
+  passwords or verification codes.
 - Reuse the versioned Pool/Store Marketing boundary for policy-injected tagged
   URLs and accessible PNG/SVG QR generation. The first Dust Wave share kit is
   browser-only and does not persist campaign state.

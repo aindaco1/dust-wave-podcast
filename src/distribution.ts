@@ -24,6 +24,8 @@ const PUBLICATION_DESTINATIONS = new Set<PublicationDestination>([
   "youtube",
   "email"
 ]);
+const CREDENTIAL_SHAPED_CHECKLIST_VALUE =
+  /(?:password|passcode|verification\s+code|otp|contraseña|c[oó]digo\s+de\s+verificaci[oó]n)\s*[:=]\s*\S+/iu;
 
 export async function listDistributionDestinations(
   request: Request,
@@ -80,6 +82,10 @@ export async function listDistributionDestinations(
            AS owner_setup_status,
          d.submission_url,
          sd.listing_url,
+         sd.owner_account_label,
+         sd.submission_date,
+         sd.submission_evidence_url,
+         sd.setup_notes,
          sd.owner_verified_at,
          sd.last_checked_at,
          sd.last_error AS setup_error,
@@ -113,6 +119,10 @@ export async function listDistributionDestinations(
            AS owner_setup_status,
          d.submission_url,
          sd.listing_url,
+         sd.owner_account_label,
+         sd.submission_date,
+         sd.submission_evidence_url,
+         sd.setup_notes,
          sd.owner_verified_at,
          sd.last_checked_at,
          sd.last_error AS setup_error,
@@ -236,11 +246,16 @@ export async function updateShowDistributionDestination(
   const allowedFields = new Set([
     "enabled",
     "ownerSetupStatus",
-    "listingUrl"
+    "listingUrl",
+    "ownerAccountLabel",
+    "submissionDate",
+    "submissionEvidenceUrl",
+    "setupNotes"
   ]);
   if (Object.keys(body).some((field) => !allowedFields.has(field))) {
     throw new RequestValidationError(
-      "Only enabled, ownerSetupStatus, and listingUrl may be updated"
+      "Only enabled, ownerSetupStatus, listingUrl, ownerAccountLabel, "
+      + "submissionDate, submissionEvidenceUrl, and setupNotes may be updated"
     );
   }
   const current = await env.DB
@@ -250,7 +265,11 @@ export async function updateShowDistributionDestination(
          COALESCE(sd.enabled, d.enabled) AS enabled,
          COALESCE(sd.owner_setup_status, d.owner_setup_status)
            AS owner_setup_status,
-         sd.listing_url
+         sd.listing_url,
+         sd.owner_account_label,
+         sd.submission_date,
+         sd.submission_evidence_url,
+         sd.setup_notes
        FROM shows s
        JOIN distribution_destinations d ON d.id = ?
        LEFT JOIN show_distribution_destinations sd
@@ -263,6 +282,10 @@ export async function updateShowDistributionDestination(
       enabled: number;
       owner_setup_status: string;
       listing_url: string | null;
+      owner_account_label: string | null;
+      submission_date: string | null;
+      submission_evidence_url: string | null;
+      setup_notes: string | null;
     }>();
   if (!current) {
     return privateJson(
@@ -281,6 +304,26 @@ export async function updateShowDistributionDestination(
   const listingUrl = "listingUrl" in body
     ? validOptionalHttpsUrl(body.listingUrl, "listingUrl")
     : current.listing_url;
+  const ownerAccountLabel = "ownerAccountLabel" in body
+    ? validChecklistText(
+        body.ownerAccountLabel,
+        "ownerAccountLabel",
+        120,
+        false
+      )
+    : current.owner_account_label;
+  const submissionDate = "submissionDate" in body
+    ? validOptionalIsoDate(body.submissionDate, "submissionDate")
+    : current.submission_date;
+  const submissionEvidenceUrl = "submissionEvidenceUrl" in body
+    ? validOptionalHttpsUrl(
+        body.submissionEvidenceUrl,
+        "submissionEvidenceUrl"
+      )
+    : current.submission_evidence_url;
+  const setupNotes = "setupNotes" in body
+    ? validChecklistText(body.setupNotes, "setupNotes", 1_000, true)
+    : current.setup_notes;
   const results = await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO show_distribution_destinations (
@@ -289,15 +332,23 @@ export async function updateShowDistributionDestination(
          enabled,
          owner_setup_status,
          listing_url,
+         owner_account_label,
+         submission_date,
+         submission_evidence_url,
+         setup_notes,
          owner_verified_at
        ) VALUES (
-         ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?,
          CASE WHEN ? = 'verified' THEN datetime('now') ELSE NULL END
        )
        ON CONFLICT(show_id, destination_id) DO UPDATE SET
          enabled = excluded.enabled,
          owner_setup_status = excluded.owner_setup_status,
          listing_url = excluded.listing_url,
+         owner_account_label = excluded.owner_account_label,
+         submission_date = excluded.submission_date,
+         submission_evidence_url = excluded.submission_evidence_url,
+         setup_notes = excluded.setup_notes,
          owner_verified_at = CASE
            WHEN excluded.owner_setup_status = 'verified'
              THEN COALESCE(
@@ -314,6 +365,10 @@ export async function updateShowDistributionDestination(
       enabled ? 1 : 0,
       ownerSetupStatus,
       listingUrl,
+      ownerAccountLabel,
+      submissionDate,
+      submissionEvidenceUrl,
+      setupNotes,
       ownerSetupStatus
     ),
     env.DB.prepare(
@@ -349,7 +404,11 @@ export async function updateShowDistributionDestination(
         destinationId,
         enabled,
         ownerSetupStatus,
-        hasListingUrl: Boolean(listingUrl)
+        hasListingUrl: Boolean(listingUrl),
+        hasOwnerAccountLabel: Boolean(ownerAccountLabel),
+        hasSubmissionDate: Boolean(submissionDate),
+        hasSubmissionEvidenceUrl: Boolean(submissionEvidenceUrl),
+        hasSetupNotes: Boolean(setupNotes)
       }
     })
   ]);
@@ -364,6 +423,10 @@ export async function updateShowDistributionDestination(
     enabled,
     ownerSetupStatus,
     listingUrl,
+    ownerAccountLabel,
+    submissionDate,
+    submissionEvidenceUrl,
+    setupNotes,
     reconciledPublications
   });
 }
@@ -854,6 +917,10 @@ type DistributionDestinationRow = {
   owner_setup_status: string;
   submission_url: string | null;
   listing_url: string | null;
+  owner_account_label: string | null;
+  submission_date: string | null;
+  submission_evidence_url: string | null;
+  setup_notes: string | null;
   owner_verified_at: string | null;
   last_checked_at: string | null;
   setup_error: string | null;
@@ -891,6 +958,10 @@ function presentDistributionDestination(
   ownerSetupStatus: string;
   submissionUrl: string | null;
   listingUrl: string | null;
+  ownerAccountLabel: string | null;
+  submissionDate: string | null;
+  submissionEvidenceUrl: string | null;
+  setupNotes: string | null;
   ownerVerifiedAt: string | null;
   lastCheckedAt: string | null;
   setupError: string | null;
@@ -909,6 +980,13 @@ function presentDistributionDestination(
     ownerSetupStatus: row.owner_setup_status,
     submissionUrl: row.submission_url,
     listingUrl: row.listing_url,
+    ownerAccountLabel: boundedEvidence(row.owner_account_label, 120),
+    submissionDate: boundedEvidence(row.submission_date, 10),
+    submissionEvidenceUrl: boundedEvidence(
+      row.submission_evidence_url,
+      2_048
+    ),
+    setupNotes: boundedEvidence(row.setup_notes, 1_000),
     ownerVerifiedAt: row.owner_verified_at,
     lastCheckedAt: row.last_checked_at,
     setupError: row.setup_error,
@@ -1001,4 +1079,49 @@ function validOptionalHttpsUrl(value: unknown, field: string): string | null {
       `${field} must be an HTTPS URL without credentials or a fragment`
     );
   }
+}
+
+function validChecklistText(
+  value: unknown,
+  field: string,
+  maximumLength: number,
+  multiline: boolean
+): string | null {
+  const text = optionalText(value, field, maximumLength);
+  if (!text) return null;
+  const invalidControl = multiline
+    ? /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u
+    : /[\u0000-\u001F\u007F]/u;
+  if (
+    invalidControl.test(text)
+    || /[\u202A-\u202E\u2066-\u2069]/u.test(text)
+  ) {
+    throw new RequestValidationError(
+      `${field} contains unsupported control characters`
+    );
+  }
+  if (
+    CREDENTIAL_SHAPED_CHECKLIST_VALUE.test(text.normalize("NFKC"))
+  ) {
+    throw new RequestValidationError(
+      `${field} must not contain provider credentials or verification codes`
+    );
+  }
+  return text;
+}
+
+function validOptionalIsoDate(value: unknown, field: string): string | null {
+  const text = optionalText(value, field, 10);
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw new RequestValidationError(`${field} must be an ISO date`);
+  }
+  const parsed = new Date(`${text}T00:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== text
+  ) {
+    throw new RequestValidationError(`${field} must be an ISO date`);
+  }
+  return text;
 }
