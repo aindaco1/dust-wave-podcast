@@ -78,6 +78,9 @@ import {
   startListenerLogin
 } from "./listener-auth";
 import {
+  dryRunAdminMarketingAnnouncement
+} from "./marketing";
+import {
   servePrivateEpisodeAudio,
   servePublicEpisodeAudio
 } from "./media";
@@ -85,6 +88,9 @@ import {
   createListenerPrivateFeed,
   rotateListenerPrivateFeed
 } from "./private-feeds";
+import {
+  updateListenerNotificationPreference
+} from "./notification-preferences";
 import {
   handlePoolGrantEvent,
   redeemPoolCode
@@ -128,6 +134,8 @@ const MEMBER_SHOW_FEED_ROTATE_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed\/rotate$/;
 const MEMBER_SHOW_PORTAL_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/billing\/portal$/;
+const MEMBER_SHOW_NOTIFICATIONS_PATH =
+  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/notifications$/;
 const MEMBER_POOL_REDEMPTION_PATH = "/v1/member/redemptions/pool";
 const INTERNAL_POOL_GRANTS_PATH = "/v1/internal/pool/grants";
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
@@ -135,6 +143,8 @@ const ADMIN_SHOW_CLIPS_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/clips$/;
 const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
+const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
@@ -373,6 +383,16 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       memberShowPortalMatch[1]
     );
   }
+  const memberShowNotificationsMatch = url.pathname.match(
+    MEMBER_SHOW_NOTIFICATIONS_PATH
+  );
+  if (memberShowNotificationsMatch && method === "PUT") {
+    return updateListenerNotificationPreference(
+      request,
+      env,
+      memberShowNotificationsMatch[1]
+    );
+  }
   if (url.pathname === MEMBER_POOL_REDEMPTION_PATH && method === "POST") {
     return redeemPoolCode(request, env);
   }
@@ -436,6 +456,16 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const adminShowClipsMatch = url.pathname.match(ADMIN_SHOW_CLIPS_PATH);
   if (adminShowClipsMatch && method === "GET") {
     return listAdminShowClips(request, env, adminShowClipsMatch[1]);
+  }
+  const adminShowMarketingDryRunMatch = url.pathname.match(
+    ADMIN_SHOW_MARKETING_DRY_RUN_PATH
+  );
+  if (adminShowMarketingDryRunMatch && method === "POST") {
+    return dryRunAdminMarketingAnnouncement(
+      request,
+      env,
+      adminShowMarketingDryRunMatch[1]
+    );
   }
   const adminShowEpisodesMatch = url.pathname.match(ADMIN_SHOW_EPISODES_PATH);
   if (adminShowEpisodesMatch) {

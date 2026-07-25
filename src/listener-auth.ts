@@ -47,6 +47,8 @@ type SubscriptionRow = {
   entitled: number;
   has_private_feed: number;
   has_stripe_billing: number;
+  announcement_notifications_enabled: number;
+  notification_language: "en" | "es";
 };
 
 export interface ListenerIdentity {
@@ -60,6 +62,8 @@ export interface ListenerIdentity {
     entitled: boolean;
     hasPrivateFeed: boolean;
     hasStripeBilling: boolean;
+    announcementNotificationsEnabled: boolean;
+    notificationLanguage: "en" | "es";
     show: {
       id: string;
       slug: string;
@@ -537,10 +541,19 @@ async function loadListenerIdentity(
              AND es.show_id = s.show_id
              AND es.provider = 'stripe'
              AND es.provider_customer_id IS NOT NULL
-         ) AS has_stripe_billing
+         ) AS has_stripe_billing,
+         COALESCE(np.announcements_enabled, 0)
+           AS announcement_notifications_enabled,
+         COALESCE(
+           np.language,
+           CASE WHEN sh.language = 'es' THEN 'es' ELSE 'en' END
+         ) AS notification_language
        FROM subscriptions s
        JOIN shows sh ON sh.id = s.show_id
        LEFT JOIN show_prices p ON p.id = s.price_id
+       LEFT JOIN show_notification_preferences np
+         ON np.listener_id = s.listener_id
+        AND np.show_id = s.show_id
        WHERE s.listener_id = ?
        ORDER BY sh.title, s.created_at`
     )
@@ -557,6 +570,9 @@ async function loadListenerIdentity(
       entitled: subscription.entitled === 1,
       hasPrivateFeed: subscription.has_private_feed === 1,
       hasStripeBilling: subscription.has_stripe_billing === 1,
+      announcementNotificationsEnabled:
+        subscription.announcement_notifications_enabled === 1,
+      notificationLanguage: subscription.notification_language,
       show: {
         id: subscription.show_id,
         slug: subscription.show_slug,

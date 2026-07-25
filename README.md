@@ -65,6 +65,14 @@ Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member
 site. The bridge is disabled in every environment by default.
 
+The first Marketing boundary reuses the versioned Pool/Store tagged-link and
+QR primitives without creating a second implementation. An authenticated
+listener may explicitly opt into or out of one show's English or Spanish
+announcements; subscription access never implies consent. Producer+ can review
+a normalized WYSIWYG announcement against the count and pseudonymous revision
+of explicitly opted-in, currently entitled listeners. The endpoint cannot
+send, does not expose recipients, writes no outbox, and makes no Resend call.
+
 Migration `0012` adds an isolated staging decision exercise: an authenticated
 Producer can persist one deterministic immutable manifest and receive an
 HMAC-bound, expiring URL that streams only that snapshotted rendition. The

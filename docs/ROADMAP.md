@@ -124,8 +124,17 @@ iHeartRadio, and Deezer.
 
 - Track setup, submission, ingestion, observation, and failure state for each
   directory rather than implying direct file upload to RSS-following apps.
-- Reuse Pool Marketing primitives for tagged URLs, QR codes, embeds, share
-  previews, and Resend announcements.
+- Reuse the versioned Pool/Store Marketing boundary for policy-injected tagged
+  URLs and accessible PNG/SVG QR generation. The first Dust Wave share kit is
+  browser-only and does not persist campaign state.
+- Keep announcements consent-safe: the implemented WYSIWYG review counts only
+  explicitly opted-in, currently entitled listeners and returns pseudonymous
+  revision hashes without recipient identities. Add a durable
+  suppression-aware outbox, unsubscribe path, audited approval, and an
+  independently gated Resend sender before any delivery route exists.
+- Add saved tagged links, portable embeds, share-card previews, and scheduling
+  only after their storage, accessibility, privacy, and cache contracts are
+  characterized.
 - Reuse Pool/Store reporting patterns for public and premium delivery, player
   engagement, sponsors, subscriptions, YouTube, and publication health.
 - Keep raw delivery data privacy-minimized, methodology-versioned, deduplicated,

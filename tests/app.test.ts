@@ -221,6 +221,15 @@ describe("podcast API", () => {
         "/v1/admin/clips/clip_fixture/render",
         "POST",
         { renderId: "clip_render_fixture", expectedRevision: 1 }
+      ],
+      [
+        "/v1/admin/shows/show_opera_en_la_selva/marketing/announcements/dry-run",
+        "POST",
+        {
+          language: "es",
+          subject: "Nuevo episodio",
+          bodyMarkdown: "Escucha ahora."
+        }
       ]
     ] as const) {
       const response = await handleRequest(

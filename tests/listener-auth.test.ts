@@ -222,7 +222,9 @@ function authenticationDatabase({
                 billing_period: "month",
                 entitled: 1,
                 has_private_feed: 1,
-                has_stripe_billing: 1
+                has_stripe_billing: 1,
+                announcement_notifications_enabled: 0,
+                notification_language: "es"
               }]
             };
           }

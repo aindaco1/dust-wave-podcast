@@ -30,6 +30,13 @@ Retain the export outside the repository and record its path in the private
 release evidence. Apply migrations to a fresh local database as a second
 forward-migration check.
 
+For migration `0026`, verify the fresh and restored databases contain
+`show_notification_preferences`, its listener/show primary key, and the
+`show_notification_preferences_eligible` partial index. Before and after the
+remote apply, record only
+aggregate row counts and `PRAGMA foreign_key_check`; do not export listener
+identifiers into shared release evidence.
+
 ## 3. Configure non-secret test state
 
 - Associate the inactive Stripe test product and inactive $5/month and
@@ -236,6 +243,15 @@ Verify:
 - an entitled listener can create one private URL, read due premium RSS, play
   a byte range, and rotate it; the old feed and media URLs then return the same
   `404` as an unknown token, while the replacement continues to work;
+- notification state begins disabled even for an entitled listener; an
+  authenticated same-origin/CSRF `PUT` can explicitly enable English or
+  Spanish for one show and can withdraw it again without changing entitlement;
+- the Marketing announcement dry run rejects anonymous/cross-show access,
+  returns only normalized content, an eligible count, and pseudonymous
+  revision hashes, and remains `reviewOnly: true` with
+  `sendEnabled: false`;
+- no announcement review creates an outbox/provider row or Resend request;
+  the empty staging preference table must yield zero eligible recipients;
 - private responses remain no-store/noindex without wildcard CORS, D1 contains
   only a 64-character token HMAC, and polling within one hour does not advance
   `last_used_at`;
@@ -327,3 +343,6 @@ R2, Queue, and DNS remain untouched throughout this test.
 - A Worker-code rollback after migration `0020` is safe because the new partial
   unique index is additive. Do not drop it during rollback; it preserves the
   one-active-feed invariant.
+- A Worker-code rollback after migration `0026` is also safe because the new
+  notification table/index is additive. Leave it in place; older code neither
+  reads it nor implies consent from its presence.

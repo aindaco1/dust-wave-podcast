@@ -17,6 +17,11 @@
 - Listener session responses expose only internal identity, show/subscription
   status, computed entitlement, and whether a feed exists. They never expose
   email, Stripe customer/subscription IDs, or private-feed tokens.
+- Show-announcement consent is an explicit listener mutation with the
+  listener-scoped cookie, exact site origin, and current CSRF token. Consent is
+  stored per listener/show with a bounded English/Spanish preference and
+  withdrawal timestamp. Subscription or Pool entitlement never silently
+  enables it.
 - Private-feed creation and rotation require the listener session, exact site
   origin, and session-bound CSRF token. A 256-bit bearer value is returned only
   once; D1 stores an HMAC under an independent pepper and enforces one active
@@ -86,9 +91,18 @@
   serving one bounded MP4 range. The response exposes no private object key,
   reflects credentialed CORS only to an allowlisted admin origin, and remains
   private/no-store/noindex.
+- Announcement review is show-scoped to Producer-or-higher and CSRF protected.
+  The eligible audience requires both an explicit, non-withdrawn show consent
+  and an active, unexpired entitlement. The response includes only a count and
+  keyed pseudonymous revision hashes, never email addresses or listener IDs.
+  CTA links must remain on the configured Dust Wave site origin.
 
 ## Provider boundaries
 
+- The announcement endpoint is structurally review-only: it writes no outbox,
+  exposes no send mode, and cannot call Resend. Live delivery remains blocked
+  until a durable, idempotent, suppression-aware outbox and unsubscribe path
+  pass an independent staging gate.
 - Stripe webhooks require a valid signature and matching test/live mode before
   D1 is touched. Event IDs are journaled once; failed/received projections can
   retry idempotently instead of being mistaken for completed duplicates.
