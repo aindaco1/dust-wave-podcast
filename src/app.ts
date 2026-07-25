@@ -44,6 +44,7 @@ import {
 import {
   completeAudioQcRun,
   getAdminEpisodeAudioQc,
+  getAdminShowAudioQcPolicy,
   getAudioQcProcessorManifest,
   getAudioQcProcessorSource,
   queueAdminEpisodeAudioQc,
@@ -586,12 +587,21 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   const adminShowAudioQcPolicyMatch = url.pathname.match(
     ADMIN_SHOW_AUDIO_QC_POLICY_PATH
   );
-  if (adminShowAudioQcPolicyMatch && method === "PATCH") {
-    return updateAdminShowAudioQcPolicy(
-      request,
-      env,
-      adminShowAudioQcPolicyMatch[1]
-    );
+  if (adminShowAudioQcPolicyMatch) {
+    if (method === "GET") {
+      return getAdminShowAudioQcPolicy(
+        request,
+        env,
+        adminShowAudioQcPolicyMatch[1]
+      );
+    }
+    if (method === "PATCH") {
+      return updateAdminShowAudioQcPolicy(
+        request,
+        env,
+        adminShowAudioQcPolicyMatch[1]
+      );
+    }
   }
   const adminShowEpisodesMatch = url.pathname.match(ADMIN_SHOW_EPISODES_PATH);
   if (adminShowEpisodesMatch) {

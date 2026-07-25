@@ -156,6 +156,31 @@ export async function getAdminEpisodeAudioQc(
   });
 }
 
+export async function getAdminShowAudioQcPolicy(
+  request: Request,
+  env: PodcastEnv,
+  showIdValue: string
+): Promise<Response> {
+  const showId = validIdentifier(showIdValue, "showId");
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: READ_ROLES,
+    showId
+  });
+  if (!auth.ok) return auth.response;
+  const policy = await loadPolicy(env.DB, showId);
+  if (!policy) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "show_not_found" },
+      { status: 404 }
+    );
+  }
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    policy: presentPolicy(policy)
+  });
+}
+
 export async function updateAdminShowAudioQcPolicy(
   request: Request,
   env: PodcastEnv,

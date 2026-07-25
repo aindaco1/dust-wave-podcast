@@ -188,6 +188,7 @@ including under concurrent requests.
 |---|---|---|---|
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
+| `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
 | `GET` | `/v1/admin/shows/{id}/episodes` | analyst+ | Draft, scheduled, and published episode workbench rows |

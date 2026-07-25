@@ -13,7 +13,9 @@ import { describe, expect, it } from "vitest";
 import {
   completeAudioQcRun,
   getAdminEpisodeAudioQc,
-  queueAdminEpisodeAudioQc
+  getAdminShowAudioQcPolicy,
+  queueAdminEpisodeAudioQc,
+  updateAdminShowAudioQcPolicy
 } from "../src/audio-qc";
 import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
 import type { PodcastEnv } from "../src/env";
@@ -50,6 +52,96 @@ describe("source-audio QC orchestration", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("cache-control")).toContain("private");
     expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("reads the show policy before an episode exists", async () => {
+    const response = await getAdminShowAudioQcPolicy(
+      authenticatedGet(
+        "/v1/admin/shows/show_fixture/audio-qc-policy"
+      ),
+      await environment(),
+      "show_fixture"
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      policy: {
+        ...DEFAULT_AUDIO_QC_POLICY,
+        updatedAt: "2026-07-25 00:00:00"
+      }
+    });
+  });
+
+  it("updates only a future policy revision with bounded audit metadata", async () => {
+    const batches: Array<Array<{ query: string; values: unknown[] }>> = [];
+    const response = await updateAdminShowAudioQcPolicy(
+      authenticatedRequest(
+        "/v1/admin/shows/show_fixture/audio-qc-policy",
+        policyUpdate({ maximumTruePeakDbtp: -1.5 }),
+        "PATCH"
+      ),
+      await environment({ batches, role: "admin" }),
+      "show_fixture"
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      policy: {
+        revision: 2,
+        maximumTruePeakDbtp: -1.5
+      }
+    });
+    expect(batches).toHaveLength(1);
+    expect(batches[0][0].query).toContain(
+      "WHERE show_id = ? AND revision = ?"
+    );
+    expect(batches[0][1].query).toContain("'audio_qc.policy_updated'");
+    expect(JSON.parse(String(batches[0][1].values[3]))).toEqual({
+      baseRevision: 1,
+      revision: 2,
+      schemaVersion: "audio-qc-policy-v1"
+    });
+  });
+
+  it("keeps policy writes admin-only", async () => {
+    const response = await updateAdminShowAudioQcPolicy(
+      authenticatedRequest(
+        "/v1/admin/shows/show_fixture/audio-qc-policy",
+        policyUpdate(),
+        "PATCH"
+      ),
+      await environment(),
+      "show_fixture"
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects coercive and stale policy updates", async () => {
+    const invalid = await handleRequest(
+      authenticatedRequest(
+        "/v1/admin/shows/show_fixture/audio-qc-policy",
+        policyUpdate({ monoIntegratedLufs: "-19" }),
+        "PATCH"
+      ),
+      await environment({ role: "admin" })
+    );
+    expect(invalid.status).toBe(400);
+
+    const stale = await updateAdminShowAudioQcPolicy(
+      authenticatedRequest(
+        "/v1/admin/shows/show_fixture/audio-qc-policy",
+        policyUpdate(),
+        "PATCH"
+      ),
+      await environment({ role: "admin", batchChanges: 0 }),
+      "show_fixture"
+    );
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({
+      error: "audio_qc_policy_conflict",
+      currentRevision: 1
+    });
   });
 
   it("queues one exact current source and policy snapshot idempotently", async () => {
@@ -293,10 +385,14 @@ describe("source-audio QC orchestration", () => {
 
 async function environment({
   batches = [],
-  run = null
+  run = null,
+  role = "producer",
+  batchChanges = 1
 }: {
   batches?: Array<Array<{ query: string; values: unknown[] }>>;
   run?: Awaited<ReturnType<typeof runRow>> | null;
+  role?: string;
+  batchChanges?: number;
 } = {}): Promise<PodcastEnv> {
   const csrfHash = await sha256Hex(`${sessionSecret}:${csrfToken}`);
   let storedRun: Record<string, unknown> | null = run;
@@ -346,7 +442,7 @@ async function environment({
         async all() {
           if (query.includes("FROM admin_user_roles")) {
             return {
-              results: [{ role: "producer", show_id: "show_fixture" }]
+              results: [{ role, show_id: "show_fixture" }]
             };
           }
           return { results: [] };
@@ -396,7 +492,7 @@ async function environment({
       }
       return statements.map(() => ({
         success: true,
-        meta: { changes: 1 }
+        meta: { changes: batchChanges }
       }));
     }
   } as unknown as D1Database;
@@ -425,10 +521,11 @@ async function environment({
 
 function authenticatedRequest(
   path: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  method = "POST"
 ): Request {
   return new Request(`https://feeds.dustwave.xyz${path}`, {
-    method: "POST",
+    method,
     headers: {
       "content-type": "application/json",
       cookie: `${ADMIN_SESSION_COOKIE}=${sessionToken}`,
@@ -436,6 +533,34 @@ function authenticatedRequest(
       "x-podcast-csrf": csrfToken
     },
     body: JSON.stringify(body)
+  });
+}
+
+function policyUpdate(
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    baseRevision: 1,
+    monoIntegratedLufs: -19,
+    stereoIntegratedLufs: -16,
+    integratedLufsTolerance: 1,
+    maximumTruePeakDbtp: -1,
+    maximumDcOffset: 0.01,
+    maximumChannelImbalanceLu: 2,
+    maximumLeadingSilenceMs: 2_000,
+    maximumTrailingSilenceMs: 3_000,
+    maximumInternalSilenceMs: 5_000,
+    silenceThresholdDb: -50,
+    ...overrides
+  };
+}
+
+function authenticatedGet(path: string): Request {
+  return new Request(`https://feeds.dustwave.xyz${path}`, {
+    headers: {
+      cookie: `${ADMIN_SESSION_COOKIE}=${sessionToken}`,
+      origin: "https://dustwave.xyz"
+    }
   });
 }
 
