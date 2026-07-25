@@ -64,8 +64,10 @@ iHeartRadio, and Deezer.
   workflow now renders and fully decodes all three aspect ratios, with
   purpose-bound Worker streams and native R2 SHA-256 verification. Ready
   outputs now have an authenticated, show-scoped, range-safe admin preview and
-  MP4 download path. A remote workflow run, Marketing library, and
-  private/unlisted Shorts path remain gated follow-ups.
+  MP4 download path. The Marketing tab now adds one bounded, keyset-paginated
+  cross-episode library with episode, aspect, and current-render-state filters
+  while reusing that exact preview/download boundary. A remote workflow run
+  and private/unlisted Shorts path remain gated follow-ups.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
 - Publish audio-only or native-video episodes to the configurable YouTube

@@ -100,6 +100,26 @@ export function positiveInteger(
   return number;
 }
 
+export function boundedPageSize(
+  value: string | null,
+  defaultValue = 50,
+  maximum = 100,
+  field = "limit"
+): number {
+  if (value === null || value === "") return defaultValue;
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed)
+    || parsed < 1
+    || parsed > maximum
+  ) {
+    throw new RequestValidationError(
+      `${field} must be between 1 and ${maximum}`
+    );
+  }
+  return parsed;
+}
+
 export function isTruthy(value: unknown): boolean {
   return ["1", "true", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
 }

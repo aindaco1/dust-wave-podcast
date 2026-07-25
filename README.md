@@ -52,7 +52,9 @@ evidence only when MP4 dimensions/duration and private-R2 checksum metadata
 match that manifest. The complete source/render/upload/callback path has passed
 the local Worker+D1+R2 runtime gate; the remote GitHub workflow still requires
 the reviewed workflow to exist on the default branch and a queued staging
-render. No public clip or YouTube Shorts upload is enabled.
+render. Ready renders have authenticated range-safe preview/download plus a
+bounded, filterable cross-episode Marketing library; neither route exposes an
+R2 key. No public clip or YouTube Shorts upload is enabled.
 
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member

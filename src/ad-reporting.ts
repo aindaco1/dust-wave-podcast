@@ -5,6 +5,7 @@ import {
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
+  boundedPageSize,
   RequestValidationError,
   validIdentifier
 } from "./validation";
@@ -15,9 +16,6 @@ const READ_ROLES: AdminRole[] = [
   "producer",
   "analyst"
 ];
-const DEFAULT_PAGE_SIZE = 50;
-const MAXIMUM_PAGE_SIZE = 100;
-
 type ReconciliationRow = {
   id: string;
   name: string;
@@ -45,7 +43,7 @@ export async function getAdminAdQualificationReconciliation(
 ): Promise<Response> {
   const url = new URL(request.url);
   const showId = validIdentifier(url.searchParams.get("showId"), "showId");
-  const limit = pageSize(url.searchParams.get("limit"));
+  const limit = boundedPageSize(url.searchParams.get("limit"));
   const cursorValue = url.searchParams.get("cursor");
   const cursor = cursorValue
     ? validIdentifier(cursorValue, "cursor")
@@ -212,21 +210,6 @@ export async function getAdminAdQualificationReconciliation(
       nextCursor: hasMore ? rows.at(-1)?.id ?? null : null
     }
   });
-}
-
-function pageSize(value: string | null): number {
-  if (value === null || value === "") return DEFAULT_PAGE_SIZE;
-  const parsed = Number(value);
-  if (
-    !Number.isSafeInteger(parsed)
-    || parsed < 1
-    || parsed > MAXIMUM_PAGE_SIZE
-  ) {
-    throw new RequestValidationError(
-      `limit must be between 1 and ${MAXIMUM_PAGE_SIZE}`
-    );
-  }
-  return parsed;
 }
 
 function presentSummary(

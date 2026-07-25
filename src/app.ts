@@ -55,6 +55,7 @@ import {
   getClipRenderProcessorManifest,
   getClipRenderProcessorSource,
   listAdminEpisodeClips,
+  listAdminShowClips,
   queueAdminClipRender,
   saveAdminEpisodeClip,
   serveAdminClipRenderMedia,
@@ -126,6 +127,8 @@ const MEMBER_SHOW_PORTAL_PATH =
 const MEMBER_POOL_REDEMPTION_PATH = "/v1/member/redemptions/pool";
 const INTERNAL_POOL_GRANTS_PATH = "/v1/internal/pool/grants";
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
+const ADMIN_SHOW_CLIPS_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/clips$/;
 const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
@@ -422,6 +425,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     return recordTrustedAdQualificationCallback(request, env);
   }
 
+  const adminShowClipsMatch = url.pathname.match(ADMIN_SHOW_CLIPS_PATH);
+  if (adminShowClipsMatch && method === "GET") {
+    return listAdminShowClips(request, env, adminShowClipsMatch[1]);
+  }
   const adminShowEpisodesMatch = url.pathname.match(ADMIN_SHOW_EPISODES_PATH);
   if (adminShowEpisodesMatch) {
     if (method === "GET") {

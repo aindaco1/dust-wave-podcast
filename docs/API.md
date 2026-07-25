@@ -155,6 +155,7 @@ including under concurrent requests.
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
 | `GET` | `/v1/admin/shows/{id}/episodes` | analyst+ | Draft, scheduled, and published episode workbench rows |
+| `GET` | `/v1/admin/shows/{id}/clips` | analyst+ | Bounded, filterable cross-episode private clip library |
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |
@@ -249,6 +250,14 @@ manifest digest before returning headers. It supports one bounded byte range,
 ETag/If-Range/If-None-Match, credentialed allowlisted CORS for the admin
 player, and `?download=1` attachment delivery. Responses are private,
 no-store, noindex, and never expose the R2 key.
+
+`GET /v1/admin/shows/{showId}/clips` supplies the Marketing clip library
+without issuing one request per episode. Results are ordered by immutable
+updated-time/ID keyset, default to 24 and cap at 100, and may be filtered by
+episode, `9:16|1:1|16:9`, and the current revision's
+`queued|rendering|ready|failed` render state. The opaque next cursor is a
+show-scoped clip ID. Returned ready actions reuse the private media route
+above; no object key or public media URL is included.
 
 The staging processor surface is private and purpose-bound:
 

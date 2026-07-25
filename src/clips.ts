@@ -25,6 +25,7 @@ import {
   type TranscriptCue
 } from "./transcripts";
 import {
+  boundedPageSize,
   readJsonObject,
   RequestValidationError,
   requiredText,
@@ -38,6 +39,13 @@ const READ_ROLES: AdminRole[] = [
   "analyst"
 ];
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
+const CLIP_LIBRARY_PAGE_SIZE = 24;
+const CLIP_RENDER_STATUSES = new Set([
+  "queued",
+  "rendering",
+  "ready",
+  "failed"
+]);
 const ASPECT_DIMENSIONS = {
   "9:16": { width: 1080, height: 1920 },
   "1:1": { width: 1080, height: 1080 },
@@ -93,6 +101,8 @@ type ClipRecipe = {
 type ClipRow = {
   id: string;
   episode_id: string;
+  episode_title: string;
+  episode_slug: string;
   show_id: string;
   title: string;
   starts_at_ms: number;
@@ -219,6 +229,98 @@ export async function listAdminEpisodeClips(
       aspectRatios: Object.keys(ASPECT_DIMENSIONS)
     },
     clips: clips.results.map(presentClip)
+  });
+}
+
+export async function listAdminShowClips(
+  request: Request,
+  env: PodcastEnv,
+  showIdValue: string
+): Promise<Response> {
+  const showId = validIdentifier(showIdValue, "showId");
+  const url = new URL(request.url);
+  const limit = boundedPageSize(
+    url.searchParams.get("limit"),
+    CLIP_LIBRARY_PAGE_SIZE
+  );
+  const cursorValue = url.searchParams.get("cursor");
+  const cursor = cursorValue
+    ? validIdentifier(cursorValue, "cursor")
+    : null;
+  const episodeValue = url.searchParams.get("episodeId");
+  const episodeId = episodeValue
+    ? validIdentifier(episodeValue, "episodeId")
+    : null;
+  const aspectValue = url.searchParams.get("aspectRatio");
+  const aspectRatio = aspectValue
+    ? validClipAspectRatio(aspectValue)
+    : null;
+  const renderStatus = validClipRenderStatus(
+    url.searchParams.get("renderStatus")
+  );
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: READ_ROLES,
+    showId
+  });
+  if (!auth.ok) return auth.response;
+
+  const cursorRow = cursor
+    ? await env.DB.prepare(
+      `SELECT c.id, c.updated_at
+       FROM clips c
+       JOIN episodes e ON e.id = c.episode_id
+       WHERE c.id = ? AND e.show_id = ?`
+    ).bind(cursor, showId).first<{ id: string; updated_at: string }>()
+    : null;
+  if (cursor && !cursorRow) {
+    throw new RequestValidationError("cursor is invalid");
+  }
+
+  const clauses = ["e.show_id = ?"];
+  const bindings: unknown[] = [showId];
+  if (episodeId) {
+    clauses.push("c.episode_id = ?");
+    bindings.push(episodeId);
+  }
+  if (aspectRatio) {
+    clauses.push("c.aspect_ratio = ?");
+    bindings.push(aspectRatio);
+  }
+  if (renderStatus) {
+    clauses.push("r.status = ?", "r.clip_revision = c.revision");
+    bindings.push(renderStatus);
+  }
+  if (cursorRow) {
+    clauses.push(
+      "(c.updated_at < ? OR (c.updated_at = ? AND c.id < ?))"
+    );
+    bindings.push(
+      cursorRow.updated_at,
+      cursorRow.updated_at,
+      cursorRow.id
+    );
+  }
+  const page = await env.DB.prepare(
+    clipSelect(
+      `WHERE ${clauses.join(" AND ")}
+       ORDER BY c.updated_at DESC, c.id DESC
+       LIMIT ?`
+    )
+  ).bind(...bindings, limit + 1).all<ClipRow>();
+  const hasMore = page.results.length > limit;
+  const rows = page.results.slice(0, limit);
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    showId,
+    clips: rows.map(presentClip),
+    pagination: {
+      limit,
+      nextCursor: hasMore ? rows.at(-1)?.id ?? null : null
+    },
+    filters: {
+      episodeId,
+      aspectRatio,
+      renderStatus: renderStatus ?? "all"
+    }
   });
 }
 
@@ -1234,7 +1336,10 @@ async function buildClipRecipe(
     "aspectRatio",
     4
   ) as AspectRatio;
-  if (!(aspectRatio in ASPECT_DIMENSIONS)) {
+  if (!Object.prototype.hasOwnProperty.call(
+    ASPECT_DIMENSIONS,
+    aspectRatio
+  )) {
     throw new RequestValidationError("aspectRatio must be 9:16, 1:1, or 16:9");
   }
   const templateId = requiredText(
@@ -1520,7 +1625,8 @@ async function authorizeClip(
 
 function clipSelect(where: string): string {
   return `SELECT
-      c.id, c.episode_id, e.show_id, c.title, c.starts_at_ms, c.ends_at_ms,
+      c.id, c.episode_id, e.title AS episode_title,
+      e.slug AS episode_slug, e.show_id, c.title, c.starts_at_ms, c.ends_at_ms,
       c.aspect_ratio, c.status, c.output_key, c.revision, c.transcript_id,
       c.transcript_revision, c.transcript_sha256, c.alignment_revision_id,
       c.boundary_mode, c.caption_language, c.template_id, c.recipe_json,
@@ -1810,7 +1916,10 @@ function parseClipRecipe(value: string): ClipRecipe {
   const parsed = JSON.parse(value) as ClipRecipe;
   if (
     parsed.schemaVersion !== 1
-    || !(parsed.aspectRatio in ASPECT_DIMENSIONS)
+    || !Object.prototype.hasOwnProperty.call(
+      ASPECT_DIMENSIONS,
+      parsed.aspectRatio
+    )
     || parsed.templateId !== "captioned-waveform-v1"
     || !["segment", "word"].includes(parsed.boundaryMode)
   ) {
@@ -1829,6 +1938,8 @@ function presentClip(row: ClipRow): Record<string, unknown> {
   return {
     id: row.id,
     episodeId: row.episode_id,
+    episodeTitle: row.episode_title,
+    episodeSlug: row.episode_slug,
     title: row.title,
     startsAtMs: row.starts_at_ms,
     endsAtMs: row.ends_at_ms,
@@ -1875,6 +1986,25 @@ function presentClip(row: ClipRow): Record<string, unknown> {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function validClipAspectRatio(value: string): AspectRatio {
+  if (!Object.prototype.hasOwnProperty.call(ASPECT_DIMENSIONS, value)) {
+    throw new RequestValidationError(
+      "aspectRatio must be 9:16, 1:1, or 16:9"
+    );
+  }
+  return value as AspectRatio;
+}
+
+function validClipRenderStatus(value: string | null): string | null {
+  if (value === null || value === "" || value === "all") return null;
+  if (!CLIP_RENDER_STATUSES.has(value)) {
+    throw new RequestValidationError(
+      "renderStatus must be queued, rendering, ready, failed, or all"
+    );
+  }
+  return value;
 }
 
 function presentRender(row: ClipRenderRow): Record<string, unknown> {

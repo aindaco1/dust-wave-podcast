@@ -79,6 +79,8 @@
 - CORS reflects only explicit origins. Admin responses are private/no-store and
   marked noindex.
 - Ready clip preview/download remains under the path-scoped admin session.
+  The Marketing library returns only bounded show-scoped metadata and those
+  same ready media paths; it never returns an R2 object key or public URL.
   Every request rechecks show-scoped Analyst-or-higher access and exact D1/R2
   byte, MIME, native checksum, custom checksum, and manifest evidence before
   serving one bounded MP4 range. The response exposes no private object key,
