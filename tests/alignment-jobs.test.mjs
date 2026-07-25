@@ -34,6 +34,28 @@ const transcriptContentSha256 = "c".repeat(64);
 const runnerRevision = "3c5ab054fdad375901eb186f32d7aed6cdb40413";
 const runnerDigest =
   "sha256:5b07bbf315bd62a3c445a7a5a476bf642f91aa1c781173aa1f4e4e8021a51178";
+const passingBenchmarkReport = JSON.stringify({
+  schemaVersion: "1",
+  corpusVersion: "rights-cleared-bilingual-v1",
+  adapter: {
+    name: "whisperx",
+    version: "3.8.6",
+    model: "default",
+    modelVersion: "default-en-es-v1",
+    settingsVersion: "whisperx-align-v1",
+    runnerDigest
+  },
+  passed: true,
+  languages: {
+    en: { passed: true },
+    es: { passed: true }
+  },
+  previews: { passed: true },
+  benchmarkIntegrityGatePassed: true,
+  resourceGatePassed: true,
+  idempotencyGatePassed: true,
+  cleanEnvironmentGatePassed: true
+});
 const sourceKey =
   `podcasts/${showId}/${episodeId}/source_audio/source.wav`;
 const resultKey =
@@ -315,7 +337,10 @@ describe("word-alignment orchestration", () => {
         INSERT INTO alignment_benchmark_runs (
           id, corpus_version, adapter, adapter_version, model, model_version,
           settings_version, runner_digest, status, report_json,
-          report_sha256, clean_environment_reproduced, completed_at
+          report_sha256, clean_environment_reproduced, completed_at,
+          evidence_schema_version, submission_id, input_object_key,
+          input_bytes, input_sha256, runner_revision,
+          submitted_by_admin_user_id
         ) VALUES (
           'benchmark_alignment_fixture',
           'rights-cleared-bilingual-v1',
@@ -329,7 +354,14 @@ describe("word-alignment orchestration", () => {
           '{}',
           '${"f".repeat(64)}',
           0,
-          datetime('now')
+          datetime('now'),
+          'alignment-benchmark-evidence-v1',
+          'submission_alignment_fixture',
+          'podcasts/alignment-benchmarks/benchmark_alignment_fixture/input.json',
+          1024,
+          '${"8".repeat(64)}',
+          '${runnerRevision}',
+          'admin_alignment_fixture'
         );
       `);
       expect(() => database.exec(`
@@ -341,10 +373,25 @@ describe("word-alignment orchestration", () => {
           'benchmark_alignment_fixture',
           'admin_alignment_fixture'
         );
-      `)).toThrow(/passed benchmark/);
+      `)).toThrow(/private benchmark evidence/);
       database.exec(`
         UPDATE alignment_benchmark_runs
         SET status = 'passed', clean_environment_reproduced = 1
+        WHERE id = 'benchmark_alignment_fixture';
+      `);
+      expect(() => database.exec(`
+        INSERT INTO transcript_alignment_approvals (
+          id, alignment_revision_id, benchmark_run_id, admin_user_id
+        ) VALUES (
+          'alignment_approval_missing_report_fixture',
+          '${revisionId}',
+          'benchmark_alignment_fixture',
+          'admin_alignment_fixture'
+        );
+      `)).toThrow(/private benchmark evidence/);
+      database.exec(`
+        UPDATE alignment_benchmark_runs
+        SET report_json = '${sqlText(passingBenchmarkReport)}'
         WHERE id = 'benchmark_alignment_fixture';
         INSERT INTO transcript_alignment_approvals (
           id, alignment_revision_id, benchmark_run_id, admin_user_id

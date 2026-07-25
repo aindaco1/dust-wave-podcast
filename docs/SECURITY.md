@@ -188,6 +188,14 @@
   and runner identity. D1 triggers enforce the rule and require approval before
   `passed`, so there is no direct SQL or super-admin override. Transcript edits
   and working-master replacement stale or supersede dependent evidence.
+- Alignment benchmark import requires a site-origin/CSRF-bound, recently
+  authenticated Super-admin session. The Worker enforces a closed 8 MiB schema,
+  exact pinned runner/adapter identities, bounded fixture/word/review/resource
+  counts, and server-side evaluation. It writes canonical raw evidence only to
+  private content-addressed R2, verifies native SHA-256 metadata, and exposes
+  only report summaries. D1 stores the private object pointer and digests;
+  audit rows omit corpus words, audio, and object keys. Submission/input
+  uniqueness makes retries idempotent and changed reuse conflicting.
 
 ## Transcription boundary
 
@@ -244,7 +252,7 @@ word-alignment quality gate remains locked.
 - Extend recent-auth requirements from the protected super-admin lifecycle to
   future destructive or live billing-provider mutations.
 - Validate logs contain no tokens, raw emails, Stripe payload bodies, media
-  source URLs, or transcript content.
+  source URLs, transcript content, or benchmark corpus words.
 - Complete backup/restore, queue replay, secret rotation, incident response,
   and provider revocation drills.
 

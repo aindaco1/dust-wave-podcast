@@ -14,11 +14,26 @@ export async function readJsonObject(
   request: Request,
   maximumBytes = 1_000_000
 ): Promise<Record<string, unknown>> {
-  const declaredLength = Number.parseInt(request.headers.get("content-length") ?? "0", 10);
+  const declaredLength = Number.parseInt(
+    request.headers.get("content-length") ?? "0",
+    10
+  );
   if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
-    throw new RequestValidationError("Request body is too large", "body_too_large", 413);
+    throw new RequestValidationError(
+      "Request body is too large",
+      "body_too_large",
+      413
+    );
   }
-  const value = await request.json().catch(() => null);
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > maximumBytes) {
+    throw new RequestValidationError(
+      "Request body is too large",
+      "body_too_large",
+      413
+    );
+  }
+  const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RequestValidationError("A JSON object is required");
   }
@@ -49,17 +64,19 @@ export async function readOptionalJsonObject(
       413
     );
   }
-  const value = (() => {
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      return null;
-    }
-  })();
+  const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RequestValidationError("A JSON object is required");
   }
   return value as Record<string, unknown>;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 export function requiredText(

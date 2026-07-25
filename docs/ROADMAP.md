@@ -74,7 +74,11 @@ iHeartRadio, and Deezer.
   every returned word; and stops at human review. Approval has no override:
   it requires a matching real English/Spanish benchmark and clean-environment
   reproduction, with the same rule enforced by D1 triggers. Real
-  rights-cleared corpus/model evidence remains the promotion gate.
+  rights-cleared corpus/model evidence remains the promotion gate. The
+  operational import path now requires recent Super-admin authentication,
+  re-evaluates the closed pinned-runner submission server-side, stores raw
+  evidence privately by input digest, and exposes only replay-safe,
+  content-free summaries.
 - Generate captioned clips and audiograms locally or on existing Cloudflare
   infrastructure, with templates and safe-area previews.
 - The first clip contract now versions approved-transcript cue selections,

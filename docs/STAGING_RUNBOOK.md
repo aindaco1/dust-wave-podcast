@@ -147,6 +147,17 @@ transcript, stale master, or structurally ineligible result. Replay all 39
 migrations from zero and keep both `PRAGMA quick_check` and
 `PRAGMA foreign_key_check` clean.
 
+For migration `0040`, back up remote staging before applying it, restore that
+backup into a disposable local SQLite file, and verify `quick_check`, foreign
+keys, all 39 prior migration records, and row counts. After applying, verify
+the seven benchmark evidence columns, unique submission/input indexes,
+non-unique report index, passing-evidence view, and recreated approval trigger.
+A manually inserted
+passing benchmark without private evidence or the exact runner revision must
+still fail approval. Replay all 40 migrations from zero. Before any real
+benchmark import, `alignment_benchmark_runs` and private benchmark R2 objects
+must remain zero.
+
 After this workflow is present on a dispatchable branch, queue the current
 source from Production and run:
 
@@ -216,6 +227,26 @@ fixtures, 100 unclipped preview reviews, both 60-minute resource runs,
 idempotency checks, and clean-environment reproduction have produced one exact
 passed benchmark row for this adapter/model/settings/runner digest. Production
 alignment processor routes must remain `404`.
+
+When the reviewed corpus is ready, sign in with a fresh Super-admin magic link,
+open Production → English/Spanish word alignment, and import the runner’s
+`alignment-benchmark-submission-v1` JSON. First use staging with a
+rights-cleared copy. Confirm:
+
+- a first import is `201` and an exact replay is `200`/idempotent;
+- a reused submission ID with changed evidence is `409`;
+- the list returns counts/gates/digests but no word text or object key;
+- D1 has one row with input bytes/SHA, private object key, runner revision, and
+  submitter ID;
+- the private R2 object’s size/native SHA/custom metadata match D1;
+- audit JSON contains no corpus text, audio location, or object key;
+- failed evidence is retained but cannot unlock approval; and
+- stale recent authentication, missing CSRF, or non-Super-admin import is
+  rejected before any D1/R2 write.
+
+Do not upload the production corpus to GitHub Actions, attach it to a PR, paste
+it into logs, or place its R2 key in screenshots. A passing synthetic fixture
+is test coverage, not launch evidence.
 
 After a real zero-blocker current QC run exists, approve the exact source from
 the Production tab with a bounded reason and acknowledgement. Confirm a stale

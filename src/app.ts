@@ -153,6 +153,10 @@ import {
   queueAdminEpisodeAlignmentJob
 } from "./alignment-jobs";
 import {
+  listAdminAlignmentBenchmarks,
+  submitAdminAlignmentBenchmark
+} from "./alignment-benchmarks";
+import {
   completeTranscriptionChunkRun,
   getTranscriptionChunkProcessorManifest,
   getTranscriptionChunkProcessorSource,
@@ -340,6 +344,8 @@ const ADMIN_USER_ROLES_PATH =
   /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)\/roles$/;
 const ADMIN_USER_ROLE_PATH =
   /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)\/roles\/(super_admin|admin|producer|analyst)$/;
+const ADMIN_ALIGNMENT_BENCHMARKS_PATH =
+  "/v1/admin/alignment-benchmarks";
 
 export async function handleRequest(
   request: Request,
@@ -590,6 +596,14 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
   if (url.pathname === "/v1/admin/billing/readiness" && method === "GET") {
     return getBillingReadiness(request, env);
+  }
+  if (url.pathname === ADMIN_ALIGNMENT_BENCHMARKS_PATH) {
+    if (method === "GET") {
+      return listAdminAlignmentBenchmarks(request, env);
+    }
+    if (method === "POST") {
+      return submitAdminAlignmentBenchmark(request, env);
+    }
   }
   if (url.pathname === "/v1/admin/ads/preview" && method === "POST") {
     return previewAdminAdDecision(request, env);

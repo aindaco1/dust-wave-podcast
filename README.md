@@ -81,6 +81,13 @@ enforce the same rule even if application code is bypassed. Production
 processor routes remain `404`, and no candidate is represented as having
 passed real audio yet.
 
+The benchmark evidence boundary is operational without weakening that claim.
+A recent Super-admin can import a closed, pinned-runner JSON submission; the
+Worker re-evaluates it, stores canonical raw evidence privately by input
+SHA-256, exposes only content-free summaries, and records replay-safe D1/audit
+evidence. Synthetic integration fixtures prove the path, but no real
+rights-cleared corpus has been imported.
+
 The chapter workbench wraps the original normalized `episode_chapters` rows
 with optimistic mutations, immutable revision snapshots, Admin approval, and
 content digests instead of introducing a second editable chapter model.

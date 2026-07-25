@@ -13,8 +13,15 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import {
+  ALIGNMENT_RUNNER_DIGEST,
+  ALIGNMENT_RUNNER_REPOSITORY,
+  ALIGNMENT_RUNNER_REVISION,
+  configuredAlignmentAdapter
+} from "./alignment-config";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { putImmutablePrivateArtifact } from "./private-artifacts";
 import { readSignedJsonBody } from "./signed-callback";
 import { normalizeTranscriptCues } from "./transcripts";
 import {
@@ -31,10 +38,6 @@ const READ_ROLES: AdminRole[] = [
 ];
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
 const APPROVE_ROLES: AdminRole[] = ["super_admin", "admin"];
-const RUNNER_REPOSITORY = "aindaco1/dust-wave-alignment-runner";
-const RUNNER_REVISION = "3c5ab054fdad375901eb186f32d7aed6cdb40413";
-const RUNNER_DIGEST =
-  "sha256:5b07bbf315bd62a3c445a7a5a476bf642f91aa1c781173aa1f4e4e8021a51178";
 const PROCESSOR_CALLBACK_MAXIMUM_BYTES = MAXIMUM_ALIGNMENT_RESULT_BYTES;
 const RESULT_INSERT_BATCH_SIZE = 100;
 const FAILURE_CODES = new Set([
@@ -45,25 +48,6 @@ const FAILURE_CODES = new Set([
   "result_invalid",
   "storage_failed"
 ]);
-
-const ADAPTERS: Record<string, AlignmentRunnerAdapterIdentity> = {
-  whisperx: {
-    name: "whisperx",
-    version: "3.8.6",
-    model: "default",
-    modelVersion: "default-en-es-v1",
-    settingsVersion: "whisperx-align-v1",
-    runnerDigest: RUNNER_DIGEST
-  },
-  "stable-ts": {
-    name: "stable-ts",
-    version: "2.19.1",
-    model: "base",
-    modelVersion: "openai-whisper-base",
-    settingsVersion: "stable-ts-align-v1",
-    runnerDigest: RUNNER_DIGEST
-  }
-};
 
 type AlignmentSourceRow = {
   transcript_id: string;
@@ -166,8 +150,8 @@ export async function listAdminEpisodeAlignmentJobs(
         ? "staging_manual"
         : "unavailable",
       workflow: "process-alignment.yml",
-      runnerRepository: RUNNER_REPOSITORY,
-      runnerRevision: RUNNER_REVISION
+      runnerRepository: ALIGNMENT_RUNNER_REPOSITORY,
+      runnerRevision: ALIGNMENT_RUNNER_REVISION
     },
     gate: {
       bilingualBenchmarkRequired: true,
@@ -255,7 +239,7 @@ export async function queueAdminEpisodeAlignmentJob(
     transcriptProjectionSha256: projection.projectionSha256,
     language,
     adapter,
-    runnerRevision: RUNNER_REVISION
+    runnerRevision: ALIGNMENT_RUNNER_REVISION
   }));
   const existing = await findAlignmentJob(
     env.DB,
@@ -364,7 +348,7 @@ export async function queueAdminEpisodeAlignmentJob(
       adapter.model,
       adapter.modelVersion,
       adapter.settingsVersion,
-      RUNNER_REVISION,
+      ALIGNMENT_RUNNER_REVISION,
       adapter.runnerDigest,
       processorManifest.manifestSha256,
       resultObjectKey,
@@ -392,7 +376,7 @@ export async function queueAdminEpisodeAlignmentJob(
         language,
         adapter: adapter.name,
         adapterVersion: adapter.version,
-        runnerRevision: RUNNER_REVISION,
+        runnerRevision: ALIGNMENT_RUNNER_REVISION,
         inputFingerprint,
         wordCount: projection.wordCount
       }),
@@ -791,12 +775,21 @@ export async function completeAlignmentProcessorJob(
   }
   const resultJson = JSON.stringify(resultBody);
   const resultSha256 = await sha256Hex(resultJson);
-  await putImmutableAlignmentResult(
+  await putImmutablePrivateArtifact(
     env.MEDIA_BUCKET,
     job.result_object_key,
     resultJson,
-    resultSha256,
-    job
+    {
+      sha256: resultSha256,
+      maximumBytes: MAXIMUM_ALIGNMENT_RESULT_BYTES,
+      contentType: "application/json; charset=utf-8",
+      metadata: {
+        "alignment-job-id": job.id,
+        "alignment-revision-id": job.alignment_revision_id,
+        "source-audio-sha256": job.source_audio_sha256,
+        "transcript-content-sha256": job.transcript_content_sha256
+      }
+    }
   );
   await persistAlignmentWords(env.DB, job, validated.manifest.candidateWords);
   const qualityJson = JSON.stringify(validated.quality);
@@ -972,7 +965,7 @@ async function buildProcessorManifest(
     transcript: parseProjection(job.transcript_projection_json),
     adapter: adapterFromJob(job),
     runner: {
-      repository: RUNNER_REPOSITORY,
+      repository: ALIGNMENT_RUNNER_REPOSITORY,
       revision: job.runner_revision
     },
     output: {
@@ -1100,55 +1093,6 @@ async function persistAlignmentWords(
     || evidence.maximum_position !== words.length - 1
   ) {
     throw new Error("Alignment word projection storage is incomplete");
-  }
-}
-
-async function putImmutableAlignmentResult(
-  bucket: R2Bucket,
-  key: string,
-  body: string,
-  sha256: string,
-  job: AlignmentJobRow
-): Promise<void> {
-  const objectBytes = new TextEncoder().encode(body).byteLength;
-  if (objectBytes < 1 || objectBytes > MAXIMUM_ALIGNMENT_RESULT_BYTES) {
-    throw new Error("Alignment result artifact exceeds its byte contract");
-  }
-  const existing = await bucket.head(key);
-  if (existing) {
-    if (
-      existing.size !== objectBytes
-      || existing.checksums.toJSON().sha256 !== sha256
-      || existing.customMetadata?.sha256 !== sha256
-      || existing.customMetadata?.["alignment-job-id"] !== job.id
-    ) {
-      throw new Error("Alignment result artifact changed");
-    }
-    return;
-  }
-  const stored = await bucket.put(key, body, {
-    onlyIf: { etagDoesNotMatch: "*" },
-    httpMetadata: {
-      contentType: "application/json; charset=utf-8",
-      cacheControl: "private, no-store, max-age=0"
-    },
-    customMetadata: {
-      sha256,
-      "alignment-job-id": job.id,
-      "alignment-revision-id": job.alignment_revision_id,
-      "source-audio-sha256": job.source_audio_sha256,
-      "transcript-content-sha256": job.transcript_content_sha256
-    },
-    sha256
-  });
-  const verified = stored ?? await bucket.head(key);
-  if (
-    !verified
-    || verified.size !== objectBytes
-    || verified.checksums.toJSON().sha256 !== sha256
-    || verified.customMetadata?.sha256 !== sha256
-  ) {
-    throw new Error("Alignment result artifact storage could not be verified");
   }
 }
 
@@ -1392,14 +1336,13 @@ function alignmentJobSelect(): string {
       revision.status AS alignment_status,
       (
         SELECT benchmark.id
-        FROM alignment_benchmark_runs benchmark
-        WHERE benchmark.status = 'passed'
-          AND benchmark.clean_environment_reproduced = 1
-          AND benchmark.adapter = job.adapter
+        FROM alignment_passing_benchmark_evidence benchmark
+        WHERE benchmark.adapter = job.adapter
           AND benchmark.adapter_version = job.adapter_version
           AND benchmark.model = job.model
           AND benchmark.model_version = job.model_version
           AND benchmark.settings_version = job.settings_version
+          AND benchmark.runner_revision = job.runner_revision
           AND benchmark.runner_digest = job.runner_digest
         ORDER BY benchmark.completed_at DESC, benchmark.id DESC
         LIMIT 1
@@ -1456,8 +1399,8 @@ function alignmentJobCandidate({
     model: adapter.model,
     model_version: adapter.modelVersion,
     settings_version: adapter.settingsVersion,
-    runner_revision: RUNNER_REVISION,
-    runner_digest: RUNNER_DIGEST,
+    runner_revision: ALIGNMENT_RUNNER_REVISION,
+    runner_digest: ALIGNMENT_RUNNER_DIGEST,
     processor_manifest_sha256: "",
     result_object_key: resultObjectKey,
     input_fingerprint: inputFingerprint,
@@ -1520,7 +1463,7 @@ function presentAlignmentJob(job: AlignmentJobRow): Record<string, unknown> {
       settingsVersion: job.settings_version
     },
     runner: {
-      repository: RUNNER_REPOSITORY,
+      repository: ALIGNMENT_RUNNER_REPOSITORY,
       revision: job.runner_revision,
       digest: job.runner_digest
     },
@@ -1563,13 +1506,13 @@ function adapterFromJob(job: AlignmentJobRow): AlignmentRunnerAdapterIdentity {
 
 function alignmentAdapter(value: unknown): AlignmentRunnerAdapterIdentity {
   const key = String(value ?? "whisperx");
-  const adapter = ADAPTERS[key];
+  const adapter = configuredAlignmentAdapter(key);
   if (!adapter) {
     throw new RequestValidationError(
       "adapter must be whisperx or stable-ts"
     );
   }
-  return { ...adapter };
+  return adapter;
 }
 
 function alignmentLanguage(value: unknown): "en" | "es" {

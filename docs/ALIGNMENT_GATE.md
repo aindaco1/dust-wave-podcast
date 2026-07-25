@@ -70,6 +70,31 @@ words, invalid result/audio/transcript digests, repeated or unknown preview
 samples, invalid timing provenance/confidence, and duplicate or unknown
 idempotency checks cannot satisfy H1.
 
+## Private benchmark evidence
+
+Migration `0040_alignment_benchmark_evidence.sql` makes a passing benchmark
+traceable to one immutable, closed-schema input. A recently authenticated
+Super-admin submits at most 8 MiB to
+`POST /v1/admin/alignment-benchmarks`. The Worker accepts only the exact pinned
+runner repository/revision and configured adapter/model/settings/digest,
+re-evaluates every fixture with the executable policy above, canonicalizes the
+input and report, and stores the raw input in private R2 under an input-digest
+identity. D1 retains the private object key, byte count, input/report SHA-256,
+submission ID, runner revision, submitter ID, and summarized report.
+
+Submission IDs and canonical input digests are independently unique. Replaying
+the same submission or byte-equivalent benchmark returns the existing row;
+reusing a submission ID for changed evidence is a conflict. Audit metadata
+contains only counts, identities, statuses, and digests—not corpus text, word
+records, object keys, or audio. Admin/Producer/Analyst roles may read the 20
+latest summaries, but only a recent Super-admin session with a valid CSRF token
+may import evidence.
+
+The D1 approval trigger now also requires the benchmark’s private evidence
+schema, bounded byte count, input digest/object key, and exact runner revision.
+A failed benchmark remains useful diagnostic evidence but cannot unlock an
+alignment. There is no benchmark override.
+
 ## Operational staging bridge
 
 Migration `0039_alignment_orchestration.sql` records one immutable job per
@@ -91,8 +116,11 @@ until the benchmark row matches.
 
 ## Current evidence state
 
-The schema, normalized evaluator, and adversarial unit fixtures are implemented.
-They do not claim that either candidate passes real audio. H1 remains blocked
-until the 24-fixture rights-cleared corpus, human word boundaries, 100 preview
-reviews, 60-minute resource runs, idempotency evidence, and clean-runner
-reproduction are attached to a benchmark report.
+The schema, normalized evaluator, private import path, and adversarial
+integration fixtures are implemented. The test suite proves evaluation,
+content-addressed storage, replay/conflict handling, content-free auditing,
+role/recent-auth/CSRF enforcement, and D1 approval linkage with synthetic
+records only. It does not claim that either candidate passes real audio. H1
+remains blocked until the 24-fixture rights-cleared corpus, human word
+boundaries, 100 preview reviews, 60-minute resource runs, idempotency evidence,
+and clean-runner reproduction are imported and produce a passing row.

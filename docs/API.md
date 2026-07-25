@@ -210,6 +210,8 @@ including under concurrent requests.
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific enabled/setup state plus a credential-free owner/submission checklist |
 | `GET` | `/v1/admin/episodes/{id}/transcription-jobs` | analyst+ | Current working-master/source-language readiness and up to 20 immutable transcription jobs |
 | `POST` | `/v1/admin/episodes/{id}/transcription-jobs` | producer+ | Idempotently queue the explicit source language against an exact approved working master |
+| `GET` | `/v1/admin/alignment-benchmarks` | analyst+ | Latest 20 content-free bilingual benchmark summaries plus required runner identity and input limits |
+| `POST` | `/v1/admin/alignment-benchmarks` | recent super-admin | Validate, evaluate, and privately record one closed-schema, pinned-runner benchmark submission |
 | `GET` | `/v1/admin/episodes/{id}/alignments` | analyst+ | Exact approved-transcript/current-master candidates, up to 30 immutable alignment jobs, workflow identity, and H1 gate state |
 | `POST` | `/v1/admin/episodes/{id}/alignments` | producer+ | Staging-only idempotent queue of one exact English/Spanish transcript/master/adapter/runner fingerprint |
 | `POST` | `/v1/admin/episodes/{id}/alignments/{jobId}/approve` | admin+ | Approve only a current, structurally eligible result with an exact passed clean bilingual benchmark |
@@ -450,8 +452,23 @@ Approval is intentionally a second action. It requires job `ready`, alignment
 `needs_review`, exact current transcript/master identities,
 `structurallyEligible: true`, and a passed clean-environment benchmark whose
 adapter, version, model, model version, settings version, and runner digest all
-match. Both application checks and D1 triggers enforce this. A transcript edit
-or working-master replacement makes the job stale/superseded. There is no
+match. The benchmark must also carry the current private evidence schema,
+bounded byte count, content-addressed input/object identity, and exact runner
+revision.
+
+Benchmark import accepts
+`alignment-benchmark-submission-v1` with `submissionId`, the exact runner
+repository/revision, and one benchmark object containing the configured
+adapter identity, 1–64 two-to-five-minute fixtures, bounded gold/candidate word
+records, preview reviews, resource runs, per-fixture idempotency checks, and
+the clean-environment flag. The request and canonical input are capped at
+8 MiB and 25,000 total words. The Worker re-runs the policy; clients cannot
+submit a status or report. Raw canonical input is private R2 evidence. Responses
+and `GET` list results expose only counts, gates, identities, timestamps, byte
+count, and SHA-256 values.
+
+Both application checks and D1 triggers enforce approval. A transcript edit or
+working-master replacement makes the job stale/superseded. There is no
 override path and no production processor route.
 
 ### Chapter review
