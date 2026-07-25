@@ -17,6 +17,7 @@ import {
   getAlignmentProcessorManifest,
   getAlignmentProcessorSource
 } from "../src/alignment-jobs";
+import { handleRequest } from "../src/app";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url)
@@ -57,6 +58,21 @@ const cues = [
 ];
 
 describe("word-alignment orchestration", () => {
+  it("routes the admin alignment collection before the method fallback", async () => {
+    const response = await handleRequest(
+      new Request(
+        "https://feeds.dustwave.xyz/v1/admin/episodes/"
+        + "episode_missing/alignments"
+      ),
+      {
+        ALLOWED_ORIGINS: "https://dustwave.xyz"
+      }
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
   it("keeps signed processor routes absent outside staging", async () => {
     const env = {
       ENVIRONMENT: "production",
