@@ -14,7 +14,7 @@ They do gate the indicated production action.
 | Resend sender and staging API key | Staging magic-link delivery | Existing infrastructure is operational; use or rotate a least-privilege key without committing it |
 | Turnstile staging key pair | Staging admin login | Existing infrastructure is operational; configure the secret in the Worker and the site key in the admin shell |
 | Accountant-approved registrations, taxability, rates, evidence, and effective dates | Purchasable Stripe prices | Awaiting professional approval |
-| Podcast-only Stripe Customer Portal profile with address/rate-changing controls disabled | First controlled Portal session | Awaiting provider configuration; record only the non-secret `bpc_…` ID |
+| Podcast-only Stripe Customer Portal profile with address/rate-changing controls disabled | First controlled Portal session | Staging configured; production profile remains a promotion-time action |
 | Sponsor contract/disclosure/creative for the first direct campaign | Direct campaign activation | Not yet required |
 
 Do not put credentials or personal identifiers in this file. Provider secret

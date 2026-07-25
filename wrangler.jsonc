@@ -46,6 +46,7 @@
         "PODCAST_EMAIL_FROM": "Dust Wave Podcasts <podcasts@dustwave.xyz>",
         "PODCAST_OWNER_EMAIL": "podcasts@dustwave.xyz",
         "STRIPE_MODE": "test",
+        "STRIPE_PORTAL_CONFIGURATION_ID": "bpc_1Twv1rK9nUOzi4tv12xo2NiD",
         "SUBSCRIPTION_CHECKOUT_ENABLED": "false",
         "CHECKOUT_TURNSTILE_REQUIRED": "true",
         "ADMIN_AUTH_EXPOSE_LOGIN_LINK": "false",

@@ -69,7 +69,8 @@ Required for later provider tests:
 - `GITHUB_TOKEN`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- non-secret `STRIPE_PORTAL_CONFIGURATION_ID` for a Podcast-only profile
+- non-secret `STRIPE_PORTAL_CONFIGURATION_ID` for the committed Podcast-only
+  staging profile
 - YouTube OAuth client, secret, and refresh token
 
 Required for subscription Checkout:
