@@ -2,7 +2,6 @@ import {
   createAdminEpisode,
   listAdminEpisodes,
   listAdminShows,
-  listDistributionDestinations,
   publishAdminEpisode,
   updateAdminEpisode,
   updateAdminShow
@@ -69,6 +68,10 @@ import {
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "./diagnostics";
+import {
+  listDistributionDestinations,
+  updateShowDistributionDestination
+} from "./distribution";
 import { servePrivateFeed, servePublicFeed } from "./feed";
 import { json, options, privateJson } from "./http";
 import {
@@ -145,6 +148,8 @@ const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
+const ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
@@ -465,6 +470,17 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       adminShowMarketingDryRunMatch[1]
+    );
+  }
+  const adminShowDistributionDestinationMatch = url.pathname.match(
+    ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH
+  );
+  if (adminShowDistributionDestinationMatch && method === "PATCH") {
+    return updateShowDistributionDestination(
+      request,
+      env,
+      adminShowDistributionDestinationMatch[1],
+      adminShowDistributionDestinationMatch[2]
     );
   }
   const adminShowEpisodesMatch = url.pathname.match(ADMIN_SHOW_EPISODES_PATH);

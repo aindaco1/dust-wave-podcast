@@ -560,10 +560,17 @@ export async function publishAdminEpisode(
   const scheduledAt = publicAt;
   const destinations = await env.DB
     .prepare(
-      `SELECT id, enabled, owner_setup_status
-       FROM distribution_destinations
-       ORDER BY display_order`
+      `SELECT
+         d.id,
+         COALESCE(sd.enabled, d.enabled) AS enabled,
+         COALESCE(sd.owner_setup_status, d.owner_setup_status)
+           AS owner_setup_status
+       FROM distribution_destinations d
+       LEFT JOIN show_distribution_destinations sd
+         ON sd.destination_id = d.id AND sd.show_id = ?
+       ORDER BY d.display_order`
     )
+    .bind(episode.show_id)
     .all<{ id: string; enabled: number; owner_setup_status: string }>();
   if (
     episode.publication_fingerprint === fingerprint
@@ -701,39 +708,6 @@ export async function publishAdminEpisode(
     },
     { status: 202 }
   );
-}
-
-export async function listDistributionDestinations(
-  request: Request,
-  env: PodcastEnv,
-  episodeIdValue?: string
-): Promise<Response> {
-  const auth = await requireAdmin(request, env, { allowedRoles: [...READ_ROLES] });
-  if (!auth.ok) return auth.response;
-  const episodeId = episodeIdValue
-    ? validIdentifier(episodeIdValue, "episodeId")
-    : null;
-  const result = episodeId
-    ? await env.DB.prepare(
-      `SELECT
-         d.id, d.name, d.mode, d.enabled, d.owner_setup_status,
-         d.submission_url, p.status, p.last_observed_at, p.last_error,
-         p.publication_revision
-       FROM distribution_destinations d
-       LEFT JOIN episode_publications p
-         ON p.destination_id = d.id AND p.episode_id = ?
-       ORDER BY d.display_order, p.publication_revision DESC`
-    ).bind(episodeId).all<Record<string, unknown>>()
-    : await env.DB.prepare(
-      `SELECT
-         id, name, mode, enabled, owner_setup_status, submission_url
-       FROM distribution_destinations
-       ORDER BY display_order`
-    ).all<Record<string, unknown>>();
-  return privateJson(request, env.ALLOWED_ORIGINS, {
-    feedUrl: `${env.FEED_ORIGIN.replace(/\/$/, "")}/opera-en-la-selva/rss.xml`,
-    destinations: result.results
-  });
 }
 
 function presentAdminShow(show: ShowAdminRow): Record<string, unknown> {

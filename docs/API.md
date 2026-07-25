@@ -168,6 +168,9 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent one-click publish/schedule |
+| `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
+| `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest per-directory state for one role-scoped episode |
+| `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific owner setup, enabled state, and optional HTTPS listing |
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
@@ -203,6 +206,15 @@ The publish operation hashes all publication-relevant episode state. Repeating
 the request without a change returns the existing revision. A changed episode
 creates one new revision, stable idempotency keys, one site publication, and
 one status record per configured directory.
+
+Directory records distinguish orchestration from provider ownership. Each show
+has its own enabled/setup/listing state. A platform marked `verified` means an
+authorized Dust Wave operator completed that directory's one-time owner setup;
+it does not claim that Dust Wave directly uploads an episode or controls the
+provider's ingestion time. After setup, one reviewed publication updates the
+canonical RSS feed and creates a monitored `waiting_for_feed` state for every
+enabled RSS-following directory. The registry keeps the directory submission
+URL and optional observed listing URL separate.
 
 Multipart clients should use 32 MiB parts; the API currently caps each request
 at 100 MiB and each logical media object at 20 GiB. Parts are streamed to R2 and

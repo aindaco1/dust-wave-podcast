@@ -100,6 +100,12 @@ output routes stream through the Worker's private R2 binding. See
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.
 
+The 11-platform directory registry is now show-scoped. One reviewed publish
+action updates the canonical feed/News/YouTube job graph and creates monitored
+per-directory ingestion states, while preserving the truth that Spotify,
+Apple Podcasts, and the other launch directories require one-time owner setup
+and normally follow RSS rather than accepting a direct Dust Wave upload.
+
 The permanent feed and media origins are reserved as `feeds.dustwave.xyz` and
 `media.dustwave.xyz`. Both will terminate at the Podcast Worker; R2 remains
 private so premium access, dynamic ad decisions, byte ranges, and telemetry
