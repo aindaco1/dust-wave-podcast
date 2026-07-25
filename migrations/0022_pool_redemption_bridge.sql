@@ -49,30 +49,29 @@ CREATE INDEX pool_grant_events_grant_action
 
 CREATE TRIGGER pool_redemption_validate
 BEFORE INSERT ON redemptions
-WHEN (
-  SELECT source
-  FROM redemption_codes
-  WHERE id = NEW.code_id
-) = 'pool'
+WHEN
+  (
+    SELECT source
+    FROM redemption_codes
+    WHERE id = NEW.code_id
+  ) = 'pool'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM redemption_codes c
+    JOIN listener_accounts l ON l.id = NEW.listener_id
+    WHERE
+      c.id = NEW.code_id
+      AND c.source = 'pool'
+      AND c.status = 'active'
+      AND (
+        c.expires_at IS NULL
+        OR datetime(c.expires_at) > datetime('now')
+      )
+      AND c.redemption_count < c.max_redemptions
+      AND c.recipient_email_lookup_hash = l.email_lookup_hash
+  )
 BEGIN
-  SELECT CASE
-    WHEN NOT EXISTS (
-      SELECT 1
-      FROM redemption_codes c
-      JOIN listener_accounts l ON l.id = NEW.listener_id
-      WHERE
-        c.id = NEW.code_id
-        AND c.source = 'pool'
-        AND c.status = 'active'
-        AND (
-          c.expires_at IS NULL
-          OR datetime(c.expires_at) > datetime('now')
-        )
-        AND c.redemption_count < c.max_redemptions
-        AND c.recipient_email_lookup_hash = l.email_lookup_hash
-    )
-    THEN RAISE(ABORT, 'pool_redemption_not_available')
-  END;
+  SELECT RAISE(ABORT, 'pool_redemption_not_available');
 END;
 
 CREATE TRIGGER pool_redemption_increment
