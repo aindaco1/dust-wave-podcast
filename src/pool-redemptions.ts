@@ -5,6 +5,9 @@ import {
   sha256Hex,
   timingSafeEqual
 } from "@dustwave/worker-core/crypto";
+import {
+  normalizePodcastBenefitCode
+} from "@dustwave/worker-core/podcast-benefits";
 
 import { recomputeSubscriptionProjection } from "./billing";
 import type { PodcastEnv } from "./env";
@@ -687,14 +690,14 @@ function validGrantAction(value: unknown): "grant" | "revoke" {
 }
 
 function validPoolCode(value: unknown): string {
-  const code = String(value ?? "").trim().toUpperCase();
-  if (!/^DW-POD-[A-HJ-NP-Z2-9]{8}(?:-[A-HJ-NP-Z2-9]{8}){3}$/.test(code)) {
+  try {
+    return normalizePodcastBenefitCode(value);
+  } catch {
     throw new RequestValidationError(
       "code is invalid",
       "invalid_redemption_code"
     );
   }
-  return code;
 }
 
 function unavailableCodeResponse(
