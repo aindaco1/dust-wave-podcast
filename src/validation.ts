@@ -10,29 +10,74 @@ export class RequestValidationError extends Error {
   }
 }
 
+export async function readBoundedText(
+  request: Request,
+  maximumBytes: number,
+  bodyName = "Request body"
+): Promise<string> {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0) {
+    throw new TypeError("maximumBytes must be a non-negative integer");
+  }
+
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null) {
+    const declaredLength = Number(contentLength);
+    if (
+      Number.isSafeInteger(declaredLength)
+      && declaredLength >= 0
+      && declaredLength > maximumBytes
+    ) {
+      throw new RequestValidationError(
+        `${bodyName} is too large`,
+        "body_too_large",
+        413
+      );
+    }
+  }
+
+  if (!request.body) return "";
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        try {
+          await reader.cancel("body_too_large");
+        } catch {
+          // Preserve the stable validation error if upstream cancellation fails.
+        }
+        throw new RequestValidationError(
+          `${bodyName} is too large`,
+          "body_too_large",
+          413
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bodyBytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bodyBytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bodyBytes);
+}
+
 export async function readJsonObject(
   request: Request,
   maximumBytes = 1_000_000
 ): Promise<Record<string, unknown>> {
-  const declaredLength = Number.parseInt(
-    request.headers.get("content-length") ?? "0",
-    10
-  );
-  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
-    throw new RequestValidationError(
-      "Request body is too large",
-      "body_too_large",
-      413
-    );
-  }
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > maximumBytes) {
-    throw new RequestValidationError(
-      "Request body is too large",
-      "body_too_large",
-      413
-    );
-  }
+  const text = await readBoundedText(request, maximumBytes);
   const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RequestValidationError("A JSON object is required");
@@ -44,26 +89,8 @@ export async function readOptionalJsonObject(
   request: Request,
   maximumBytes = 10_000
 ): Promise<Record<string, unknown>> {
-  const declaredLength = Number.parseInt(
-    request.headers.get("content-length") ?? "0",
-    10
-  );
-  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
-    throw new RequestValidationError(
-      "Request body is too large",
-      "body_too_large",
-      413
-    );
-  }
-  const text = await request.text();
+  const text = await readBoundedText(request, maximumBytes);
   if (!text.trim()) return {};
-  if (new TextEncoder().encode(text).byteLength > maximumBytes) {
-    throw new RequestValidationError(
-      "Request body is too large",
-      "body_too_large",
-      413
-    );
-  }
   const value = parseJson(text);
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RequestValidationError("A JSON object is required");

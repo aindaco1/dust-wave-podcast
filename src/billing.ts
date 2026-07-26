@@ -10,7 +10,11 @@ import { requireAdmin } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import { subscriptionCheckoutConfigured } from "./tax-quotes";
-import { isTruthy } from "./validation";
+import {
+  isTruthy,
+  readBoundedText,
+  RequestValidationError
+} from "./validation";
 
 type StripeEvent = {
   id?: string;
@@ -27,9 +31,17 @@ export async function handleStripeWebhook(
   if (!env.STRIPE_WEBHOOK_SECRET) {
     return webhookResponse({ error: "webhook_not_configured" }, 503);
   }
-  const payload = await request.text();
-  if (payload.length > 1_000_000) {
-    return webhookResponse({ error: "payload_too_large" }, 413);
+  let payload: string;
+  try {
+    payload = await readBoundedText(request, 1_000_000, "Webhook payload");
+  } catch (error) {
+    if (
+      error instanceof RequestValidationError
+      && error.code === "body_too_large"
+    ) {
+      return webhookResponse({ error: "payload_too_large" }, 413);
+    }
+    throw error;
   }
   const verification = await verifyStripeSignature(
     payload,

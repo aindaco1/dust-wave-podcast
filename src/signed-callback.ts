@@ -4,6 +4,7 @@ import {
 } from "@dustwave/worker-core/crypto";
 
 import {
+  readBoundedText,
   RequestValidationError
 } from "./validation";
 
@@ -113,31 +114,8 @@ export async function readSignedJsonBody(
       invalidBodyCode
     );
   }
-  const contentLength = request.headers.get("content-length");
-  if (contentLength !== null) {
-    const declaredLength = Number(contentLength);
-    if (
-      !Number.isSafeInteger(declaredLength)
-      || declaredLength < 0
-      || declaredLength > maximumBytes
-    ) {
-      throw new RequestValidationError(
-        `${bodyName} is too large`,
-        "body_too_large",
-        413
-      );
-    }
-  }
-
-  const rawBody = await request.text();
+  const rawBody = await readBoundedText(request, maximumBytes, bodyName);
   const rawBodyBytes = new TextEncoder().encode(rawBody).byteLength;
-  if (rawBodyBytes > maximumBytes) {
-    throw new RequestValidationError(
-      `${bodyName} is too large`,
-      "body_too_large",
-      413
-    );
-  }
   if (rawBodyBytes < 2) {
     throw new RequestValidationError(
       `${bodyName} body is invalid`,

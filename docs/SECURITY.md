@@ -81,6 +81,10 @@
   campaign evidence is snapshotted separately from billable sponsor evidence.
 - Byte ranges are validated and bounded; upload kinds, MIME types, object
   sizes, filenames, and part numbers are allowlisted.
+- JSON, Stripe webhook, and signed processor callback bodies share one
+  streaming byte limiter. It rejects an oversized declared length before
+  reading and cancels a chunked/undeclared body as soon as it crosses the
+  route's byte budget, so the Worker never relies on a post-buffer size check.
 - CORS reflects only explicit origins. Staging and production credentialed
   origin allowlists are mutually exclusive: staging trusts the stable Pages
   staging hostname plus the explicit loopback development origin, while
@@ -168,6 +172,11 @@
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.
+- The Worker records bounded structured application events while automatic
+  invocation URL logs and automatic traces stay disabled. Private-feed bearer
+  values are path-scoped, so URL-bearing telemetry must not be enabled until a
+  redacting Tail Worker or token-free routing boundary passes its own security
+  gate.
 - The ad-plan staging processor requires its own least-privilege R2-capable
   Cloudflare token. The clip processor deliberately receives no R2 credential:
   it uses purpose-bound signed source/output routes that stream through the

@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 const config = JSON.parse(
   readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8")
 );
+const workerEntrypoint = readFileSync(
+  new URL("../src/index.ts", import.meta.url),
+  "utf8"
+);
 
 const stagingWebsiteOrigin =
   "https://dust-wave-website-staging.pages.dev";
@@ -62,5 +66,21 @@ describe("deployment configuration", () => {
   it("uses duplicate-free, exact origins without paths or credentials", () => {
     expectExactOrigins(configuredOrigins("staging"));
     expectExactOrigins(configuredOrigins("production"));
+  });
+
+  it("keeps automatic URL-bearing telemetry off for bearer-token routes", () => {
+    expect(config.observability.enabled).toBe(true);
+    expect(config.observability.logs.invocation_logs).toBe(false);
+    expect(config.observability.traces).toEqual({
+      enabled: false
+    });
+    expect(config.env.staging.observability).toBeUndefined();
+    expect(config.env.production.observability).toBeUndefined();
+    expect(workerEntrypoint).not.toContain("request.url");
+    expect(workerEntrypoint).not.toContain("error.message");
+    expect(workerEntrypoint).toContain('event: "job_failed"');
+    expect(workerEntrypoint).toContain("queueMessageId: message.id");
+    expect(workerEntrypoint).toContain("attempt: message.attempts");
+    expect(workerEntrypoint).toContain("errorName:");
   });
 });

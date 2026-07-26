@@ -19,7 +19,9 @@ export default {
         JSON.stringify({
           level: "error",
           event: "request_failed",
-          message: error instanceof Error ? error.message : "unknown_error"
+          method: request.method,
+          rayId: request.headers.get("cf-ray"),
+          errorName: error instanceof Error ? error.name : "UnknownError"
         })
       );
 
@@ -42,13 +44,28 @@ export default {
           jobId: message.body.id,
           jobType: message.body.type,
           showId: message.body.showId,
-          episodeId: message.body.episodeId ?? null
+          episodeId: message.body.episodeId ?? null,
+          queueMessageId: message.id,
+          attempt: message.attempts
         })
       );
       try {
         await processPodcastJob(env, message.body);
         message.ack();
-      } catch {
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "job_failed",
+            jobId: message.body.id,
+            jobType: message.body.type,
+            showId: message.body.showId,
+            episodeId: message.body.episodeId ?? null,
+            queueMessageId: message.id,
+            attempt: message.attempts,
+            errorName: error instanceof Error ? error.name : "UnknownError"
+          })
+        );
         message.retry();
       }
     }

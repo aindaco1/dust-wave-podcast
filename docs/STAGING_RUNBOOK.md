@@ -18,6 +18,12 @@ npm run deploy:production:dry
 The production dry run validates packaging only. It is not authorization to
 deploy production.
 
+Confirm invocation logs and automatic traces remain disabled because private
+feed bearer values are path-scoped. Queue failures must emit the bounded
+structured `job_failed` event before retrying; never log a job payload or
+private URL. Add automatic tracing only after a redacting Tail Worker or
+token-free route passes an independent security gate.
+
 ## 2. Back up and migrate staging
 
 ```sh

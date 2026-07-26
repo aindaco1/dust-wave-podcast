@@ -4,6 +4,25 @@ import { handleStripeWebhook } from "../src/billing";
 import type { PodcastEnv } from "../src/env";
 
 describe("Stripe webhook boundary", () => {
+  it("rejects an oversized declared payload before touching D1", async () => {
+    const response = await handleStripeWebhook(
+      new Request("https://feeds.dustwave.xyz/v1/webhooks/stripe", {
+        method: "POST",
+        headers: {
+          "content-length": "1000001",
+          "stripe-signature": "invalid"
+        },
+        body: "{}"
+      }),
+      {
+        STRIPE_WEBHOOK_SECRET: "whsec_fixture"
+      } as PodcastEnv
+    );
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "payload_too_large" });
+  });
+
   it("rejects an unsigned provider payload before touching D1", async () => {
     const response = await handleStripeWebhook(
       new Request("https://feeds.dustwave.xyz/v1/webhooks/stripe", {
