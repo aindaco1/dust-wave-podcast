@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  billingTaxEvidenceCsvCell,
-  projectStripeTaxEvent
-} from "../src/billing-tax-evidence";
+import { adminCsvCell } from "../src/admin-csv";
+import { projectStripeTaxEvent } from "../src/billing-tax-evidence";
 import type { PodcastEnv } from "../src/env";
 
 describe("subscription tax reconciliation", () => {
@@ -126,10 +124,10 @@ describe("subscription tax reconciliation", () => {
   });
 
   it("neutralizes spreadsheet formulas in accountant CSV cells", () => {
-    expect(billingTaxEvidenceCsvCell("=HYPERLINK(\"bad\")")).toBe(
+    expect(adminCsvCell("=HYPERLINK(\"bad\")")).toBe(
       "\"'=HYPERLINK(\"\"bad\"\")\""
     );
-    expect(billingTaxEvidenceCsvCell("Dust Wave")).toBe("\"Dust Wave\"");
+    expect(adminCsvCell("Dust Wave")).toBe("\"Dust Wave\"");
   });
 });
 

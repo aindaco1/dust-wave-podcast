@@ -120,6 +120,11 @@ iHeartRadio, and Deezer.
 - Preserve independent Stripe, Pool, and manual entitlement sources beneath
   one access projection so cancellation/revocation of one source cannot remove
   access granted by another.
+- The first Subscribers workbench boundary now exposes only Super-admin,
+  private/no-store, keyset-paginated aggregate/source state, feed and consent
+  booleans, and bounded formula-safe CSV. It intentionally excludes every
+  email/address/token field while retaining provider references needed for
+  owner support.
 - The first renewal boundary now re-evaluates a transient `customer.updated`
   address through the shared Store-derived calculator, stores only an HMAC and
   rate-change outcome, reconciles each recognized subscription invoice event

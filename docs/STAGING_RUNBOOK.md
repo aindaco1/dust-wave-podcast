@@ -104,6 +104,16 @@ local or Stripe CLI fixture events, confirm:
   in eight lowercase letters, while omitting `automatic_tax` and
   `payment_method_types`.
 
+For migration `0043`, verify the show-scoped and global subscription keyset
+indexes, confirm source lookups continue to use the existing unique
+listener/show/provider index, then run `PRAGMA foreign_key_check`. With
+Super-admin fixtures, confirm JSON pagination,
+all allowlisted filters, aggregate/source counts, private-feed and consent
+booleans, and the 500-row CSV bound. Reject Admin and lower roles before the
+subscriber query runs. Inspect JSON and CSV for absence of email, address,
+feed-token, login-token, session-token, and raw entitlement credential fields;
+formula-shaped fixture text must be neutralized in CSV.
+
 Use a Stripe sandbox test clock only after an accountant-approved staging Tax
 Rate exists. Exercise initial invoice, monthly and annual renewal, address
 change, same-rate replay, rate change, payment failure/recovery, cancellation,

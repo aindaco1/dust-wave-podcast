@@ -152,6 +152,21 @@ spreadsheet-formula neutralization and a safe attachment filename; JSON is the
 default. Billing readiness exposes aggregate matched/attention counts for
 invoice evidence and customer tax-change previews.
 
+### Subscriber administration
+
+`GET /v1/admin/subscribers` is Super-admin-only and returns a keyset-paginated
+view of the aggregate subscription plus its independent Stripe, Pool, and
+manual entitlement sources. Optional `showId`, `status`, and `provider`
+filters are allowlisted. JSON pages are limited to 100 records; `format=csv`
+allows at most 500 and uses the shared formula-safe admin CSV boundary.
+
+The response deliberately excludes email hashes, email values, encrypted
+email fields, addresses, feed tokens, login tokens, and session tokens. It
+includes internal listener/subscription IDs, show and plan identity, aggregate
+and per-source states, period bounds, private-feed and announcement-consent
+booleans, and Super-admin-only provider customer/subscription references.
+Every response is credentialed, private/no-store, noindex, and no-referrer.
+
 Notification preference writes require the same listener cookie, site origin,
 and current CSRF token. The caller must send an explicit boolean `enabled` and
 an `en` or `es` language. Consent is show-scoped and may be withdrawn at any
@@ -233,6 +248,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/episodes/{id}/audio-enhancement-previews` | producer+ | Staging-only queue of a curated, bounded, private A/B preview |
 | `GET`, `HEAD` | `/v1/admin/audio-enhancements/{jobId}/media/{original\|enhanced}` | analyst+ | Show-scoped, range-safe, no-store preview or download |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
+| `GET` | `/v1/admin/subscribers` | super-admin | Bounded privacy-minimized aggregate and multi-source subscriber operations view as JSON or CSV |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
 | `POST` | `/v1/admin/episodes/{id}/distribution/{rss\|news\|youtube\|email}/retry` | producer+ | Requeue one failed job for the exact current publication revision |

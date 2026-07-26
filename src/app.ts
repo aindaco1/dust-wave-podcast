@@ -141,6 +141,7 @@ import {
   createListenerBillingPortal,
   createSubscriptionCheckout
 } from "./subscription-checkout";
+import { listAdminSubscribers } from "./subscribers";
 import {
   quoteSubscriptionTax,
   subscriptionCheckoutConfigured
@@ -600,6 +601,9 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
   if (url.pathname === "/v1/admin/billing/tax-evidence" && method === "GET") {
     return listBillingTaxEvidence(request, env);
+  }
+  if (url.pathname === "/v1/admin/subscribers" && method === "GET") {
+    return listAdminSubscribers(request, env);
   }
   if (url.pathname === ADMIN_ALIGNMENT_BENCHMARKS_PATH) {
     if (method === "GET") {

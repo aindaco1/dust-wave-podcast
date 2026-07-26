@@ -7,9 +7,10 @@ import {
   timingSafeEqual
 } from "@dustwave/worker-core/crypto";
 
+import { adminCsvResponse } from "./admin-csv";
 import { requireAdmin } from "./admin-auth";
 import type { PodcastEnv } from "./env";
-import { privateCorsHeaders, privateJson } from "./http";
+import { privateJson } from "./http";
 import {
   resolveSubscriptionTaxQuote,
   type SubscriptionTaxResolution
@@ -162,11 +163,11 @@ LIMIT ?`;
   ).all<TaxEvidenceRow>();
   const evidence = rows.results.map(presentTaxEvidence);
   if (format === "csv") {
-    return csvResponse(
-      request,
-      env.ALLOWED_ORIGINS,
-      evidence
-    );
+    return adminCsvResponse(request, env.ALLOWED_ORIGINS, {
+      filename: "podcast-subscription-tax-evidence.csv",
+      columns: TAX_EVIDENCE_COLUMNS,
+      rows: evidence
+    });
   }
   return privateJson(request, env.ALLOWED_ORIGINS, {
     evidence,
@@ -707,12 +708,7 @@ function parseTaxRateIds(value: string): string[] {
   }
 }
 
-function csvResponse(
-  request: Request,
-  allowedOrigins: string,
-  rows: Array<Record<string, unknown>>
-): Response {
-  const columns = [
+const TAX_EVIDENCE_COLUMNS = [
     "eventId",
     "providerInvoiceId",
     "providerSubscriptionId",
@@ -741,35 +737,3 @@ function csvResponse(
     "reconciliationStatus",
     "recordedAt"
   ];
-  const body = [
-    columns.join(","),
-    ...rows.map((row) =>
-      columns.map((column) =>
-        billingTaxEvidenceCsvCell(row[column])
-      ).join(",")
-    )
-  ].join("\r\n") + "\r\n";
-  return new Response(body, {
-    headers: {
-      ...privateCorsHeaders(request, allowedOrigins),
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition":
-        'attachment; filename="podcast-subscription-tax-evidence.csv"',
-      "access-control-expose-headers": "content-disposition",
-      "cache-control": "private, no-store, max-age=0",
-      "referrer-policy": "no-referrer",
-      "x-content-type-options": "nosniff",
-      "x-robots-tag": "noindex, nofollow, noarchive"
-    }
-  });
-}
-
-export function billingTaxEvidenceCsvCell(value: unknown): string {
-  let text = Array.isArray(value)
-    ? value.join("|")
-    : value === null || value === undefined
-      ? ""
-      : String(value);
-  if (/^\s*[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
-}
