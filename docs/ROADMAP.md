@@ -120,9 +120,13 @@ iHeartRadio, and Deezer.
 - Preserve independent Stripe, Pool, and manual entitlement sources beneath
   one access projection so cancellation/revocation of one source cannot remove
   access granted by another.
-- Before live recurring billing, add renewal/address-change tax
-  re-evaluation, invoice-to-tax-snapshot reconciliation, rate-change preview,
-  and accountant export evidence.
+- The first renewal boundary now re-evaluates a transient `customer.updated`
+  address through the shared Store-derived calculator, stores only an HMAC and
+  rate-change outcome, reconciles each recognized subscription invoice event
+  to its immutable Checkout snapshot, and exposes a bounded non-PII
+  Super-admin JSON/CSV accountant export. Keep it preview-only until the
+  accountant-approved rate-change and renewal policy authorizes provider
+  mutation and a Stripe test-clock matrix passes.
 
 ### H1 sponsors and dynamic audio
 

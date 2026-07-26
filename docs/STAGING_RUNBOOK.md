@@ -84,6 +84,33 @@ provider I/O, while the mismatched payload must not claim durable work. After
 the matching running fixture reaches a terminal state, retry Publish and
 confirm exactly one new root-job set. Keep GitHub and YouTube in `dry_run`.
 
+For migration `0042`, verify the Checkout integration-identifier column, both
+tax-evidence tables, their show/attention/subscription indexes, JSON validity,
+fixed state checks, and clean foreign keys. Keep Checkout disabled. With signed
+local or Stripe CLI fixture events, confirm:
+
+- a matching subscription invoice stores one non-PII evidence row per event;
+- duplicate delivery is idempotent through the existing event journal;
+- a Dust Wave invoice received before its source projection returns a retryable
+  projection failure, while an unrelated non-subscription invoice is ignored;
+- mismatched/missing provider tax evidence produces attention state without
+  failing or mutating the provider;
+- `customer.updated` discards the raw address after normalization and HMAC,
+  records only one preview per event/subscription, and makes no Stripe request;
+- the Super-admin JSON/CSV export is bounded and private, rejects unauthorized
+  roles, neutralizes formula-shaped text, and contains no email/address/token;
+  and
+- Checkout includes a stable `dustwave_podcast_` integration identifier ending
+  in eight lowercase letters, while omitting `automatic_tax` and
+  `payment_method_types`.
+
+Use a Stripe sandbox test clock only after an accountant-approved staging Tax
+Rate exists. Exercise initial invoice, monthly and annual renewal, address
+change, same-rate replay, rate change, payment failure/recovery, cancellation,
+duplicate delivery, and out-of-order events. Do not create or expire a tax
+registration, activate a live Tax Rate, or enable Checkout as part of this
+migration gate.
+
 For migration `0030`, verify the three nullable directory-evidence columns,
 their constrained source values, the admin-user foreign key, and clean
 foreign-key checks. With an isolated current-revision fixture, confirm Analyst

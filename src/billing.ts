@@ -7,6 +7,7 @@ import {
 import { verifyStripeSignature } from "@dustwave/worker-core/stripe";
 
 import { requireAdmin } from "./admin-auth";
+import { projectStripeTaxEvent } from "./billing-tax-evidence";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import { subscriptionCheckoutConfigured } from "./tax-quotes";
@@ -104,7 +105,12 @@ export async function handleStripeWebhook(
   }
 
   try {
-    const processed = await projectStripeEvent(env, event.type, object);
+    const processed = await projectStripeEvent(
+      env,
+      event.id,
+      event.type,
+      object
+    );
     await env.DB
       .prepare(
         `UPDATE stripe_event_journal
@@ -139,7 +145,14 @@ export async function getBillingReadiness(
   });
   if (!auth.ok) return auth.response;
   const expectedMode = String(env.STRIPE_MODE) === "live" ? "live" : "test";
-  const [shows, prices, approvedTaxes, failedEvents] = await Promise.all([
+  const [
+    shows,
+    prices,
+    approvedTaxes,
+    failedEvents,
+    invoiceTaxEvidence,
+    taxChangePreviews
+  ] = await Promise.all([
     env.DB.prepare(
       `SELECT id, title, billing_mode, stripe_product_id
        FROM shows
@@ -170,7 +183,29 @@ export async function getBillingReadiness(
       `SELECT COUNT(*) AS count
        FROM stripe_event_journal
        WHERE status = 'failed'`
-    ).first<{ count: number }>()
+    ).first<{ count: number }>(),
+    env.DB.prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN reconciliation_status = 'matched' THEN 1 ELSE 0 END)
+           AS matched,
+         SUM(CASE WHEN reconciliation_status != 'matched' THEN 1 ELSE 0 END)
+           AS attention
+       FROM subscription_invoice_tax_evidence`
+    ).first<{ total: number; matched: number | null; attention: number | null }>(),
+    env.DB.prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN preview_status = 'unchanged' THEN 1 ELSE 0 END)
+           AS unchanged,
+         SUM(CASE WHEN preview_status != 'unchanged' THEN 1 ELSE 0 END)
+           AS attention
+       FROM subscription_tax_change_previews`
+    ).first<{
+      total: number;
+      unchanged: number | null;
+      attention: number | null;
+    }>()
   ]);
   return privateJson(request, env.ALLOWED_ORIGINS, {
     provider: "stripe",
@@ -188,6 +223,16 @@ export async function getBillingReadiness(
     taxCollectionEnabled: (approvedTaxes?.count ?? 0) > 0,
     taxCalculationVersion: "@dustwave/tax-core@0.1.0",
     failedWebhookEvents: failedEvents?.count ?? 0,
+    invoiceTaxEvidence: {
+      total: invoiceTaxEvidence?.total ?? 0,
+      matched: invoiceTaxEvidence?.matched ?? 0,
+      attention: invoiceTaxEvidence?.attention ?? 0
+    },
+    taxChangePreviews: {
+      total: taxChangePreviews?.total ?? 0,
+      unchanged: taxChangePreviews?.unchanged ?? 0,
+      attention: taxChangePreviews?.attention ?? 0
+    },
     shows: shows.results,
     prices: prices.results
   });
@@ -195,6 +240,7 @@ export async function getBillingReadiness(
 
 async function projectStripeEvent(
   env: PodcastEnv,
+  eventId: string,
   type: string,
   object: Record<string, unknown>
 ): Promise<boolean> {
@@ -330,7 +376,7 @@ async function projectStripeEvent(
     );
     return true;
   }
-  return false;
+  return projectStripeTaxEvent(env, eventId, type, object);
 }
 
 type CheckoutProjectionRow = {

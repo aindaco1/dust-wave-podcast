@@ -153,6 +153,18 @@
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must
   keep address/rate-changing controls disabled until renewal-time manual-tax
   re-evaluation is implemented and approved.
+- Migration `0042` implements the first renewal boundary without enabling
+  provider writes. Invoice webhooks reconcile observed Tax Rate IDs and
+  integer-cent totals to the immutable Checkout snapshot; customer updates
+  normalize and HMAC the transient address before recording only a rate-change
+  outcome. Raw invoice payloads, customer addresses, and emails are never
+  persisted or exported. Dust Wave out-of-order invoice events retry rather
+  than becoming permanently ignored.
+- The Super-admin evidence export is bounded, indexed, private/no-store,
+  content-allowlisted, and formula-neutralized for CSV. It contains provider
+  object IDs and accounting evidence but no listener identity or destination.
+  Checkout persists Stripe's current `integration_identifier` and continues
+  to omit both `automatic_tax` and `payment_method_types`.
 - GitHub and YouTube writes are dry-run by default. The only implemented
   YouTube exception is a staging-only controlled clip test: Producer+ may
   prepare immutable evidence, but only a recently authenticated super-admin

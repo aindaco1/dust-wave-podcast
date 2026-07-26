@@ -55,6 +55,7 @@ type CheckoutAttemptRow = {
   stripe_session_id: string | null;
   tax_rate_version_id: string;
   jurisdiction_code: string;
+  stripe_integration_identifier: string | null;
   status: "created" | "completed" | "expired" | "failed";
   expires_at: string | null;
   idempotency_key: string;
@@ -243,9 +244,10 @@ export async function createSubscriptionCheckout(
              provider_mode, tax_rate_version_id, jurisdiction_code,
              tax_rate_parts_per_million, tax_behavior, subtotal_cents,
              tax_cents, total_cents, tax_provider_name,
-             tax_source_reference, idempotency_key, expires_at
+             tax_source_reference, stripe_integration_identifier,
+             idempotency_key, expires_at
            ) VALUES (
-             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
              datetime('now', '+1 hour')
            )`
         )
@@ -265,6 +267,7 @@ export async function createSubscriptionCheckout(
           calculated.totalCents,
           taxRate.provider_name,
           taxRate.source_reference,
+          `dustwave_podcast_${randomLowercaseLetters(8)}`,
           idempotencyKey
         )
         .run();
@@ -280,6 +283,19 @@ export async function createSubscriptionCheckout(
         { status: 503 }
       );
     }
+  }
+
+  const integrationIdentifier = attempt.stripe_integration_identifier;
+  if (
+    !attempt.stripe_session_id
+    && !validStripeIntegrationIdentifier(integrationIdentifier)
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "checkout_state_unavailable" },
+      { status: 503 }
+    );
   }
 
   const stripe = createPodcastStripeClient(env);
@@ -326,6 +342,7 @@ export async function createSubscriptionCheckout(
         {
           customer: customerId,
           mode: "subscription",
+          integration_identifier: integrationIdentifier,
           line_items: [{
             price: price.stripe_price_id,
             quantity: 1
@@ -525,7 +542,8 @@ async function findActiveAttempt(
       `SELECT
          id, show_id, price_id, email_lookup_hash, destination_hash,
          provider_customer_id, stripe_session_id, tax_rate_version_id,
-         jurisdiction_code, status, expires_at, idempotency_key
+         jurisdiction_code, stripe_integration_identifier, status,
+         expires_at, idempotency_key
        FROM subscription_checkout_attempts
        WHERE
          show_id = ?
@@ -555,6 +573,23 @@ function createPodcastStripeClient(env: PodcastEnv) {
       }));
     }
   });
+}
+
+function randomLowercaseLetters(length: number): string {
+  if (!Number.isSafeInteger(length) || length < 1 || length > 32) {
+    throw new RangeError("Random label length is out of range");
+  }
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) =>
+    String.fromCharCode(97 + (byte % 26))
+  ).join("");
+}
+
+function validStripeIntegrationIdentifier(
+  value: string | null
+): value is string {
+  return /^dustwave_podcast_[a-z]{8}$/.test(value ?? "");
 }
 
 async function recordCheckoutFailure(

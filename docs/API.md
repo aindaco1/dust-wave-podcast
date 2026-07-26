@@ -65,6 +65,10 @@ An explicit environment kill switch, correct test/live bindings, webhook
 secret, approved assigned rate, active Stripe Price, and challenge
 configuration must all pass before a provider request is possible. Automatic
 Stripe Tax and dynamic manual-rate selection remain off.
+Checkout sends a persisted `integration_identifier` with a cryptographically
+random eight-letter suffix. It omits `payment_method_types`, allowing the
+account's configured dynamic payment methods while the existing Price,
+manual-rate, mode, and kill-switch gates remain authoritative.
 
 Public show prices include the non-secret internal `id` required by the tax
 quote and Checkout routes. The top-level `checkoutEnabled` boolean reports
@@ -122,6 +126,31 @@ The billing-portal endpoint requires the listener cookie, same-origin CSRF,
 one Stripe entitlement source for that show, an explicitly configured Portal
 profile, and an atomic per-session rate limit. Pool-code redemption remains a
 separate gated endpoint.
+
+### Renewal and invoice tax evidence
+
+Migration `0042` links each recognized subscription invoice webhook event to
+the durable Stripe entitlement source and latest completed Checkout tax
+snapshot. The projection retains only provider object IDs, show/price IDs,
+integer-cent totals, period bounds, approved jurisdiction/rate version,
+observed Stripe Tax Rate IDs, and a fixed reconciliation state. It never stores
+the invoice payload, customer email, or billing-address fields. Dust Wave
+invoice events that arrive before their subscription source fail retryably;
+unrelated non-subscription invoices remain ignored.
+
+`customer.updated` performs a preview only. The full provider address exists
+only in webhook memory, is normalized with `@dustwave/tax-core`, HMACed, and
+discarded. One row per affected subscription records whether the destination
+and currently approved rate are unchanged, changed, invalid, missing, or
+misconfigured. It does not update a Stripe Customer, Subscription, Invoice, or
+Tax Rate.
+
+`GET /v1/admin/billing/tax-evidence` is Super-admin-only, private/no-store, and
+bounded to 1–500 most-recent rows (`250` by default). Optional `showId` filters
+the indexed query. `format=csv` returns the same non-PII allowlist with
+spreadsheet-formula neutralization and a safe attachment filename; JSON is the
+default. Billing readiness exposes aggregate matched/attention counts for
+invoice evidence and customer tax-change previews.
 
 Notification preference writes require the same listener cookie, site origin,
 and current CSRF token. The caller must send an explicit boolean `enabled` and
@@ -237,6 +266,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/uploads/{id}/complete` | producer+ | Verify and complete upload |
 | `DELETE` | `/v1/admin/uploads/{id}` | producer+ | Abort an incomplete upload |
 | `GET` | `/v1/admin/billing/readiness` | super-admin | Non-secret provider/tax readiness |
+| `GET` | `/v1/admin/billing/tax-evidence` | super-admin | Bounded non-PII invoice/tax reconciliation evidence as JSON or CSV |
 | `POST` | `/v1/admin/ads/preview` | analyst+ | Read-only sponsor decision preview |
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |

@@ -68,6 +68,7 @@ import {
 import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
 import { getBillingReadiness, handleStripeWebhook } from "./billing";
+import { listBillingTaxEvidence } from "./billing-tax-evidence";
 import {
   completeClipRender,
   getClipRenderProcessorManifest,
@@ -596,6 +597,9 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   }
   if (url.pathname === "/v1/admin/billing/readiness" && method === "GET") {
     return getBillingReadiness(request, env);
+  }
+  if (url.pathname === "/v1/admin/billing/tax-evidence" && method === "GET") {
+    return listBillingTaxEvidence(request, env);
   }
   if (url.pathname === ADMIN_ALIGNMENT_BENCHMARKS_PATH) {
     if (method === "GET") {

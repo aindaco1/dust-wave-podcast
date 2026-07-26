@@ -88,6 +88,10 @@ describe("subscription checkout", () => {
     expect(stripeRequests[1].form.get(
       "subscription_data[default_tax_rates][0]"
     )).toBe("txr_nm_fixture");
+    expect(stripeRequests[1].form.get(
+      "integration_identifier"
+    )).toMatch(/^dustwave_podcast_[a-z]{8}$/);
+    expect(stripeRequests[1].form.has("payment_method_types[0]")).toBe(false);
     expect(stripeRequests[1].form.has("automatic_tax[enabled]")).toBe(false);
     expect(stripeRequests[1].form.has(
       "line_items[0][dynamic_tax_rates][0]"
@@ -117,6 +121,24 @@ describe("subscription checkout", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
       error: "tax_rate_not_approved"
+    });
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before Stripe when a reusable attempt lacks its integration identifier", async () => {
+    const fixture = checkoutFixture({ dropIntegrationIdentifier: true });
+    const provider = vi.fn();
+    vi.stubGlobal("fetch", provider);
+
+    const response = await createSubscriptionCheckout(
+      checkoutRequest(),
+      fixture.env,
+      "opera-en-la-selva"
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "checkout_state_unavailable"
     });
     expect(provider).not.toHaveBeenCalled();
   });
@@ -156,7 +178,8 @@ function checkoutFixture({
     provider_name: "manual_accountant",
     source_reference: "accountant-fixture-v1",
     stripe_tax_rate_id: "txr_nm_fixture"
-  }
+  },
+  dropIntegrationIdentifier = false
 }: {
   taxRate?: {
     id: string;
@@ -167,6 +190,7 @@ function checkoutFixture({
     source_reference: string;
     stripe_tax_rate_id: string;
   } | null;
+  dropIntegrationIdentifier?: boolean;
 } = {}) {
   const bindings: unknown[][] = [];
   let attempt: Record<string, unknown> | null = null;
@@ -221,9 +245,12 @@ function checkoutFixture({
               stripe_session_id: null,
               tax_rate_version_id: values[6],
               jurisdiction_code: values[7],
+              stripe_integration_identifier: dropIntegrationIdentifier
+                ? null
+                : values[15],
               status: "created",
               expires_at: new Date(Date.now() + 3600_000).toISOString(),
-              idempotency_key: values[15]
+              idempotency_key: values[16]
             };
           }
           if (
