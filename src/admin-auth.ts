@@ -15,6 +15,7 @@ import {
   isValidEmailAddress,
   normalizeLoginLanguage,
   passwordlessClientHash,
+  passwordlessSessionCookie,
   trustedSiteOrigin
 } from "./passwordless-security";
 import { sendAdminMagicLink } from "./resend";
@@ -70,26 +71,22 @@ function authConfigured(env: PodcastEnv): boolean {
   );
 }
 
-function sessionCookie(token: string, maximumAge = SESSION_TTL_SECONDS): string {
-  return [
-    `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
-    "Path=/v1/admin",
-    `Max-Age=${maximumAge}`,
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax"
-  ].join("; ");
+function sessionCookie(
+  env: PodcastEnv,
+  token: string,
+  maximumAge = SESSION_TTL_SECONDS
+): string {
+  return passwordlessSessionCookie({
+    cookieName: ADMIN_SESSION_COOKIE,
+    environment: env.ENVIRONMENT,
+    maximumAge,
+    path: "/v1/admin",
+    token
+  });
 }
 
-function clearSessionCookie(): string {
-  return [
-    `${ADMIN_SESSION_COOKIE}=`,
-    "Path=/v1/admin",
-    "Max-Age=0",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax"
-  ].join("; ");
+function clearSessionCookie(env: PodcastEnv): string {
+  return sessionCookie(env, "", 0);
 }
 
 async function emailLookupHash(env: PodcastEnv, email: string): Promise<string> {
@@ -333,7 +330,7 @@ export async function exchangeAdminLogin(
       expiresInSeconds: SESSION_TTL_SECONDS
     },
     {
-      headers: { "set-cookie": sessionCookie(sessionToken) }
+      headers: { "set-cookie": sessionCookie(env, sessionToken) }
     }
   );
 }
@@ -402,7 +399,7 @@ export async function requireAdmin(
         request,
         env.ALLOWED_ORIGINS,
         { error: "unauthorized" },
-        { status: 401, headers: { "set-cookie": clearSessionCookie() } }
+        { status: 401, headers: { "set-cookie": clearSessionCookie(env) } }
       )
     };
   }
@@ -547,6 +544,6 @@ export async function logoutAdmin(
     request,
     env.ALLOWED_ORIGINS,
     { authenticated: false },
-    { headers: { "set-cookie": clearSessionCookie() } }
+    { headers: { "set-cookie": clearSessionCookie(env) } }
   );
 }

@@ -34,6 +34,31 @@ export function trustedSiteOrigin(
   }
 }
 
+export function passwordlessSessionCookie({
+  cookieName,
+  environment,
+  maximumAge,
+  path,
+  token
+}: {
+  cookieName: string;
+  environment: string;
+  maximumAge: number;
+  path: string;
+  token: string;
+}): string {
+  const partitioned = environment === "staging";
+  return [
+    `${cookieName}=${encodeURIComponent(token)}`,
+    `Path=${path}`,
+    `Max-Age=${maximumAge}`,
+    "HttpOnly",
+    "Secure",
+    partitioned ? "SameSite=None" : "SameSite=Lax",
+    ...(partitioned ? ["Partitioned"] : [])
+  ].join("; ");
+}
+
 export async function passwordlessClientHash(
   request: Request,
   secret: string,

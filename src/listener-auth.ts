@@ -16,6 +16,7 @@ import {
   isValidEmailAddress,
   normalizeLoginLanguage,
   passwordlessClientHash,
+  passwordlessSessionCookie,
   trustedSiteOrigin
 } from "./passwordless-security";
 import { sendListenerMagicLink } from "./resend";
@@ -85,26 +86,22 @@ function authConfigured(env: PodcastEnv): boolean {
   );
 }
 
-function sessionCookie(token: string, maximumAge = SESSION_TTL_SECONDS): string {
-  return [
-    `${LISTENER_SESSION_COOKIE}=${encodeURIComponent(token)}`,
-    "Path=/v1/member",
-    `Max-Age=${maximumAge}`,
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax"
-  ].join("; ");
+function sessionCookie(
+  env: PodcastEnv,
+  token: string,
+  maximumAge = SESSION_TTL_SECONDS
+): string {
+  return passwordlessSessionCookie({
+    cookieName: LISTENER_SESSION_COOKIE,
+    environment: env.ENVIRONMENT,
+    maximumAge,
+    path: "/v1/member",
+    token
+  });
 }
 
-function clearSessionCookie(): string {
-  return [
-    `${LISTENER_SESSION_COOKIE}=`,
-    "Path=/v1/member",
-    "Max-Age=0",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax"
-  ].join("; ");
+function clearSessionCookie(env: PodcastEnv): string {
+  return sessionCookie(env, "", 0);
 }
 
 async function emailLookupHash(
@@ -354,7 +351,7 @@ export async function exchangeListenerLogin(
       csrfToken,
       expiresInSeconds: SESSION_TTL_SECONDS
     },
-    { headers: { "set-cookie": sessionCookie(sessionToken) } }
+    { headers: { "set-cookie": sessionCookie(env, sessionToken) } }
   );
 }
 
@@ -389,7 +386,7 @@ export async function requireListener(
   if (!session) {
     return {
       ok: false,
-      response: unauthorizedResponse(request, env, clearSessionCookie())
+      response: unauthorizedResponse(request, env, clearSessionCookie(env))
     };
   }
   if (requireCsrf) {
@@ -483,7 +480,7 @@ export async function logoutListener(
     request,
     env.ALLOWED_ORIGINS,
     { authenticated: false },
-    { headers: { "set-cookie": clearSessionCookie() } }
+    { headers: { "set-cookie": clearSessionCookie(env) } }
   );
 }
 
