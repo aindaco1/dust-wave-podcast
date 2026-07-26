@@ -6,6 +6,13 @@ export type MagicLinkDelivery = {
   sent: boolean;
   providerId?: string;
   providerStatus?: number;
+  diagnosticCode?:
+    | "fetch_exception"
+    | "fetch_header_invalid"
+    | "fetch_network_error"
+    | "fetch_redirect_rejected"
+    | "fetch_type_error"
+    | "fetch_url_invalid";
   failureCode?:
     | "not_configured"
     | "provider_rejected"
@@ -126,14 +133,35 @@ async function sendMagicLink(
     };
   } catch (error) {
     const name = error instanceof Error ? error.name : "";
+    if (name === "AbortError" || name === "TimeoutError") {
+      return {
+        sent: false,
+        failureCode: "provider_timeout"
+      };
+    }
     return {
       sent: false,
-      failureCode:
-        name === "AbortError" || name === "TimeoutError"
-          ? "provider_timeout"
-          : "provider_unavailable"
+      failureCode: "provider_unavailable",
+      diagnosticCode: providerDiagnosticCode(error)
     };
   }
+}
+
+function providerDiagnosticCode(
+  error: unknown
+): NonNullable<MagicLinkDelivery["diagnosticCode"]> {
+  const message = error instanceof Error
+    ? error.message.toLowerCase()
+    : "";
+  if (message.includes("redirect")) return "fetch_redirect_rejected";
+  if (message.includes("header")) return "fetch_header_invalid";
+  if (message.includes("network") || message.includes("fetch failed")) {
+    return "fetch_network_error";
+  }
+  if (message.includes("url")) return "fetch_url_invalid";
+  return error instanceof TypeError
+    ? "fetch_type_error"
+    : "fetch_exception";
 }
 
 function escapeAttribute(value: string): string {

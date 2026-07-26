@@ -213,7 +213,8 @@ export async function startAdminLogin(
           event: "admin_login_delivery_failed",
           adminUserId: admin.id,
           failureCode: delivery.failureCode ?? "provider_unavailable",
-          providerStatus: delivery.providerStatus ?? null
+          providerStatus: delivery.providerStatus ?? null,
+          diagnosticCode: delivery.diagnosticCode ?? null
         }));
       }
     }

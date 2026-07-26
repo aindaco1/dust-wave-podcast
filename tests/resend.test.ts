@@ -64,6 +64,22 @@ describe("Resend magic-link delivery evidence", () => {
     expect(JSON.stringify(result)).not.toContain("credential-shaped");
   });
 
+  it("classifies fetch exceptions without returning exception text", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new TypeError("Invalid authorization header Bearer secret_fixture")
+    );
+
+    const result = await deliver();
+
+    expect(result).toEqual({
+      sent: false,
+      failureCode: "provider_unavailable",
+      diagnosticCode: "fetch_header_invalid"
+    });
+    expect(JSON.stringify(result)).not.toContain("secret_fixture");
+    expect(JSON.stringify(result)).not.toContain("authorization");
+  });
+
   it("fails closed when no provider credential is configured", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
 

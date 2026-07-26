@@ -235,7 +235,8 @@ export async function startListenerLogin(
           event: "listener_login_delivery_failed",
           listenerId: listener.id,
           failureCode: delivery.failureCode ?? "provider_unavailable",
-          providerStatus: delivery.providerStatus ?? null
+          providerStatus: delivery.providerStatus ?? null,
+          diagnosticCode: delivery.diagnosticCode ?? null
         }));
       }
     }
