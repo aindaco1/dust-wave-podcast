@@ -21,7 +21,9 @@
   listener-scoped cookie, exact site origin, and current CSRF token. Consent is
   stored per listener/show with a bounded English/Spanish preference and
   withdrawal timestamp. Subscription or Pool entitlement never silently
-  enables it.
+  enables it. Enabling requires the matching account email HMAC; the normalized
+  destination is sealed with listener-bound AES-GCM and is erased after the
+  final withdrawal.
 - Private-feed creation and rotation require the listener session, exact site
   origin, and session-bound CSRF token. A 256-bit bearer value is returned only
   once; D1 stores an HMAC under an independent pepper and enforces one active
@@ -105,13 +107,25 @@
   and an active, unexpired entitlement. The response includes only a count and
   keyed pseudonymous revision hashes, never email addresses or listener IDs.
   CTA links must remain on the configured Dust Wave site origin.
+- Announcement approval is show-scoped to Admin-or-higher, CSRF protected, and
+  requires authentication within 15 minutes. It freezes immutable content and
+  pseudonymous recipient evidence in one D1 batch, then recomputes the frozen
+  audience revision before any queue side effect. Every delivery rechecks
+  consent, entitlement, destination HMAC, timestamps, and global suppression.
+  Admin history exposes only aggregate counts.
 
 ## Provider boundaries
 
-- The announcement endpoint is structurally review-only: it writes no outbox,
-  exposes no send mode, and cannot call Resend. Live delivery remains blocked
-  until a durable, idempotent, suppression-aware outbox and unsubscribe path
-  pass an independent staging gate.
+- Announcement review is structurally side-effect free. Approval writes a
+  durable, audited, idempotent outbox. Staging is explicitly `dry_run`,
+  production is explicitly `disabled`, and the live sender fails closed unless
+  all independent configuration is present. Public one-click withdrawal is
+  token-bound to one listener/show, suppresses pending work, and erases the
+  sealed destination when no other consent needs it.
+- Resend webhooks require a valid, recent Svix signature over the exact bounded
+  body. Event IDs are journaled once; complaint, suppression, and permanent
+  bounce events create destination-HMAC suppressions without retaining the
+  payload or recipient.
 - Stripe webhooks require a valid signature and matching test/live mode before
   D1 is touched. Event IDs are journaled once; failed/received projections can
   retry idempotently instead of being mistaken for completed duplicates.
@@ -177,10 +191,10 @@
   logged by internal admin/listener ID, a closed local failure code, and the
   numeric provider HTTP status when available—never by email address,
   provider response body, exception text, or login URL.
-- Resend calls have an eight-second timeout and a token-hash idempotency key;
-  redirects fail closed. Scheduled maintenance removes expired rate buckets,
-  consumed login tokens, and revoked/expired sessions after a one-day
-  diagnostic buffer.
+- Resend calls have an eight-second timeout; login uses token-hash idempotency
+  and announcements use durable delivery-ID idempotency. Redirects fail closed.
+  Scheduled maintenance removes expired rate buckets, consumed login tokens,
+  and revoked/expired sessions after a one-day diagnostic buffer.
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.

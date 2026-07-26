@@ -5,6 +5,7 @@ import {
 } from "./transcription-jobs";
 import type { PodcastJob } from "./types";
 import { processClipYouTubePublication } from "./clip-youtube";
+import { processAnnouncementDelivery } from "./announcement-delivery";
 
 export type PublicationDestination = "rss" | "youtube" | "news" | "email";
 
@@ -75,6 +76,10 @@ export async function processPodcastJob(
   env: PodcastEnv,
   job: PodcastJob
 ): Promise<void> {
+  if (job.type === "send-announcement") {
+    await processAnnouncementDelivery(env, job);
+    return;
+  }
   if (job.type === "transcribe") {
     await processTranscriptionJob(env, job);
     return;

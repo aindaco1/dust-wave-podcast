@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PodcastEnv } from "../src/env";
-import { sendAdminMagicLink } from "../src/resend";
+import {
+  sendAdminMagicLink,
+  sendPodcastAnnouncementEmail
+} from "../src/resend";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -138,6 +141,64 @@ describe("Resend magic-link delivery evidence", () => {
       failureCode: "not_configured"
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sends announcements with one-click unsubscribe and pseudonymous tags", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "email_announcement" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    const deliveryId = `delivery_${"a".repeat(32)}`;
+    const result = await sendPodcastAnnouncementEmail(
+      {
+        RESEND_API_KEY: "resend_fixture",
+        PODCAST_EMAIL_FROM:
+          "Dust Wave Podcasts <podcasts@dustwave.xyz>"
+      } as PodcastEnv,
+      {
+        bodyMarkdown: "Listen to <script>alert('no')</script> **now**.",
+        ctaLabel: "Listen",
+        ctaUrl: "https://dustwave.xyz/podcasts/show/episode/",
+        deliveryId,
+        deliveryKey: deliveryId,
+        email: "listener@example.com",
+        heading: "New episode",
+        subject: "Episode 1",
+        unsubscribeUrl:
+          `https://feeds.dustwave.xyz/v1/notifications/unsubscribe/${
+            "b".repeat(43)
+          }`
+      }
+    );
+    const payload = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body)
+    ) as Record<string, unknown>;
+
+    expect(result).toEqual({
+      sent: true,
+      providerId: "email_announcement"
+    });
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+      "idempotency-key": `podcast-announcement/${deliveryId}`
+    });
+    expect(payload).toMatchObject({
+      to: ["listener@example.com"],
+      headers: {
+        "List-Unsubscribe":
+          `<https://feeds.dustwave.xyz/v1/notifications/unsubscribe/${
+            "b".repeat(43)
+          }>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+      },
+      tags: [
+        { name: "podcast_delivery", value: deliveryId },
+        { name: "category", value: "announcement" }
+      ]
+    });
+    expect(String(payload.html)).not.toContain("<script>");
+    expect(String(payload.html)).toContain("&lt;script");
   });
 });
 

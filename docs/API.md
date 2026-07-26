@@ -100,7 +100,7 @@ customer/subscription ID, or private-feed token.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `PUT` | `/v1/member/shows/{show-slug}/notifications` | Explicitly opt in/out of show announcements and select English or Spanish |
+| `PUT` | `/v1/member/shows/{show-slug}/notifications` | Explicitly opt in/out of show announcements and select English or Spanish; enabling requires the matching account email for sealed delivery storage |
 | `POST` | `/v1/member/shows/{show-slug}/feed` | Create the entitled listener's first private feed |
 | `POST` | `/v1/member/shows/{show-slug}/feed/rotate` | Revoke the prior URL and return a replacement |
 | `POST` | `/v1/member/shows/{show-slug}/billing/portal` | Create a scoped Stripe Customer Portal session |
@@ -235,6 +235,8 @@ including under concurrent requests.
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
+| `POST` | `/v1/admin/shows/{id}/marketing/announcements/approve` | recent admin+ | Freeze an unchanged review into the audited durable outbox |
+| `GET` | `/v1/admin/shows/{id}/marketing/announcements` | analyst+ | Count-only delivery history; never recipient identities or destinations |
 | `GET` | `/v1/admin/shows/{id}/episodes` | analyst+ | Draft, scheduled, and published episode workbench rows |
 | `GET` | `/v1/admin/shows/{id}/clips` | analyst+ | Bounded, filterable cross-episode private clip library |
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
@@ -411,7 +413,7 @@ Multipart clients should use 32 MiB parts; the API currently caps each request
 at 100 MiB and each logical media object at 20 GiB. Parts are streamed to R2 and
 never buffered as one Worker request.
 
-### Announcement review
+### Announcement review and delivery
 
 The announcement dry run accepts `language`, `subject`, `heading`,
 `bodyMarkdown`, and a same-site `ctaUrl`/`ctaLabel` pair. English and Spanish
@@ -421,12 +423,28 @@ an active, unexpired entitlement, plus pseudonymous audience, announcement,
 and combined review hashes. It never returns email addresses or recipient
 identifiers.
 
-This route is intentionally review-only: it writes no campaign or outbox row,
-has no send mode, and does not call Resend. A future sending endpoint must
-freeze the approved audience/content revision in a durable outbox, recheck
-withdrawals and suppression at delivery, use deterministic provider
-idempotency, preserve an unsubscribe path, and pass its own staging promotion
-gate.
+The dry-run route itself remains review-only and never writes an outbox or
+calls Resend. Approval requires the same content and `reviewHash`, a
+show-scoped Admin session, CSRF, and authentication within 15 minutes. It
+freezes immutable content plus listener/destination/preference/entitlement
+hash evidence, recomputes the audience revision after the atomic insert, and
+cancels before queueing if anything changed.
+
+Every queue attempt rechecks consent, active entitlement, suppression,
+destination HMAC, and the frozen timestamps. `dry_run` completes without
+decrypting or contacting a provider. `live` additionally requires
+`ANNOUNCEMENT_DELIVERY_MODE=live`, the destination secret, lookup pepper, and
+Resend key. Provider idempotency is the durable delivery ID. Admin history
+returns only counts.
+
+`GET`/`HEAD` and one-click `POST
+/v1/notifications/unsubscribe/{token}` use an opaque show-scoped bearer,
+withdraw consent, suppress pending rows, and erase the sealed address when it
+is no longer required by another show. `POST /v1/webhooks/resend` verifies
+Svix headers against the exact bounded body, journals the event ID once,
+updates delivery evidence, and globally suppresses complaints, provider
+suppression, and permanent bounces. Neither route stores provider payloads or
+raw addresses.
 
 ### Source-language transcription and review
 

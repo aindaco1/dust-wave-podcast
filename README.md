@@ -145,8 +145,11 @@ QR primitives without creating a second implementation. An authenticated
 listener may explicitly opt into or out of one show's English or Spanish
 announcements; subscription access never implies consent. Producer+ can review
 a normalized WYSIWYG announcement against the count and pseudonymous revision
-of explicitly opted-in, currently entitled listeners. The endpoint cannot
-send, does not expose recipients, writes no outbox, and makes no Resend call.
+of explicitly opted-in, currently entitled listeners. A recently authenticated
+Admin can freeze that exact review into a durable, audited, suppression-aware
+outbox. Staging records dry-run deliveries without contacting Resend and
+production remains disabled. Recipient addresses are encrypted at rest,
+rechecked only at send time, and never exposed to the admin API.
 
 Migration `0012` adds an isolated staging decision exercise: an authenticated
 Producer can persist one deterministic immutable manifest and receive an

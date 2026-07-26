@@ -400,10 +400,22 @@ Required for private feeds:
 
 - `FEED_TOKEN_PEPPER`
 
+Required for announcement consent and dry-run delivery:
+
+- `ANNOUNCEMENT_DESTINATION_SECRET`
+- `ANNOUNCEMENT_DELIVERY_MODE=dry_run`
+
+Required only for a controlled live announcement test:
+
+- `RESEND_WEBHOOK_SECRET`
+- `ANNOUNCEMENT_DELIVERY_MODE=live` during the bounded test window
+
 Admin and listener peppers/session secrets must be independently generated.
-The feed-token pepper must also be independent. Replacing it invalidates every
-issued private URL, so rotate it only during a planned all-feed reissue or an
-incident; normal listener URL replacement uses the rotate endpoint.
+The feed-token pepper and announcement destination secret must also be
+independent. Replacing the feed pepper invalidates every issued private URL;
+replacing the destination secret makes existing sealed addresses unavailable
+for new sends. Rotate either only during a planned reissue/re-consent window or
+an incident; normal listener URL replacement uses the rotate endpoint.
 The Resend and Turnstile provider credentials may be shared by the Podcast
 runtime, but listener and admin requests use distinct idempotency namespaces
 and Turnstile actions.
@@ -632,13 +644,24 @@ Verify:
   `404` as an unknown token, while the replacement continues to work;
 - notification state begins disabled even for an entitled listener; an
   authenticated same-origin/CSRF `PUT` can explicitly enable English or
-  Spanish for one show and can withdraw it again without changing entitlement;
+  Spanish for one show only after the listener re-enters the matching account
+  email; D1 stores an AES-GCM-sealed destination and erases it after the final
+  withdrawal without changing entitlement;
 - the Marketing announcement dry run rejects anonymous/cross-show access,
   returns only normalized content, an eligible count, and pseudonymous
-  revision hashes, and remains `reviewOnly: true` with
-  `sendEnabled: false`;
-- no announcement review creates an outbox/provider row or Resend request;
-  the empty staging preference table must yield zero eligible recipients;
+  revision hashes, and remains `reviewOnly: true` with `deliveryMode:
+  "dry_run"`;
+- a recently authenticated Admin can approve the unchanged review into
+  immutable announcement/delivery rows; the queue resolves every row to
+  `dry_run`, the count-only history reflects completion, and no Resend request
+  occurs;
+- changing message, consent, destination, entitlement, or suppression evidence
+  between review and approval returns `announcement_review_changed` and
+  cancels the frozen work before queue/provider side effects;
+- the empty staging preference table yields zero eligible recipients and
+  cannot be approved;
+- one-click unsubscribe withdraws only that show, suppresses pending work, and
+  erases the sealed destination when no other show consent needs it;
 - private responses remain no-store/noindex without wildcard CORS, D1 contains
   only a 64-character token HMAC, and polling within one hour does not advance
   `last_used_at`;

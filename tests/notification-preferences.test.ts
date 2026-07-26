@@ -1,4 +1,7 @@
-import { sha256Hex } from "@dustwave/worker-core/crypto";
+import {
+  hmacSha256,
+  sha256Hex
+} from "@dustwave/worker-core/crypto";
 import { describe, expect, it } from "vitest";
 
 import type { PodcastEnv } from "../src/env";
@@ -12,6 +15,15 @@ describe("listener show notification consent", () => {
     const writes: Array<{ query: string; values: unknown[] }> = [];
     const csrfToken = "csrf_notification_fixture";
     const sessionSecret = "listener_session_fixture";
+    const destinationSecret =
+      "announcement_destination_secret_fixture_123456";
+    const lookupPepper = "listener_lookup_fixture";
+    const email = "listener@example.com";
+    const emailLookupHash = await hmacSha256(
+      email,
+      lookupPepper,
+      "hex"
+    );
     const csrfHash = await sha256Hex(`${sessionSecret}:${csrfToken}`);
     const db = {
       prepare(query: string) {
@@ -27,6 +39,9 @@ describe("listener show notification consent", () => {
                 listener_id: "listener_fixture",
                 csrf_token_hash: csrfHash
               };
+            }
+            if (query.includes("FROM listener_accounts")) {
+              return { email_lookup_hash: emailLookupHash };
             }
             return null;
           },
@@ -57,6 +72,9 @@ describe("listener show notification consent", () => {
             return { success: true };
           }
         };
+      },
+      async batch(statements: Array<{ run(): Promise<unknown> }>) {
+        return Promise.all(statements.map((statement) => statement.run()));
       }
     } as unknown as D1Database;
     const request = new Request(
@@ -69,7 +87,11 @@ describe("listener show notification consent", () => {
           "x-podcast-csrf": csrfToken,
           cookie: `${LISTENER_SESSION_COOKIE}=session_token_fixture`
         },
-        body: JSON.stringify({ enabled: true, language: "es" })
+        body: JSON.stringify({
+          enabled: true,
+          language: "es",
+          email
+        })
       }
     );
     const response = await updateListenerNotificationPreference(
@@ -78,6 +100,8 @@ describe("listener show notification consent", () => {
         SITE_ORIGIN: "https://dustwave.xyz",
         ALLOWED_ORIGINS: "https://dustwave.xyz",
         LISTENER_SESSION_SECRET: sessionSecret,
+        LISTENER_EMAIL_LOOKUP_PEPPER: lookupPepper,
+        ANNOUNCEMENT_DESTINATION_SECRET: destinationSecret,
         DB: db
       } as unknown as PodcastEnv,
       "opera-en-la-selva"
@@ -91,10 +115,11 @@ describe("listener show notification consent", () => {
       preference: {
         announcementsEnabled: true,
         language: "es",
-        consentSource: "member_account"
+        consentSource: "member_account",
+        destinationProtected: true
       }
     });
-    expect(preferenceWrite?.values).toEqual([
+    expect(preferenceWrite?.values.slice(0, 6)).toEqual([
       "listener_fixture",
       "show_opera_en_la_selva",
       1,
@@ -102,6 +127,12 @@ describe("listener show notification consent", () => {
       1,
       1
     ]);
+    expect(preferenceWrite?.values[6]).toMatch(/^[a-f0-9]{64}$/);
+    const destinationWrite = writes.find(({ query }) =>
+      query.includes("UPDATE listener_accounts")
+    );
+    expect(destinationWrite?.values[0]).toMatch(/^aes-gcm-v1:/);
+    expect(String(destinationWrite?.values[0])).not.toContain(email);
   });
 
   it("rejects preferences for a show not linked to the member", async () => {

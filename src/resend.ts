@@ -70,6 +70,68 @@ export async function sendListenerMagicLink(
   });
 }
 
+export async function sendPodcastAnnouncementEmail(
+  env: PodcastEnv,
+  {
+    bodyMarkdown,
+    ctaLabel,
+    ctaUrl,
+    deliveryId,
+    deliveryKey,
+    email,
+    heading,
+    subject,
+    unsubscribeUrl
+  }: {
+    bodyMarkdown: string;
+    ctaLabel: string;
+    ctaUrl: string;
+    deliveryId: string;
+    deliveryKey: string;
+    email: string;
+    heading: string;
+    subject: string;
+    unsubscribeUrl: string;
+  }
+): Promise<MagicLinkDelivery> {
+  const textBody = markdownToPlainText(bodyMarkdown);
+  const text = [
+    heading,
+    textBody,
+    ctaLabel && ctaUrl ? `${ctaLabel}: ${ctaUrl}` : "",
+    `Unsubscribe: ${unsubscribeUrl}`
+  ].filter(Boolean).join("\n\n");
+  const html = [
+    heading ? `<h1>${escapeHtml(heading)}</h1>` : "",
+    markdownToSafeHtml(bodyMarkdown),
+    ctaLabel && ctaUrl
+      ? `<p><a href="${escapeAttribute(ctaUrl)}">${escapeHtml(ctaLabel)}</a></p>`
+      : "",
+    `<p><a href="${escapeAttribute(unsubscribeUrl)}">Unsubscribe / Cancelar suscripción</a></p>`
+  ].filter(Boolean).join("");
+  return sendResendPayload(
+    env,
+    {
+      from:
+        env.PODCAST_EMAIL_FROM
+        || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+      to: [email],
+      subject,
+      text,
+      html,
+      headers: {
+        "List-Unsubscribe": `<${unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+      },
+      tags: [
+        { name: "podcast_delivery", value: safeTagValue(deliveryId) },
+        { name: "category", value: "announcement" }
+      ]
+    },
+    `podcast-announcement/${deliveryKey}`
+  );
+}
+
 async function sendMagicLink(
   env: PodcastEnv,
   {
@@ -104,19 +166,30 @@ async function sendMagicLink(
   const explanation = spanish
     ? "Este enlace vence en 15 minutos y solo puede usarse una vez."
     : "This link expires in 15 minutes and can only be used once.";
-  const body = JSON.stringify({
+  return sendResendPayload(env, {
     from: env.PODCAST_EMAIL_FROM || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
     to: [email],
     subject,
     text: `${action}: ${loginUrl}\n\n${explanation}`,
     html: `<p><a href="${escapeAttribute(loginUrl)}">${action}</a></p><p>${explanation}</p>`
-  });
+  }, `podcast-${audience}-login/${deliveryKey}`);
+}
+
+async function sendResendPayload(
+  env: PodcastEnv,
+  payload: Record<string, unknown>,
+  idempotencyKey: string
+): Promise<MagicLinkDelivery> {
+  if (!env.RESEND_API_KEY) {
+    return { sent: false, failureCode: "not_configured" };
+  }
+  const body = JSON.stringify(payload);
   const requestInit = {
     method: "POST",
     headers: {
       authorization: `Bearer ${env.RESEND_API_KEY}`,
       "content-type": "application/json",
-      "idempotency-key": `podcast-${audience}-login/${deliveryKey}`
+      "idempotency-key": idempotencyKey
     },
     body,
     redirect: "manual"
@@ -155,9 +228,7 @@ async function sendMagicLink(
         diagnosticCode: "fetch_redirect_rejected"
       };
     }
-    const payload = await response.json().catch(() => ({})) as {
-      id?: string;
-    };
+    const providerPayload = await readBoundedProviderResponse(response);
     if (!response.ok) {
       return {
         sent: false,
@@ -167,7 +238,7 @@ async function sendMagicLink(
     }
     return {
       sent: true,
-      ...(payload.id ? { providerId: payload.id } : {})
+      ...(providerPayload.id ? { providerId: providerPayload.id } : {})
     };
   } catch (error) {
     const name = error instanceof Error ? error.name : "";
@@ -182,6 +253,43 @@ async function sendMagicLink(
       failureCode: "provider_unavailable",
       diagnosticCode: providerDiagnosticCode(error)
     };
+  }
+}
+
+async function readBoundedProviderResponse(
+  response: Response
+): Promise<{ id?: string }> {
+  if (!response.body) return {};
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > 32_768) {
+        await reader.cancel("provider_response_too_large").catch(() => {});
+        return {};
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const value = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const id = (value as Record<string, unknown>).id;
+    return typeof id === "string" ? { id: id.slice(0, 160) } : {};
+  } catch {
+    return {};
   }
 }
 
@@ -222,4 +330,34 @@ function escapeAttribute(value: string): string {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function escapeHtml(value: string): string {
+  return escapeAttribute(value).replace(/'/g, "&#39;");
+}
+
+function markdownToPlainText(value: string): string {
+  return String(value ?? "")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1 ($2)")
+    .replace(/[*_~`>#]/g, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function markdownToSafeHtml(value: string): string {
+  return markdownToPlainText(value)
+    .split(/\n{2,}/)
+    .filter(Boolean)
+    .map((paragraph) =>
+      `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`
+    )
+    .join("");
+}
+
+function safeTagValue(value: string): string {
+  return String(value ?? "")
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 256) || "none";
 }

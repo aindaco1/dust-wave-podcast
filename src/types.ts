@@ -64,9 +64,12 @@ export interface PodcastJob {
     | "publish-rss"
     | "publish-youtube"
     | "publish-youtube-clip"
-    | "send-premium-notification";
+    | "send-premium-notification"
+    | "send-announcement";
   showId: string;
   episodeId?: string;
+  announcementId?: string;
+  announcementDeliveryId?: string;
   clipRenderId?: string;
   clipPublicationId?: string;
   publicationRevision?: number;

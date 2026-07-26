@@ -25,11 +25,39 @@ export type PodcastAnnouncement = {
   ctaUrl: string;
 };
 
-type EligibleAudienceRow = {
+export type EligibleAudienceRow = {
   listener_id: string;
+  destination_hash: string;
   updated_at: string;
   entitlement_updated_at: string;
 };
+
+export type AnnouncementDeliveryMode = "disabled" | "dry_run" | "live";
+
+export const ELIGIBLE_ANNOUNCEMENT_AUDIENCE_SQL = `
+  FROM show_notification_preferences p
+  JOIN listener_accounts l
+    ON l.id = p.listener_id
+  JOIN subscriptions s
+    ON s.listener_id = p.listener_id
+   AND s.show_id = p.show_id
+  WHERE
+    p.show_id = ?
+    AND p.language = ?
+    AND p.announcements_enabled = 1
+    AND p.withdrawn_at IS NULL
+    AND p.unsubscribe_token_hash IS NOT NULL
+    AND l.email_ciphertext LIKE 'aes-gcm-v1:%'
+    AND s.status = 'active'
+    AND (
+      s.current_period_end IS NULL
+      OR s.current_period_end > datetime('now')
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM podcast_announcement_suppressions x
+      WHERE x.destination_hash = l.email_lookup_hash
+    )`;
 
 export async function dryRunAdminMarketingAnnouncement(
   request: Request,
@@ -49,7 +77,8 @@ export async function dryRunAdminMarketingAnnouncement(
     env.DB,
     showId,
     message,
-    env.ADMIN_SESSION_SECRET || ""
+    env.ADMIN_SESSION_SECRET || "",
+    announcementDeliveryMode(env.ANNOUNCEMENT_DELIVERY_MODE)
   );
   if (!result) {
     return privateJson(
@@ -98,7 +127,8 @@ export async function buildPodcastAnnouncementDryRun(
   db: D1Database,
   showId: string,
   message: PodcastAnnouncement,
-  revisionSecret: string
+  revisionSecret: string,
+  deliveryMode: AnnouncementDeliveryMode = "disabled"
 ): Promise<Record<string, unknown> | null> {
   if (!revisionSecret) {
     throw new RequestValidationError(
@@ -119,40 +149,16 @@ export async function buildPodcastAnnouncementDryRun(
       canonical_url: string;
     }>();
   if (!show) return null;
-  const audience = await db
-    .prepare(
-      `SELECT
-         p.listener_id,
-         p.updated_at,
-         s.updated_at AS entitlement_updated_at
-       FROM show_notification_preferences p
-       JOIN subscriptions s
-         ON s.listener_id = p.listener_id
-        AND s.show_id = p.show_id
-       WHERE
-         p.show_id = ?
-         AND p.language = ?
-         AND p.announcements_enabled = 1
-         AND p.withdrawn_at IS NULL
-         AND s.status = 'active'
-         AND (
-           s.current_period_end IS NULL
-           OR s.current_period_end > datetime('now')
-         )
-       ORDER BY p.listener_id`
-    )
-    .bind(showId, message.language)
-    .all<EligibleAudienceRow>();
-  const audienceRevision = await hmacSha256(
-    `podcast-marketing-audience-v1\0${showId}\0${message.language}\0${
-      audience.results.map((row) => [
-      row.listener_id,
-      row.updated_at,
-      row.entitlement_updated_at
-      ].join(":")).join("\n")
-    }`,
-    revisionSecret,
-    "hex"
+  const audience = await loadEligibleAnnouncementAudience(
+    db,
+    showId,
+    message.language
+  );
+  const audienceRevision = await announcementAudienceRevision(
+    showId,
+    message.language,
+    audience,
+    revisionSecret
   );
   const announcementRevision = await sha256Hex(
     JSON.stringify({
@@ -173,11 +179,15 @@ export async function buildPodcastAnnouncementDryRun(
   return {
     dryRun: true,
     reviewOnly: true,
-    sendEnabled: false,
-    sendBlockedReason: "announcement_delivery_not_implemented",
+    approvalRequired: true,
+    sendEnabled: deliveryMode !== "disabled",
+    ...(deliveryMode === "disabled"
+      ? { sendBlockedReason: "announcement_delivery_disabled" }
+      : {}),
+    deliveryMode,
     deliveryProvider: "resend",
     consentPolicy: "explicit_show_opt_in",
-    eligibleRecipientCount: audience.results.length,
+    eligibleRecipientCount: audience.length,
     audienceRevision,
     announcementRevision,
     reviewHash,
@@ -189,6 +199,53 @@ export async function buildPodcastAnnouncementDryRun(
     },
     preview: message
   };
+}
+
+export async function loadEligibleAnnouncementAudience(
+  db: D1Database,
+  showId: string,
+  language: "en" | "es"
+): Promise<EligibleAudienceRow[]> {
+  const audience = await db
+    .prepare(
+      `SELECT
+         p.listener_id,
+         l.email_lookup_hash AS destination_hash,
+         p.updated_at,
+         s.updated_at AS entitlement_updated_at
+       ${ELIGIBLE_ANNOUNCEMENT_AUDIENCE_SQL}
+       ORDER BY p.listener_id`
+    )
+    .bind(showId, language)
+    .all<EligibleAudienceRow>();
+  return audience.results;
+}
+
+export async function announcementAudienceRevision(
+  showId: string,
+  language: "en" | "es",
+  audience: EligibleAudienceRow[],
+  revisionSecret: string
+): Promise<string> {
+  return hmacSha256(
+    `podcast-marketing-audience-v1\0${showId}\0${language}\0${
+      audience.map((row) => [
+        row.listener_id,
+        row.destination_hash,
+        row.updated_at,
+        row.entitlement_updated_at
+      ].join(":")).join("\n")
+    }`,
+    revisionSecret,
+    "hex"
+  );
+}
+
+export function announcementDeliveryMode(
+  value: string | undefined
+): AnnouncementDeliveryMode {
+  const mode = String(value ?? "disabled").trim().toLowerCase();
+  return mode === "dry_run" || mode === "live" ? mode : "disabled";
 }
 
 function normalizeSameSiteCtaUrl(

@@ -12,6 +12,7 @@ They do gate the indicated production action.
 | Optional free mini-episode | First-show offer activation | Confirmed: enabled, maximum one |
 | At least one additional super-admin identity | Production admin authentication | Confirmed privately; raw address remains outside the public repository |
 | Resend sender and staging API key | Staging magic-link delivery | Existing infrastructure is operational; use or rotate a least-privilege key without committing it |
+| Resend signed webhook endpoint and secret | First controlled live announcement test | Create a Podcast-specific webhook for delivered, bounced, complained, failed, and suppressed events; keep announcement mode dry-run until its signature/replay/suppression exercise passes |
 | Turnstile staging key pair | Staging admin login | Existing infrastructure is operational; configure the secret in the Worker and the site key in the admin shell |
 | Accountant-approved registrations, taxability, rates, evidence, and effective dates | Purchasable Stripe prices | Awaiting professional approval |
 | Podcast-only Stripe Customer Portal profile with address/rate-changing controls disabled | First controlled Portal session | Staging configured; production profile remains a promotion-time action |

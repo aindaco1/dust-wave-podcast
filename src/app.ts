@@ -133,6 +133,12 @@ import {
   updateListenerNotificationPreference
 } from "./notification-preferences";
 import {
+  approveAdminMarketingAnnouncement,
+  handleResendWebhook,
+  listAdminMarketingAnnouncements,
+  serveAnnouncementUnsubscribe
+} from "./announcement-delivery";
+import {
   handlePoolGrantEvent,
   redeemPoolCode
 } from "./pool-redemptions";
@@ -218,6 +224,12 @@ const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
+const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements$/;
+const ADMIN_SHOW_MARKETING_APPROVE_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/approve$/;
+const ANNOUNCEMENT_UNSUBSCRIBE_PATH =
+  /^\/v1\/notifications\/unsubscribe\/([A-Za-z0-9_-]{43})$/;
 const ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
@@ -382,6 +394,17 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       service: "dust-wave-podcast",
       environment: env.ENVIRONMENT
     });
+  }
+
+  const announcementUnsubscribeMatch = url.pathname.match(
+    ANNOUNCEMENT_UNSUBSCRIBE_PATH
+  );
+  if (announcementUnsubscribeMatch) {
+    return serveAnnouncementUnsubscribe(
+      request,
+      env,
+      announcementUnsubscribeMatch[1]
+    );
   }
 
   if (
@@ -635,6 +658,9 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
   if (url.pathname === "/v1/webhooks/stripe" && method === "POST") {
     return handleStripeWebhook(request, env);
   }
+  if (url.pathname === "/v1/webhooks/resend" && method === "POST") {
+    return handleResendWebhook(request, env);
+  }
   if (url.pathname === INTERNAL_POOL_GRANTS_PATH && method === "POST") {
     return handlePoolGrantEvent(request, env);
   }
@@ -657,6 +683,26 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       adminShowMarketingDryRunMatch[1]
+    );
+  }
+  const adminShowMarketingApproveMatch = url.pathname.match(
+    ADMIN_SHOW_MARKETING_APPROVE_PATH
+  );
+  if (adminShowMarketingApproveMatch && method === "POST") {
+    return approveAdminMarketingAnnouncement(
+      request,
+      env,
+      adminShowMarketingApproveMatch[1]
+    );
+  }
+  const adminShowMarketingAnnouncementsMatch = url.pathname.match(
+    ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH
+  );
+  if (adminShowMarketingAnnouncementsMatch && method === "GET") {
+    return listAdminMarketingAnnouncements(
+      request,
+      env,
+      adminShowMarketingAnnouncementsMatch[1]
     );
   }
   const adminShowDistributionDestinationMatch = url.pathname.match(
@@ -1355,8 +1401,10 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
     || url.pathname.startsWith("/v1/diagnostics")
     || url.pathname.startsWith("/v1/internal")
     || url.pathname.startsWith("/v1/member")
+    || url.pathname.startsWith("/v1/notifications")
     || url.pathname.startsWith("/v1/private")
     || url.pathname.startsWith("/v1/processor")
+    || url.pathname.startsWith("/v1/webhooks")
     || Boolean(feedMatch)
     || Boolean(mediaMatch)
     || Boolean(privateFeedMatch)

@@ -165,9 +165,13 @@ iHeartRadio, and Deezer.
   browser-only and does not persist campaign state.
 - Keep announcements consent-safe: the implemented WYSIWYG review counts only
   explicitly opted-in, currently entitled listeners and returns pseudonymous
-  revision hashes without recipient identities. Add a durable
-  suppression-aware outbox, unsubscribe path, audited approval, and an
-  independently gated Resend sender before any delivery route exists.
+  revision hashes without recipient identities. The durable outbox now freezes
+  that exact audience behind recent Admin approval, rechecks consent,
+  entitlement, destination HMAC, and suppression at delivery, exposes a
+  one-click unsubscribe path, consumes signed Resend events idempotently, and
+  retains only count-level admin evidence. Staging is dry-run and production is
+  disabled. A signed-webhook exercise plus a tightly controlled staging live
+  send remain promotion gates before enabling the Resend sender.
 - Add saved tagged links, portable embeds, share-card previews, and scheduling
   only after their storage, accessibility, privacy, and cache contracts are
   characterized.

@@ -73,6 +73,7 @@ describe("podcast marketing announcement review", () => {
             return {
               results: [{
                 listener_id: "listener_pseudonymous_fixture",
+                destination_hash: "a".repeat(64),
                 updated_at: "2026-07-25 00:00:00",
                 entitlement_updated_at: "2026-07-25 00:00:00"
               }]
@@ -100,7 +101,8 @@ describe("podcast marketing announcement review", () => {
       dryRun: true,
       reviewOnly: true,
       sendEnabled: false,
-      sendBlockedReason: "announcement_delivery_not_implemented",
+      sendBlockedReason: "announcement_delivery_disabled",
+      deliveryMode: "disabled",
       consentPolicy: "explicit_show_opt_in",
       eligibleRecipientCount: 1
     });

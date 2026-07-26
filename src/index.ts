@@ -9,6 +9,9 @@ import {
 import { pruneTaxQuoteRateLimits } from "./tax-quotes";
 import { schedulePendingTranscriptions } from "./transcription-jobs";
 import type { PodcastJob } from "./types";
+import {
+  schedulePendingAnnouncementDeliveries
+} from "./announcement-delivery";
 
 export default {
   async fetch(request: Request, env: PodcastEnv): Promise<Response> {
@@ -81,6 +84,7 @@ export default {
       pruneListenerAuthState(env.DB),
       pruneSubscriptionBillingRateLimits(env.DB),
       pruneTaxQuoteRateLimits(env.DB),
+      schedulePendingAnnouncementDeliveries(env),
       schedulePendingTranscriptions(env)
     ]);
   }
