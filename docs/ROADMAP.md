@@ -190,6 +190,10 @@ iHeartRadio, and Deezer.
   versioned media-free News teaser contract and render the same discriminator
   on the canonical page, show aggregate, and noindex embed without player,
   enclosure, transcript, chapter, duration, token, or premium-time leakage.
+- Advance publication revisions only after any older running provider work is
+  terminal; atomically cancel retryable superseded jobs and revalidate every
+  Queue message against its durable revision, show, and destination before a
+  provider adapter can run.
 
 ### Post-launch
 

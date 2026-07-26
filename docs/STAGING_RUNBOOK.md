@@ -74,6 +74,16 @@ failure must leave the durable row queued for Cron, and a 15-minute stale
 Migration `0029` must add the partial `distribution_jobs_running_lease` index;
 verify its predicate is `status = 'running'` and foreign-key checks stay empty.
 
+For migration `0041`, create only isolated root-job fixtures. Advance an
+episode with older `queued` and `failed` jobs and confirm both atomically become
+`canceled` with a completion time. Then create an older `running` job and
+confirm revision advancement aborts with `publication_jobs_running`, leaving
+the episode revision unchanged. Exercise a stale Queue message and a
+show/type-mismatched message: the stale retryable row must be canceled without
+provider I/O, while the mismatched payload must not claim durable work. After
+the matching running fixture reaches a terminal state, retry Publish and
+confirm exactly one new root-job set. Keep GitHub and YouTube in `dry_run`.
+
 For migration `0030`, verify the three nullable directory-evidence columns,
 their constrained source values, the admin-user foreign key, and clean
 foreign-key checks. With an isolated current-revision fixture, confirm Analyst
@@ -598,6 +608,9 @@ Verify:
 - Cloudflare automatic invocation URL logs remain disabled and saved smoke
   evidence contains no private bearer URL;
 - News and YouTube jobs report `dry-run`;
+- a changed publication revision atomically cancels its older queued/failed
+  root jobs, refuses to race an older running job, and rejects a Queue payload
+  whose show/type does not match durable state;
 - a public audio-only publication creates RSS and News jobs but no YouTube job;
   a public video publication adds YouTube; and a premium-bonus publication
   creates RSS plus a versioned `premium_teaser` News snapshot with no media,

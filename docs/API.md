@@ -337,6 +337,15 @@ prevent concurrent duplicate provider work, while Cron safely requeues a
 `running` lease that has not finished after 15 minutes. Migration `0029` keeps
 that bounded stale-lease scan on a partial running-job index.
 
+Migration `0041` makes supersession atomic with the episode revision change:
+older `queued` or `failed` root jobs become `canceled`, while any older
+`running` job blocks the new revision with `publication_jobs_running`. Publish
+can be retried after that provider attempt reaches a terminal state. The Queue
+consumer also compares the message revision, show, and job type with the
+durable episode/destination record before claiming work, cancels legacy stale
+messages, and permits only the processor that still owns `running` state to
+write terminal job or News-site evidence.
+
 `POST /v1/admin/episodes/{id}/publish` derives its root jobs from the same pure
 intent planner used by readiness and contract tests. Every accepted episode
 gets RSS and canonical News work. YouTube work exists only when the episode has

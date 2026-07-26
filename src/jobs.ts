@@ -16,6 +16,16 @@ type DueJob = {
   publication_revision: number;
 };
 
+type DurablePublicationJob = {
+  status: string;
+  scheduled_at: string;
+  destination: PublicationDestination;
+  show_id: string;
+  current_publication_revision: number;
+  site_status: string | null;
+  github_commit_sha: string | null;
+};
+
 export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
   await env.DB
     .prepare(
@@ -79,9 +89,13 @@ export async function processPodcastJob(
       `SELECT
          j.status,
          j.scheduled_at,
+         j.destination,
+         e.show_id,
+         e.publication_revision AS current_publication_revision,
          sp.status AS site_status,
          sp.github_commit_sha
        FROM distribution_jobs j
+       JOIN episodes e ON e.id = j.episode_id
        LEFT JOIN site_publications sp
          ON j.destination = 'news'
          AND sp.episode_id = j.episode_id
@@ -91,18 +105,37 @@ export async function processPodcastJob(
          AND j.publication_revision = ?`
     )
     .bind(job.id, job.episodeId, job.publicationRevision ?? 0)
-    .first<{
-      status: string;
-      scheduled_at: string;
-      site_status: string | null;
-      github_commit_sha: string | null;
-    }>();
+    .first<DurablePublicationJob>();
+  if (!state) return;
+  const publicationRevision = job.publicationRevision ?? 0;
+  if (state.current_publication_revision !== publicationRevision) {
+    await env.DB
+      .prepare(
+        `UPDATE distribution_jobs
+         SET
+           status = 'canceled',
+           completed_at = datetime('now'),
+           last_error = 'Superseded by a newer publication revision.'
+         WHERE id = ?
+           AND episode_id = ?
+           AND publication_revision = ?
+           AND status IN ('queued', 'failed')`
+      )
+      .bind(job.id, job.episodeId, publicationRevision)
+      .run();
+    return;
+  }
   if (
-    !state
-    || state.status === "succeeded"
+    state.status === "succeeded"
     || state.status === "canceled"
     || state.status === "running"
   ) return;
+  if (
+    state.show_id !== job.showId
+    || publicationJobType(state.destination) !== job.type
+  ) {
+    throw new Error("Publication job does not match durable state");
+  }
   if (parseDatabaseDate(state.scheduled_at).getTime() > Date.now()) {
     throw new Error("Publication job is not due");
   }
@@ -120,7 +153,7 @@ export async function processPodcastJob(
          AND publication_revision = ?
          AND status IN ('queued', 'failed')`
     )
-    .bind(job.id, job.episodeId, job.publicationRevision ?? 0)
+    .bind(job.id, job.episodeId, publicationRevision)
     .run();
   if (Number(claim.meta?.changes ?? 0) !== 1) return;
 
@@ -133,7 +166,7 @@ export async function processPodcastJob(
         const result = await publishEpisodeNewsSnapshot(
           env,
           job.episodeId,
-          job.publicationRevision ?? 0
+          publicationRevision
         );
         providerId = result.dryRun ? "dry-run" : result.commitSha ?? "";
         await env.DB
@@ -143,12 +176,24 @@ export async function processPodcastJob(
                status = 'succeeded',
                github_commit_sha = ?,
                updated_at = datetime('now')
-             WHERE episode_id = ? AND publication_revision = ?`
+             WHERE episode_id = ?
+               AND publication_revision = ?
+               AND EXISTS (
+                 SELECT 1
+                 FROM distribution_jobs
+                 WHERE id = ?
+                   AND episode_id = ?
+                   AND publication_revision = ?
+                   AND status = 'running'
+               )`
           )
           .bind(
             result.commitSha ?? null,
             job.episodeId,
-            job.publicationRevision ?? 0
+            publicationRevision,
+            job.id,
+            job.episodeId,
+            publicationRevision
           )
           .run();
       }
@@ -169,9 +214,17 @@ export async function processPodcastJob(
            status = 'succeeded',
            completed_at = datetime('now'),
            provider_id = ?
-         WHERE id = ? AND publication_revision = ?`
+         WHERE id = ?
+           AND episode_id = ?
+           AND publication_revision = ?
+           AND status = 'running'`
       )
-      .bind(providerId, job.id, job.publicationRevision ?? 0)
+      .bind(
+        providerId,
+        job.id,
+        job.episodeId,
+        publicationRevision
+      )
       .run();
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_job_error";
@@ -179,18 +232,42 @@ export async function processPodcastJob(
       .prepare(
         `UPDATE distribution_jobs
          SET status = 'failed', last_error = ?, completed_at = datetime('now')
-         WHERE id = ? AND publication_revision = ?`
+         WHERE id = ?
+           AND episode_id = ?
+           AND publication_revision = ?
+           AND status = 'running'`
       )
-      .bind(message.slice(0, 500), job.id, job.publicationRevision ?? 0)
+      .bind(
+        message.slice(0, 500),
+        job.id,
+        job.episodeId,
+        publicationRevision
+      )
       .run();
     if (job.type === "publish-news") {
       await env.DB
         .prepare(
           `UPDATE site_publications
            SET status = 'failed', last_error = ?, updated_at = datetime('now')
-           WHERE episode_id = ? AND publication_revision = ?`
+           WHERE episode_id = ?
+             AND publication_revision = ?
+             AND EXISTS (
+               SELECT 1
+               FROM distribution_jobs
+               WHERE id = ?
+                 AND episode_id = ?
+                 AND publication_revision = ?
+                 AND status = 'failed'
+             )`
         )
-        .bind(message.slice(0, 500), job.episodeId, job.publicationRevision ?? 0)
+        .bind(
+          message.slice(0, 500),
+          job.episodeId,
+          publicationRevision,
+          job.id,
+          job.episodeId,
+          publicationRevision
+        )
         .run();
     }
     throw error;

@@ -908,6 +908,19 @@ export async function publishAdminEpisode(
     ) {
       return publicationConflictResponse(request, env);
     }
+    if (message.includes("publication_jobs_running")) {
+      return privateJson(
+        request,
+        env.ALLOWED_ORIGINS,
+        {
+          error: "publication_jobs_running",
+          message:
+            "A publication job is still running. Wait for it to finish, "
+            + "then refresh readiness and retry."
+        },
+        { status: 409 }
+      );
+    }
     if (
       message.includes("publication_gate_overrides")
       && message.includes("UNIQUE")

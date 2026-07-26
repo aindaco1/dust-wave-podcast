@@ -368,6 +368,12 @@ update compares all three. Its immediately following checked `changes()` guard
 aborts the entire D1 batch on conflict, preventing partial jobs, directory
 state, News publication, override, or audit writes. Show/global epochs avoid
 O(all historical episodes) invalidation when show or directory setup changes.
+Revision advancement also fails closed while an older root publication job is
+`running`; retryable older jobs are canceled by the same D1 transaction that
+advances the episode. Queue processing revalidates the durable revision, show,
+and destination-derived job type before a claim, and terminal writes require
+continued ownership of `running` state. A stale or mismatched message therefore
+cannot publish a newer episode through an older root job.
 
 ## Publication-intent and News-teaser boundary
 

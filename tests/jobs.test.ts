@@ -78,7 +78,12 @@ describe("publication job revisions", () => {
             async first() {
               return {
                 status: "queued",
-                scheduled_at: "2026-07-25 00:00:00"
+                scheduled_at: "2026-07-25 00:00:00",
+                destination: "rss",
+                show_id: "show_opera",
+                current_publication_revision: 4,
+                site_status: null,
+                github_commit_sha: null
               };
             },
             async run() {
@@ -132,7 +137,12 @@ describe("publication job revisions", () => {
             async first() {
               return {
                 status: "running",
-                scheduled_at: "2026-07-25 00:00:00"
+                scheduled_at: "2026-07-25 00:00:00",
+                destination: "news",
+                show_id: "show_opera",
+                current_publication_revision: 2,
+                site_status: null,
+                github_commit_sha: null
               };
             },
             async run() {
@@ -173,6 +183,9 @@ describe("publication job revisions", () => {
               return {
                 status: "failed",
                 scheduled_at: "2026-07-25 00:00:00",
+                destination: "news",
+                show_id: "show_opera",
+                current_publication_revision: 5,
                 site_status: "succeeded",
                 github_commit_sha: "commit_already_published"
               };
@@ -207,5 +220,95 @@ describe("publication job revisions", () => {
         && values[0] === "commit_already_published"
       )
     ).toBe(true);
+  });
+
+  it("cancels a queued message whose revision is no longer current", async () => {
+    const statements: Array<{ query: string; values: unknown[] }> = [];
+    const env = {
+      DB: {
+        prepare(query: string) {
+          let values: unknown[] = [];
+          return {
+            bind(...bound: unknown[]) {
+              values = bound;
+              statements.push({ query, values });
+              return this;
+            },
+            async first() {
+              return {
+                status: "queued",
+                scheduled_at: "2026-07-25 00:00:00",
+                destination: "news",
+                show_id: "show_opera",
+                current_publication_revision: 8,
+                site_status: null,
+                github_commit_sha: null
+              };
+            },
+            async run() {
+              return { success: true, meta: { changes: 1 } };
+            }
+          };
+        }
+      }
+    } as unknown as PodcastEnv;
+
+    await processPodcastJob(env, {
+      id: "job_news_revision_7",
+      type: "publish-news",
+      showId: "show_opera",
+      episodeId: "episode_opera",
+      publicationRevision: 7,
+      requestedAt: "2026-07-25T00:00:00.000Z"
+    });
+
+    expect(statements).toHaveLength(2);
+    expect(statements[1]?.query).toContain("status = 'canceled'");
+    expect(statements[1]?.query).toContain("status IN ('queued', 'failed')");
+    expect(statements[1]?.values).toEqual([
+      "job_news_revision_7",
+      "episode_opera",
+      7
+    ]);
+  });
+
+  it("rejects a queue payload that disagrees with durable destination state", async () => {
+    const queries: string[] = [];
+    const env = {
+      DB: {
+        prepare(query: string) {
+          queries.push(query);
+          return {
+            bind() {
+              return this;
+            },
+            async first() {
+              return {
+                status: "queued",
+                scheduled_at: "2026-07-25 00:00:00",
+                destination: "rss",
+                show_id: "show_opera",
+                current_publication_revision: 9,
+                site_status: null,
+                github_commit_sha: null
+              };
+            },
+            async run() {
+              return { success: true, meta: { changes: 1 } };
+            }
+          };
+        }
+      }
+    } as unknown as PodcastEnv;
+
+    await expect(processPodcastJob(env, {
+      id: "job_rss_revision_9",
+      type: "publish-news",
+      showId: "show_opera",
+      episodeId: "episode_opera",
+      publicationRevision: 9,
+      requestedAt: "2026-07-25T00:00:00.000Z"
+    })).rejects.toThrow("Publication job does not match durable state");
+    expect(queries).toHaveLength(1);
   });
 });
