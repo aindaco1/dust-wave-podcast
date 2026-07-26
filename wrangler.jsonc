@@ -29,7 +29,7 @@
       },
       "vars": {
         "ENVIRONMENT": "staging",
-        "SITE_ORIGIN": "https://dustwave.xyz",
+        "SITE_ORIGIN": "https://dust-wave-website-staging.pages.dev",
         "FEED_ORIGIN": "https://dust-wave-podcast-staging.jogo.workers.dev",
         "MEDIA_ORIGIN": "https://dust-wave-podcast-staging.jogo.workers.dev",
         "ALLOWED_ORIGINS": "https://dustwave.xyz,https://www.dustwave.xyz,https://dust-wave-website-staging.pages.dev,http://localhost:8080",
