@@ -2,6 +2,10 @@ import type { PodcastEnv } from "./env";
 import { fetchWithTimeout } from "./fetch-with-timeout";
 import type { LoginLanguage } from "./passwordless-security";
 
+const RESEND_EMAIL_URL = "https://api.resend.com/emails";
+const RESEND_EMAIL_PATHS = new Set(["/emails", "/emails/"]);
+const RESEND_TIMEOUT_MS = 8_000;
+
 export type MagicLinkDelivery = {
   sent: boolean;
   providerId?: string;
@@ -100,23 +104,57 @@ async function sendMagicLink(
   const explanation = spanish
     ? "Este enlace vence en 15 minutos y solo puede usarse una vez."
     : "This link expires in 15 minutes and can only be used once.";
+  const body = JSON.stringify({
+    from: env.PODCAST_EMAIL_FROM || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+    to: [email],
+    subject,
+    text: `${action}: ${loginUrl}\n\n${explanation}`,
+    html: `<p><a href="${escapeAttribute(loginUrl)}">${action}</a></p><p>${explanation}</p>`
+  });
+  const requestInit = {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+      "idempotency-key": `podcast-${audience}-login/${deliveryKey}`
+    },
+    body,
+    redirect: "manual"
+  } satisfies RequestInit;
   try {
-    const response = await fetchWithTimeout("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "content-type": "application/json",
-        "idempotency-key": `podcast-${audience}-login/${deliveryKey}`
-      },
-      body: JSON.stringify({
-        from: env.PODCAST_EMAIL_FROM || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
-        to: [email],
-        subject,
-        text: `${action}: ${loginUrl}\n\n${explanation}`,
-        html: `<p><a href="${escapeAttribute(loginUrl)}">${action}</a></p><p>${explanation}</p>`
-      }),
-      redirect: "error"
-    }, 8_000);
+    let response = await fetchWithTimeout(
+      RESEND_EMAIL_URL,
+      requestInit,
+      RESEND_TIMEOUT_MS
+    );
+    if (response.status === 307 || response.status === 308) {
+      const redirectUrl = trustedResendRedirect(
+        response.headers.get("location")
+      );
+      await response.body?.cancel();
+      if (!redirectUrl) {
+        return {
+          sent: false,
+          providerStatus: response.status,
+          failureCode: "provider_rejected",
+          diagnosticCode: "fetch_redirect_rejected"
+        };
+      }
+      response = await fetchWithTimeout(
+        redirectUrl,
+        requestInit,
+        RESEND_TIMEOUT_MS
+      );
+    }
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      return {
+        sent: false,
+        providerStatus: response.status,
+        failureCode: "provider_rejected",
+        diagnosticCode: "fetch_redirect_rejected"
+      };
+    }
     const payload = await response.json().catch(() => ({})) as {
       id?: string;
     };
@@ -144,6 +182,20 @@ async function sendMagicLink(
       failureCode: "provider_unavailable",
       diagnosticCode: providerDiagnosticCode(error)
     };
+  }
+}
+
+function trustedResendRedirect(value: string | null): string | null {
+  try {
+    const url = new URL(String(value ?? ""), RESEND_EMAIL_URL);
+    return url.origin === "https://api.resend.com"
+      && RESEND_EMAIL_PATHS.has(url.pathname)
+      && !url.username
+      && !url.password
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
   }
 }
 

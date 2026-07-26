@@ -50,6 +50,51 @@ describe("Resend magic-link delivery evidence", () => {
     expect(JSON.stringify(result)).not.toContain("Rejected recipient");
   });
 
+  it("follows one same-origin permanent redirect without dropping evidence", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 308,
+          headers: { location: "https://api.resend.com/emails/" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "email_redirected" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      );
+
+    await expect(deliver()).resolves.toEqual({
+      sent: true,
+      providerId: "email_redirected"
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "https://api.resend.com/emails/"
+    );
+    expect(fetchMock.mock.calls[1][1]?.headers).toMatchObject({
+      authorization: "Bearer resend_fixture"
+    });
+  });
+
+  it("never forwards the credential to an off-origin redirect", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, {
+        status: 307,
+        headers: { location: "https://attacker.example/collect" }
+      })
+    );
+
+    await expect(deliver()).resolves.toEqual({
+      sent: false,
+      providerStatus: 307,
+      failureCode: "provider_rejected",
+      diagnosticCode: "fetch_redirect_rejected"
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("classifies timeouts without returning exception text", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(
       new DOMException("credential-shaped diagnostic", "TimeoutError")
