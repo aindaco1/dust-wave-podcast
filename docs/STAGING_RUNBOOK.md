@@ -563,6 +563,10 @@ wrangler deploy --env staging
 
 Verify:
 
+- credentialed `OPTIONS /v1/admin/session` from
+  `https://dust-wave-website-staging.pages.dev` reflects that exact origin,
+  while the production Dust Wave origins, Pages preview hostnames, and an
+  unrelated origin receive no `Access-Control-Allow-Origin`;
 - `/health`, `/v1/shows`, the configured show, and an empty valid RSS feed;
 - unauthenticated admin routes return private `401` responses;
 - unknown login emails receive the same response as known emails;

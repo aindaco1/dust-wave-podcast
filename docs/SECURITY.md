@@ -81,8 +81,13 @@
   campaign evidence is snapshotted separately from billable sponsor evidence.
 - Byte ranges are validated and bounded; upload kinds, MIME types, object
   sizes, filenames, and part numbers are allowlisted.
-- CORS reflects only explicit origins. Admin responses are private/no-store and
-  marked noindex.
+- CORS reflects only explicit origins. Staging and production credentialed
+  origin allowlists are mutually exclusive: staging trusts the stable Pages
+  staging hostname plus the explicit loopback development origin, while
+  production trusts only the canonical and `www` Dust Wave origins. Branch and
+  immutable Pages preview hostnames are intentionally excluded. CI rejects
+  duplicate, cross-environment, credential-bearing, or path-bearing origins.
+  Admin responses are private/no-store and marked noindex.
 - Ready clip preview/download remains under the path-scoped admin session.
   The Marketing library returns only bounded show-scoped metadata and those
   same ready media paths; it never returns an R2 object key or public URL.
