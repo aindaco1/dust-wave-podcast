@@ -1,4 +1,5 @@
 import type { PodcastEnv } from "./env";
+import { fetchWithTimeout } from "./fetch-with-timeout";
 
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const VIDEO_UPLOAD_URL =
@@ -54,7 +55,7 @@ export async function uploadUnlistedYouTubeVideo(
     throw new YouTubeProviderError("youtube_not_configured");
   }
   const accessToken = await refreshAccessToken(config);
-  const initiation = await fetch(VIDEO_UPLOAD_URL, {
+  const initiation = await fetchWithTimeout(VIDEO_UPLOAD_URL, {
     method: "POST",
     headers: {
       authorization: `Bearer ${accessToken}`,
@@ -73,9 +74,8 @@ export async function uploadUnlistedYouTubeVideo(
         selfDeclaredMadeForKids: false
       }
     }),
-    redirect: "error",
-    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS)
-  }).catch(() => {
+    redirect: "error"
+  }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_upload_session_failed");
   });
   if (!initiation.ok) {
@@ -84,7 +84,7 @@ export async function uploadUnlistedYouTubeVideo(
   const uploadUrl = validUploadSessionUrl(
     initiation.headers.get("location")
   );
-  const upload = await fetch(uploadUrl, {
+  const upload = await fetchWithTimeout(uploadUrl, {
     method: "PUT",
     headers: {
       authorization: `Bearer ${accessToken}`,
@@ -92,9 +92,8 @@ export async function uploadUnlistedYouTubeVideo(
       "content-type": "video/mp4"
     },
     body,
-    redirect: "error",
-    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS)
-  }).catch(() => {
+    redirect: "error"
+  }, UPLOAD_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_upload_failed");
   });
   if (!upload.ok) {
@@ -138,7 +137,7 @@ function youtubeProviderConfig(
 async function refreshAccessToken(
   config: YouTubeProviderConfig
 ): Promise<string> {
-  const response = await fetch(OAUTH_TOKEN_URL, {
+  const response = await fetchWithTimeout(OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded"
@@ -149,9 +148,8 @@ async function refreshAccessToken(
       refresh_token: config.refreshToken,
       grant_type: "refresh_token"
     }),
-    redirect: "error",
-    signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS)
-  }).catch(() => {
+    redirect: "error"
+  }, TOKEN_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_oauth_failed");
   });
   if (!response.ok) {
@@ -183,11 +181,10 @@ async function verifyUploadedVideo(
   const url = new URL(VIDEO_LOOKUP_URL);
   url.searchParams.set("part", "snippet,status");
   url.searchParams.set("id", videoId);
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: { authorization: `Bearer ${accessToken}` },
-    redirect: "error",
-    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS)
-  }).catch(() => {
+    redirect: "error"
+  }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_verification_failed");
   });
   if (!response.ok) {

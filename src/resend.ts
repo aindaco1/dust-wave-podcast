@@ -1,4 +1,5 @@
 import type { PodcastEnv } from "./env";
+import { fetchWithTimeout } from "./fetch-with-timeout";
 import type { LoginLanguage } from "./passwordless-security";
 
 export type MagicLinkDelivery = {
@@ -93,7 +94,7 @@ async function sendMagicLink(
     ? "Este enlace vence en 15 minutos y solo puede usarse una vez."
     : "This link expires in 15 minutes and can only be used once.";
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetchWithTimeout("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         authorization: `Bearer ${env.RESEND_API_KEY}`,
@@ -107,9 +108,8 @@ async function sendMagicLink(
         text: `${action}: ${loginUrl}\n\n${explanation}`,
         html: `<p><a href="${escapeAttribute(loginUrl)}">${action}</a></p><p>${explanation}</p>`
       }),
-      redirect: "error",
-      signal: AbortSignal.timeout(8_000)
-    });
+      redirect: "error"
+    }, 8_000);
     const payload = await response.json().catch(() => ({})) as {
       id?: string;
     };
