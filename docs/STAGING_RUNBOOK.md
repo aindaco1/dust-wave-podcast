@@ -390,11 +390,26 @@ gh workflow run process-audio-enhancement-derivative.yml \
 
 The render job must finish multipart upload and return the derivative QC run
 ID; the called QC job must then finish against that exact output. Confirm the
-artifact contains only `processor-evidence.json` and no object key, source,
-rendered audio, manifest, callback body, or FFmpeg log. In the workbench,
-confirm authenticated full-file range playback/download, current-policy and
-digest-match indicators, and that the approval form appears only to a
-Super-admin after zero-blocker QC.
+successful artifact contains only `processor-evidence.json` and no object key,
+source, rendered audio, callback body, or FFmpeg log. If the R2 multipart
+object completed but the final Worker evidence request did not, the processor
+must leave the job `completing` instead of reporting a false render failure.
+That exceptional artifact may retain only the bounded manifest and signed
+callback alongside `processor-evidence.json`; it must never retain audio.
+After the transient or contract issue is fixed, download those two private
+files and replay them without rerendering:
+
+```sh
+DERIVATIVE_ID="derivative_REPLACE_WITH_QUEUED_ID" \
+MEDIA_PROCESSOR_CALLBACK_SECRET="REDACTED" \
+node scripts/replay-audio-enhancement-derivative-completion.mjs
+```
+
+The replay validates both retained contracts, accepts only the isolated
+staging host/bucket, removes the manifest/callback after success, and must be
+idempotent. In the workbench, confirm authenticated full-file range
+playback/download, current-policy and digest-match indicators, and that the
+approval form appears only to a Super-admin after zero-blocker QC.
 
 Approve with the exact displayed base revision and a bounded operational
 reason. Confirm the response creates an `enhanced_derivative` master at the
@@ -1015,15 +1030,36 @@ and
 Independent R2-streamed measurement moved the excerpt from -21.3 LUFS and
 -4.3 dBTP to -15.9 LUFS and -1.2 dBTP. The existing digest player started
 authenticated playback, while an anonymous ranged request returned `401` with
-`private, no-store`; no working master, delivery audio, News page, RSS item, or
-YouTube publication was created.
+`private, no-store`.
+
+The exact source became working-master revision 1 only as a reversible private
+staging checkpoint, with an audit reason explicitly excluding publication or
+distribution approval. The full-length
+`derivative_ec1775d8ec3d46cd9a7fc99927c7976c` then rendered the same curated
+recipe. Its manifest digest is
+`2ba4d9bcf80d598dd65275f2870d30dd42a9cd7920da60f31468a55361c86385`;
+the accepted processor-report digest is
+`feab635055a3949fc02fdd6e5d0cea84ca86cfcffde568cc7f4184d8e3ec7098`.
+The private 48 kHz MP3 is 89,889,453 bytes, 3,745.392 seconds, and SHA-256
+`bc43061208152159907aa8787367a0a812c76954da38ad89b0949d7128aa68c1`.
+Fresh QC run `qc_derivative_348e4068a6d27aedd7ef1b83b3fe2295`
+independently matched that SHA-256 and completed with zero blockers and zero
+warnings; its report digest is
+`445f68146b051836a8c5be0ca48aec60c2e3756dd3dba901555ee2731967defe`.
+The enhanced-master approval remains intentionally pending because its
+acknowledgement requires a human to listen to the full derivative. Delivery
+audio stays blocked, and no News page, RSS item, directory job, YouTube job,
+or public media selection exists.
 
 The first local signed upload exposed a `curl` broken pipe on the default
 HTTP/2 transfer before either output existed. A replay with the same immutable
 manifest succeeded after pinning HTTP/1.1, suppressing `Expect: 100-continue`,
 and retrying all transport errors. The preview and clip workflow upload steps
-carry the same transport guard so larger signed media uploads do not rely on
-client protocol negotiation.
+carry the same transport guard. The shared multipart processor client now
+uses that transport for derivative, delivery-audio, and YouTube-audio parts.
+R2 multipart completion is verified through a strongly consistent post-write
+`head`, and a failed exact derivative can reopen only the same immutable job
+with a fresh multipart upload ID and an append-only retry audit event.
 
 ## 6. Controlled external tests
 

@@ -49,12 +49,15 @@ jobs:
           MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
         run: node scripts/process-audio-enhancement-derivative.mjs
 
-      - name: Retain non-secret derivative evidence
+      - name: Retain bounded private derivative evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: audio-enhancement-derivative-report
-          path: work/audio-enhancement-derivative/processor-evidence.json
+          path: |
+            work/audio-enhancement-derivative/processor-evidence.json
+            work/audio-enhancement-derivative/manifest.json
+            work/audio-enhancement-derivative/callback.json
           if-no-files-found: warn
           retention-days: 30
 
