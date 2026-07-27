@@ -90,6 +90,12 @@ iHeartRadio, and Deezer.
   strict publication-readiness node. Replacing a master preserves authored
   material and immutable history while making transcript, chapter, and clip
   approvals stale. A preview is explicitly ineligible as a master.
+- The first rights-cleared full-length staging source now passes that
+  non-destructive boundary: its private R2 snapshot matched the authorized
+  source byte-for-byte and completed with zero blockers. Three measured
+  loudness/peak warnings intentionally keep normalization and limiting in the
+  private enhancement-review path; the draft remains unpublished and outside
+  News, RSS, distribution, and YouTube.
 - The full-length enhancement boundary now snapshots a selected ready A/B
   preview and the exact current master, renders only its curated preset,
   uploads through checksum-verified multipart Worker streams, and creates an

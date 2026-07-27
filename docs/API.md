@@ -345,6 +345,13 @@ including under concurrent requests.
 | `GET` | `/v1/admin/billing/tax-evidence` | super-admin | Bounded non-PII invoice/tax reconciliation evidence as JSON or CSV |
 | `POST` | `/v1/admin/ads/preview` | analyst+ | Read-only sponsor decision preview |
 
+The upload initializer recommends uniform 8 MiB parts. This remains above
+R2's 5 MiB minimum for every non-final multipart part while reducing
+connection-reset recovery work on browser and residential uplinks. The final
+part may be smaller. Clients must still honor the returned recommendation
+rather than hard-coding it, and the Worker rejects any request part above its
+separate 95 MiB application limit.
+
 The RSS import preview accepts exactly `feedUrl` and
 `ownershipConfirmed: true`. It allows only public HTTPS hostnames, follows at
 most two independently revalidated manual redirects, times out, and reads at

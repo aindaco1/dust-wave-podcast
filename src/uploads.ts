@@ -12,6 +12,8 @@ import {
 } from "./validation";
 
 const UPLOAD_ROLES = ["super_admin", "admin", "producer"] as const;
+const RECOMMENDED_PART_BYTES = 8 * 1024 * 1024;
+const MAXIMUM_PART_BYTES = 95 * 1024 * 1024;
 const UPLOAD_KINDS = [
   "source_audio",
   "delivery_audio",
@@ -170,8 +172,8 @@ export async function createMultipartUpload(
     {
       uploadId,
       key,
-      recommendedPartBytes: 32 * 1024 * 1024,
-      maximumPartBytes: 95 * 1024 * 1024,
+      recommendedPartBytes: RECOMMENDED_PART_BYTES,
+      maximumPartBytes: MAXIMUM_PART_BYTES,
       expiresAfterDays: 7
     },
     { status: 201 }

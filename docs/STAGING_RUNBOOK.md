@@ -874,7 +874,9 @@ Verify:
 - unknown login emails receive the same response as known emails;
 - a known super-admin completes Turnstile, Resend, exchange, session, and
   logout;
-- a small staged audio upload completes, serves a byte range, and downloads;
+- a staged audio upload uses the returned 8 MiB recommendation, completes,
+  serves a byte range, and downloads; every non-final part remains at least
+  R2's 5 MiB minimum;
 - publishing a fixture episode twice returns the same revision;
 - an entitled listener can create one private URL, read due premium RSS, play
   a byte range, and rotate it; the old feed and media URLs then return the same
@@ -971,6 +973,32 @@ The staging `FEED_ORIGIN` and `MEDIA_ORIGIN` intentionally use this hostname so
 copied staging feed/enclosure URLs remain testable without production DNS.
 
 Do not attach `feeds.dustwave.xyz` or `media.dustwave.xyz` during this step.
+
+### 5.1 First rights-cleared source-audio evidence (2026-07-27)
+
+Jay Renteria authorized the public Dust Don't Settle appearance at
+`https://www.youtube.com/watch?v=Kh90GnJJoH8` for private staging validation.
+The staging draft is explicitly marked `STAGING ONLY`, has no release date,
+and remains outside News, RSS, distribution, and YouTube publication.
+
+The exact AAC-LC source is 60,572,315 bytes, 44.1 kHz stereo, and
+3,745.355 seconds. Its SHA-256 is
+`7b325532acb474bb77891e926a694aae4f5d3889d24a0466c9022aefde2d2793`.
+The private multipart upload completed as eight uniform 8 MiB-or-smaller
+parts after a 32 MiB transfer exposed an early TLS connection close. The API
+recommendation is now 8 MiB so browser retries discard less work while
+remaining above R2's non-final 5 MiB minimum.
+
+Signed QC run `qc_Kh90GnJJoH8_20260727T2210Z` rebuilt manifest digest
+`16e5323d7f596a0cfa1d1ada703e32ce2be7e8a0d95611ef0d3d7f8278a7aac6`,
+streamed the private object, matched the source SHA-256, fully decoded it, and
+completed with zero blockers and three warnings. Measured integrated loudness
+is -20.6 LUFS against the -16 LUFS stereo target, true peak is +0.3 dBTP
+against the -1 dBTP ceiling, and one clipped sample was detected. DC offset,
+channel balance, leading/trailing silence, and longest internal silence remain
+within policy. Compare a normalized/limited private enhancement preview before
+any working-master approval; do not approve or publish the current source
+merely because the non-destructive QC gate passed.
 
 ## 6. Controlled external tests
 
