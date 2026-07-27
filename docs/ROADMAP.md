@@ -36,6 +36,23 @@ iHeartRadio, and Deezer.
 - Extract versioned worker authentication, provider, validation, admin-shell,
   rich-editor, table/filter, marketing-link, and analytics primitives only
   where Pool and Store behavior can be preserved behind adapters.
+- Keep the responsive-tab extraction complete and narrow: one shared
+  dependency-free controller owns option rebuilding, selection mirroring, and
+  accessibility; Podcast, Pool, and Store retain their labels, activation,
+  classes, spacing, breakpoints, routes, and session state through thin
+  adapters.
+- Converge editors in two independently reversible layers. First, move only
+  the already-characterized Markdown/HTML conversion, safe-link validation,
+  paste sanitization, and emphasis-boundary rules behind a classic-script
+  bridge backed by the same `@dustwave/admin-shell` codec used by Podcast.
+  Then evaluate block-editor chrome separately. Pool's campaign/announcement
+  blocks support underline and multiple inline/block policies; Store's product
+  descriptions additionally admit validated first-party images and use a
+  different product-save schema. Keep those domain adapters local until
+  consumer-owned fixtures prove byte-equivalent round trips, paste behavior,
+  undo/selection behavior, image handling, and save payloads. Do not replace
+  either block editor with Podcast's smaller timed-text editor merely because
+  their toolbars look similar.
 - Keep Pool, Store, and Podcast as separate runtimes and sessions.
 - Create isolated Cloudflare staging bindings and dry-run provider modes.
 - Add passwordless super-admin authentication, audit records, R2 multipart
