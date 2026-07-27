@@ -1000,6 +1000,31 @@ within policy. Compare a normalized/limited private enhancement preview before
 any working-master approval; do not approve or publish the current source
 merely because the non-destructive QC gate passed.
 
+Private A/B preview
+`enhance_49a60434a60a4b3b90f851e50252eeeb` samples 60 seconds from
+`00:05:00` with the curated `dialogue-gentle-v1` recipe. Its signed manifest
+digest is
+`ee0fe94a10c1a834409ddfc4071a529557ac42c4388b4aacf0ccf3f8369deb8a`
+and its completed processor-report digest is
+`656949eb8e230b724b53a25b089561f8ca52f52c7e7d99119d8239befbe4ac58`.
+The private original and enhanced R2 objects are both 1,440,621 bytes and
+60.024 seconds; their SHA-256 digests are respectively
+`1066df326b8100f1565ff451d83388cb57dbf7d20ca8019364ceb5d7861b2ee4`
+and
+`b9b46e661d19a8cc1cb75a80cc4d39efbc21e25aad4ced9f597e004499fc6a98`.
+Independent R2-streamed measurement moved the excerpt from -21.3 LUFS and
+-4.3 dBTP to -15.9 LUFS and -1.2 dBTP. The existing digest player started
+authenticated playback, while an anonymous ranged request returned `401` with
+`private, no-store`; no working master, delivery audio, News page, RSS item, or
+YouTube publication was created.
+
+The first local signed upload exposed a `curl` broken pipe on the default
+HTTP/2 transfer before either output existed. A replay with the same immutable
+manifest succeeded after pinning HTTP/1.1, suppressing `Expect: 100-continue`,
+and retrying all transport errors. The preview and clip workflow upload steps
+carry the same transport guard so larger signed media uploads do not rely on
+client protocol negotiation.
+
 ## 6. Controlled external tests
 
 Live GitHub publication targets only the release branch and requires a reviewed

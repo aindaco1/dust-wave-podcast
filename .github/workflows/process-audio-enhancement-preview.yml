@@ -135,10 +135,12 @@ jobs:
           UPLOAD_PAYLOAD: ${{ steps.upload.outputs.original_upload_payload }}
           UPLOAD_URL: ${{ steps.request.outputs.original_output_url }}
         run: |
-          curl --fail-with-body --silent --show-error \
+          curl --http1.1 --fail-with-body --silent --show-error \
             --max-time 300 \
-            --retry 2 \
+            --retry 3 \
+            --retry-all-errors \
             --request PUT \
+            --header "Expect:" \
             --header "content-type: audio/mpeg" \
             --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
             --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
@@ -163,10 +165,12 @@ jobs:
           UPLOAD_PAYLOAD: ${{ steps.upload.outputs.enhanced_upload_payload }}
           UPLOAD_URL: ${{ steps.request.outputs.enhanced_output_url }}
         run: |
-          curl --fail-with-body --silent --show-error \
+          curl --http1.1 --fail-with-body --silent --show-error \
             --max-time 300 \
-            --retry 2 \
+            --retry 3 \
+            --retry-all-errors \
             --request PUT \
+            --header "Expect:" \
             --header "content-type: audio/mpeg" \
             --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
             --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \

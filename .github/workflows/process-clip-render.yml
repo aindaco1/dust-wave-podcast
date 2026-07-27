@@ -144,10 +144,12 @@ jobs:
           UPLOAD_PAYLOAD: ${{ steps.upload.outputs.upload_payload }}
           UPLOAD_URL: ${{ steps.request.outputs.output_url }}
         run: |
-          curl --fail-with-body --silent --show-error \
+          curl --http1.1 --fail-with-body --silent --show-error \
             --max-time 600 \
-            --retry 2 \
+            --retry 3 \
+            --retry-all-errors \
             --request PUT \
+            --header "Expect:" \
             --header "content-type: video/mp4" \
             --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
             --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
