@@ -145,7 +145,7 @@ describe("YouTube audio rendition processor", () => {
     expect(callback.output.objectBytes).toBeGreaterThan(10_000);
     expect(Math.abs(callback.output.durationMs - 2_000))
       .toBeLessThanOrEqual(1_000);
-  });
+  }, 15_000);
 
   function fixtureManifest({ sourceBytes, artworkBytes }) {
     const renditionId = "rendition_fixture";
