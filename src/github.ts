@@ -47,6 +47,7 @@ export type EpisodeNewsPublication = {
       duration: number;
       audioUrl: string;
       downloadUrl: string;
+      peaksUrl: string;
       audioMimeType: string;
       audioBytes: number;
       transcriptUrl: string;
@@ -75,7 +76,25 @@ export async function publishEpisodeNewsSnapshot(
          AND e.status = 'published'
          AND e.public_at <= datetime('now')
          AND e.access IN ('public', 'early_access', 'premium_bonus', 'free_mini')
-         AND e.media_status = 'ready'`
+         AND e.media_status = 'ready'
+         AND EXISTS (
+           SELECT 1
+           FROM delivery_audio_jobs delivery
+           JOIN episode_working_master_states master_state
+             ON master_state.episode_id = e.id
+            AND master_state.current_master_id = delivery.source_master_id
+           WHERE delivery.episode_id = e.id
+             AND delivery.status = 'approved'
+             AND delivery.stream_profile =
+               'mp3-44100-stereo-cbr128-frame-v1'
+             AND delivery.output_object_key = e.audio_key
+             AND delivery.output_object_bytes = e.audio_bytes
+             AND delivery.output_object_etag = e.audio_etag
+             AND delivery.output_sha256 IS NOT NULL
+             AND delivery.peaks_sha256 IS NOT NULL
+             AND delivery.peaks_object_bytes > 0
+             AND delivery.peaks_length > 0
+         )`
     )
     .bind(episodeId)
     .first<PublicationEpisode>();
@@ -145,6 +164,8 @@ export function buildEpisodeNewsPublication(
       `${origins.mediaOrigin.replace(/\/$/, "")}/episodes/${episode.id}/audio`,
     downloadUrl:
       `${origins.mediaOrigin.replace(/\/$/, "")}/episodes/${episode.id}/audio?download=1`,
+    peaksUrl:
+      `${origins.mediaOrigin.replace(/\/$/, "")}/episodes/${episode.id}/peaks`,
     audioMimeType: episode.audio_mime_type,
     audioBytes: episode.audio_bytes,
     transcriptUrl:

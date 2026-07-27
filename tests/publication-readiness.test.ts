@@ -240,7 +240,15 @@ function readyInput(): ReadinessInput {
       current_master_id: "master_episode_1",
       working_master_origin_kind: "source_original",
       working_master_source_sha256: "d".repeat(64),
-      working_master_qc_report_sha256: "e".repeat(64)
+      working_master_qc_report_sha256: "e".repeat(64),
+      delivery_audio_job_id: "delivery_episode_1",
+      delivery_audio_source_master_id: "master_episode_1",
+      delivery_audio_stream_profile:
+        "mp3-44100-stereo-cbr128-frame-v1",
+      delivery_audio_output_sha256: "f".repeat(64),
+      delivery_audio_peaks_sha256: "0".repeat(64),
+      delivery_audio_peaks_bytes: 1_024,
+      delivery_audio_peaks_length: 512
     },
     publicationFingerprintCurrent: null,
     transcripts: [

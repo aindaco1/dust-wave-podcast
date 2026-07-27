@@ -72,6 +72,19 @@ import {
   uploadAudioEnhancementDerivativeProcessorPart
 } from "./audio-enhancement-derivatives";
 import {
+  approveAdminDeliveryAudioJob,
+  completeDeliveryAudioJob,
+  completeDeliveryAudioMultipartUpload,
+  getDeliveryAudioProcessorManifest,
+  getDeliveryAudioProcessorSource,
+  listAdminDeliveryAudioJobs,
+  queueAdminDeliveryAudioJob,
+  serveAdminDeliveryAudioJob,
+  serveAdminDeliveryAudioPeaks,
+  servePublicEpisodePeaks,
+  uploadDeliveryAudioProcessorPart
+} from "./delivery-audio";
+import {
   issueAdminStagingAdDecision,
   recordTrustedAdQualificationCallback,
   serveStagingAdDecisionAudio
@@ -236,6 +249,8 @@ const SHOW_EPISODE_CHAPTERS_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
 const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
+const PUBLIC_EPISODE_PEAKS_PATH =
+  /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)\/peaks$/;
 const PRIVATE_FEED_PATH =
   /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const PRIVATE_MEDIA_PATH =
@@ -296,12 +311,20 @@ const ADMIN_EPISODE_AUDIO_ENHANCEMENT_PREVIEWS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-enhancement-previews$/;
 const ADMIN_EPISODE_AUDIO_ENHANCEMENT_DERIVATIVES_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-enhancement-derivatives$/;
+const ADMIN_EPISODE_DELIVERY_AUDIO_JOBS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/delivery-audio-jobs$/;
 const ADMIN_AUDIO_ENHANCEMENT_MEDIA_PATH =
   /^\/v1\/admin\/audio-enhancements\/([A-Za-z0-9_-]+)\/media\/(original|enhanced)$/;
 const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_APPROVE_PATH =
   /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_MEDIA_PATH =
   /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/media$/;
+const ADMIN_DELIVERY_AUDIO_APPROVE_PATH =
+  /^\/v1\/admin\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/approve$/;
+const ADMIN_DELIVERY_AUDIO_MEDIA_PATH =
+  /^\/v1\/admin\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/media$/;
+const ADMIN_DELIVERY_AUDIO_PEAKS_PATH =
+  /^\/v1\/admin\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/peaks$/;
 const ADMIN_EPISODE_DISTRIBUTION_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
 const ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH =
@@ -413,6 +436,16 @@ const PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_PART_PATH =
   /^\/v1\/processor\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/parts\/([0-9]{1,5})$/;
 const PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_UPLOAD_COMPLETE_PATH =
   /^\/v1\/processor\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/upload-complete$/;
+const PROCESSOR_DELIVERY_AUDIO_COMPLETE_PATH =
+  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/complete$/;
+const PROCESSOR_DELIVERY_AUDIO_MANIFEST_PATH =
+  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/manifest$/;
+const PROCESSOR_DELIVERY_AUDIO_SOURCE_PATH =
+  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/source$/;
+const PROCESSOR_DELIVERY_AUDIO_PART_PATH =
+  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/parts\/([0-9]{1,5})$/;
+const PROCESSOR_DELIVERY_AUDIO_UPLOAD_COMPLETE_PATH =
+  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/upload-complete$/;
 const PROCESSOR_TRANSCRIPTION_CHUNK_COMPLETE_PATH =
   /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/complete$/;
 const PROCESSOR_TRANSCRIPTION_CHUNK_MANIFEST_PATH =
@@ -595,6 +628,19 @@ async function routeRequest(
       privateMediaMatch[1],
       privateMediaMatch[2],
       ctx
+    );
+  }
+  const publicEpisodePeaksMatch = url.pathname.match(
+    PUBLIC_EPISODE_PEAKS_PATH
+  );
+  if (
+    publicEpisodePeaksMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return servePublicEpisodePeaks(
+      request,
+      env,
+      publicEpisodePeaksMatch[1]
     );
   }
   const mediaMatch = url.pathname.match(MEDIA_PATH);
@@ -1027,6 +1073,61 @@ async function routeRequest(
       request,
       env,
       adminAudioEnhancementDerivativeMediaMatch[1]
+    );
+  }
+  const adminEpisodeDeliveryAudioJobsMatch = url.pathname.match(
+    ADMIN_EPISODE_DELIVERY_AUDIO_JOBS_PATH
+  );
+  if (adminEpisodeDeliveryAudioJobsMatch) {
+    if (method === "GET") {
+      return listAdminDeliveryAudioJobs(
+        request,
+        env,
+        adminEpisodeDeliveryAudioJobsMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return queueAdminDeliveryAudioJob(
+        request,
+        env,
+        adminEpisodeDeliveryAudioJobsMatch[1]
+      );
+    }
+  }
+  const adminDeliveryAudioApproveMatch = url.pathname.match(
+    ADMIN_DELIVERY_AUDIO_APPROVE_PATH
+  );
+  if (adminDeliveryAudioApproveMatch && method === "POST") {
+    return approveAdminDeliveryAudioJob(
+      request,
+      env,
+      adminDeliveryAudioApproveMatch[1]
+    );
+  }
+  const adminDeliveryAudioMediaMatch = url.pathname.match(
+    ADMIN_DELIVERY_AUDIO_MEDIA_PATH
+  );
+  if (
+    adminDeliveryAudioMediaMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveAdminDeliveryAudioJob(
+      request,
+      env,
+      adminDeliveryAudioMediaMatch[1]
+    );
+  }
+  const adminDeliveryAudioPeaksMatch = url.pathname.match(
+    ADMIN_DELIVERY_AUDIO_PEAKS_PATH
+  );
+  if (
+    adminDeliveryAudioPeaksMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveAdminDeliveryAudioPeaks(
+      request,
+      env,
+      adminDeliveryAudioPeaksMatch[1]
     );
   }
   const adminEpisodeAudioMasterMatch = url.pathname.match(
@@ -1716,6 +1817,60 @@ async function routeRequest(
       processorAudioEnhancementDerivativeCompleteMatch[1]
     );
   }
+  const processorDeliveryAudioManifestMatch = url.pathname.match(
+    PROCESSOR_DELIVERY_AUDIO_MANIFEST_PATH
+  );
+  if (processorDeliveryAudioManifestMatch && method === "POST") {
+    return getDeliveryAudioProcessorManifest(
+      request,
+      env,
+      processorDeliveryAudioManifestMatch[1]
+    );
+  }
+  const processorDeliveryAudioSourceMatch = url.pathname.match(
+    PROCESSOR_DELIVERY_AUDIO_SOURCE_PATH
+  );
+  if (processorDeliveryAudioSourceMatch && method === "POST") {
+    return getDeliveryAudioProcessorSource(
+      request,
+      env,
+      processorDeliveryAudioSourceMatch[1]
+    );
+  }
+  const processorDeliveryAudioPartMatch = url.pathname.match(
+    PROCESSOR_DELIVERY_AUDIO_PART_PATH
+  );
+  if (processorDeliveryAudioPartMatch && method === "PUT") {
+    return uploadDeliveryAudioProcessorPart(
+      request,
+      env,
+      processorDeliveryAudioPartMatch[1],
+      processorDeliveryAudioPartMatch[2]
+    );
+  }
+  const processorDeliveryAudioUploadCompleteMatch = url.pathname.match(
+    PROCESSOR_DELIVERY_AUDIO_UPLOAD_COMPLETE_PATH
+  );
+  if (
+    processorDeliveryAudioUploadCompleteMatch
+    && method === "POST"
+  ) {
+    return completeDeliveryAudioMultipartUpload(
+      request,
+      env,
+      processorDeliveryAudioUploadCompleteMatch[1]
+    );
+  }
+  const processorDeliveryAudioCompleteMatch = url.pathname.match(
+    PROCESSOR_DELIVERY_AUDIO_COMPLETE_PATH
+  );
+  if (processorDeliveryAudioCompleteMatch && method === "POST") {
+    return completeDeliveryAudioJob(
+      request,
+      env,
+      processorDeliveryAudioCompleteMatch[1]
+    );
+  }
   const processorTranscriptionChunkCompleteMatch = url.pathname.match(
     PROCESSOR_TRANSCRIPTION_CHUNK_COMPLETE_PATH
   );
@@ -1801,6 +1956,7 @@ async function routeRequest(
     || url.pathname.startsWith("/v1/webhooks")
     || Boolean(feedMatch)
     || Boolean(mediaMatch)
+    || Boolean(publicEpisodePeaksMatch)
     || Boolean(privateFeedMatch)
     || Boolean(privateMediaMatch)
     || Boolean(adDecisionAudioMatch);

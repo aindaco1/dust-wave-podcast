@@ -35,6 +35,8 @@ describe("canonical News publication snapshots", () => {
       audioUrl: "https://media.dustwave.xyz/episodes/episode_1/audio",
       downloadUrl:
         "https://media.dustwave.xyz/episodes/episode_1/audio?download=1",
+      peaksUrl:
+        "https://media.dustwave.xyz/episodes/episode_1/peaks",
       transcriptUrl:
         "https://feeds.dustwave.xyz/v1/shows/opera-en-la-selva/"
         + "episodes/episode-one/transcripts",

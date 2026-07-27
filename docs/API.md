@@ -290,6 +290,11 @@ including under concurrent requests.
 | `GET`, `HEAD` | `/v1/admin/audio-enhancements/{jobId}/media/{original\|enhanced}` | analyst+ | Show-scoped, range-safe, no-store preview or download |
 | `GET`, `HEAD` | `/v1/admin/audio-enhancement-derivatives/{jobId}/media` | analyst+ | Show-scoped, range-safe, no-store full derivative preview or download |
 | `POST` | `/v1/admin/audio-enhancement-derivatives/{jobId}/approve` | super-admin | Promote an exact current, zero-blocker QC candidate to a new working-master revision |
+| `GET` | `/v1/admin/episodes/{id}/delivery-audio-jobs` | analyst+ | Current-master delivery state, bounded waveform evidence, and staging processor availability |
+| `POST` | `/v1/admin/episodes/{id}/delivery-audio-jobs` | producer+ | Staging-only queue of an exact current-master MP3 and player-peaks render |
+| `GET`, `HEAD` | `/v1/admin/delivery-audio-jobs/{jobId}/media` | analyst+ | Show-scoped, range-safe, no-store normalized-audio preview or download |
+| `GET`, `HEAD` | `/v1/admin/delivery-audio-jobs/{jobId}/peaks` | analyst+ | Show-scoped, no-store validated player-peaks JSON |
+| `POST` | `/v1/admin/delivery-audio-jobs/{jobId}/approve` | recently authenticated super-admin | Atomically select exact current-master audio and peaks for the episode |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/subscribers` | super-admin | Bounded privacy-minimized aggregate and multi-source subscriber operations view as JSON or CSV |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
@@ -908,6 +913,35 @@ rechecks the current master, R2 evidence, output digest, successful
 zero-blocker QC result, and current policy revision in the same D1 transaction
 that creates the replacement master. It never changes delivery audio or
 publishes.
+
+### Delivery audio and player peaks
+
+One active delivery job is allowed per episode, current working master, and
+fixed `mp3-44100-stereo-cbr128-frame-v1` profile. Queueing heads the private
+current-master object and snapshots key, bytes, ETag, MIME, SHA-256, duration,
+output paths, and the shared manifest digest. Generic uploads cannot set
+`delivery_audio` once a working master exists.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/delivery-audio-jobs/{jobId}/manifest` | Rebuild and return the exact signed staging manifest |
+| `POST` | `/v1/processor/delivery-audio-jobs/{jobId}/source` | Stream the ETag-pinned private current master |
+| `PUT` | `/v1/processor/delivery-audio-jobs/{jobId}/parts/{partNumber}` | Verify and upload one signed 32 MiB-bounded MP3 part |
+| `POST` | `/v1/processor/delivery-audio-jobs/{jobId}/upload-complete` | Verify the ordered part set and finalize the private R2 MP3 |
+| `POST` | `/v1/processor/delivery-audio-jobs/{jobId}/complete` | Re-head audio, validate full-decode/frame/peaks evidence, and move the job to ready |
+
+The shared `@dustwave/media-core/delivery-audio` contract requires raw complete
+MPEG-1 Layer III frames at 44.1 kHz stereo and 128 kbps, no ID3/Xing bytes, a
+full successful decode, and a maximum 8,192-pair mono 8-bit WaveSurfer peaks
+document. Approval re-heads both private objects and requires recent
+Super-admin authentication, the current master, exact report/object digests,
+and a bounded reason. One D1 transaction updates the episode enclosure,
+approves the job, and records content-minimized audit evidence.
+
+`GET|HEAD /episodes/{episodeId}/peaks` is public only when a published/due
+full-episode revision still points to that exact approved job; all other states
+are indistinguishable `404`. News projection and the direct Publish endpoint
+independently require the same approved/current binding.
 
 ### Sponsor decision preview
 

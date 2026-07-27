@@ -528,6 +528,25 @@ export async function publishAdminEpisode(
            FROM publication_global_evidence_versions
            WHERE id = 'distribution'
          ) AS global_evidence_version,
+         EXISTS (
+           SELECT 1
+           FROM delivery_audio_jobs delivery
+           JOIN episode_working_master_states master_state
+             ON master_state.episode_id = e.id
+            AND master_state.current_master_id =
+              delivery.source_master_id
+           WHERE delivery.episode_id = e.id
+             AND delivery.status = 'approved'
+             AND delivery.stream_profile =
+               'mp3-44100-stereo-cbr128-frame-v1'
+             AND delivery.output_object_key = e.audio_key
+             AND delivery.output_object_bytes = e.audio_bytes
+             AND delivery.output_object_etag = e.audio_etag
+             AND delivery.output_sha256 IS NOT NULL
+             AND delivery.peaks_sha256 IS NOT NULL
+             AND delivery.peaks_object_bytes > 0
+             AND delivery.peaks_length > 0
+         ) AS delivery_audio_ready,
          s.slug AS show_slug
        FROM episodes e
        JOIN shows s ON s.id = e.show_id
@@ -559,6 +578,7 @@ export async function publishAdminEpisode(
       publication_evidence_version: number;
       show_evidence_version: number;
       global_evidence_version: number;
+      delivery_audio_ready: number;
       show_slug: string;
     }>();
   if (!episode) {
@@ -585,6 +605,9 @@ export async function publishAdminEpisode(
     durationSeconds: episode.duration_seconds,
     mediaStatus: episode.media_status
   });
+  if (episode.delivery_audio_ready !== 1) {
+    missing.push("approved normalized delivery audio and player peaks");
+  }
   if (missing.length > 0) {
     return privateJson(
       request,

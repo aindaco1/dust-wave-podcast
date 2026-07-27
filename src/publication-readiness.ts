@@ -69,6 +69,13 @@ type EpisodeReadinessRow = {
   working_master_origin_kind: string | null;
   working_master_source_sha256: string | null;
   working_master_qc_report_sha256: string | null;
+  delivery_audio_job_id: string | null;
+  delivery_audio_source_master_id: string | null;
+  delivery_audio_stream_profile: string | null;
+  delivery_audio_output_sha256: string | null;
+  delivery_audio_peaks_sha256: string | null;
+  delivery_audio_peaks_bytes: number | null;
+  delivery_audio_peaks_length: number | null;
 };
 
 type TranscriptReadinessRow = {
@@ -302,7 +309,14 @@ async function loadEpisodePublicationReadiness(
        master.origin_kind AS working_master_origin_kind,
        master.source_sha256 AS working_master_source_sha256,
        master.quality_control_report_sha256
-         AS working_master_qc_report_sha256
+         AS working_master_qc_report_sha256,
+       delivery.id AS delivery_audio_job_id,
+       delivery.source_master_id AS delivery_audio_source_master_id,
+       delivery.stream_profile AS delivery_audio_stream_profile,
+       delivery.output_sha256 AS delivery_audio_output_sha256,
+       delivery.peaks_sha256 AS delivery_audio_peaks_sha256,
+       delivery.peaks_object_bytes AS delivery_audio_peaks_bytes,
+       delivery.peaks_length AS delivery_audio_peaks_length
      FROM episodes e
      JOIN shows s ON s.id = e.show_id
      JOIN publication_show_evidence_versions show_evidence
@@ -313,6 +327,13 @@ async function loadEpisodePublicationReadiness(
        ON master.id = master_state.current_master_id
       AND master.episode_id = e.id
       AND master.revision = master_state.revision
+     LEFT JOIN delivery_audio_jobs delivery
+       ON delivery.episode_id = e.id
+      AND delivery.status = 'approved'
+      AND delivery.source_master_id = master_state.current_master_id
+      AND delivery.output_object_key = e.audio_key
+      AND delivery.output_object_bytes = e.audio_bytes
+      AND delivery.output_object_etag = e.audio_etag
      WHERE e.id = ?`
   ).bind(episodeId).first<EpisodeReadinessRow>();
   if (!episode) return null;
@@ -666,14 +687,32 @@ function audioNode(
     hasByteLength: Number(episode.audio_bytes) > 0,
     hasEtag: Boolean(episode.audio_etag),
     hasDuration: Number(episode.duration_seconds) > 0,
-    mediaStatus: episode.media_status
+    mediaStatus: episode.media_status,
+    deliveryJobId: episode.delivery_audio_job_id,
+    currentMasterBound:
+      Boolean(episode.current_master_id)
+      && episode.delivery_audio_source_master_id
+        === episode.current_master_id,
+    normalizedProfile:
+      episode.delivery_audio_stream_profile
+        === "mp3-44100-stereo-cbr128-frame-v1",
+    hasAudioSha256: Boolean(episode.delivery_audio_output_sha256),
+    hasPlayerPeaks:
+      Boolean(episode.delivery_audio_peaks_sha256)
+      && Number(episode.delivery_audio_peaks_bytes) > 0
+      && Number(episode.delivery_audio_peaks_length) > 0
   };
   const ready = fields.hasObject
     && fields.hasMimeType
     && fields.hasByteLength
     && fields.hasEtag
     && fields.hasDuration
-    && fields.mediaStatus === "ready";
+    && fields.mediaStatus === "ready"
+    && Boolean(fields.deliveryJobId)
+    && fields.currentMasterBound
+    && fields.normalizedProfile
+    && fields.hasAudioSha256
+    && fields.hasPlayerPeaks;
   return node({
     id: "core.delivery_audio",
     group: "core",
@@ -687,8 +726,8 @@ function audioNode(
           : "missing",
     severity: "blocker",
     summary: ready
-      ? "Ready audio has byte, MIME, duration, and ETag evidence."
-      : "A ready delivery-audio object with complete integrity evidence is required.",
+      ? "Approved normalized audio and player peaks match the current working master."
+      : "Approved normalized delivery audio and checksum-bound player peaks are required.",
     evidence: fields
   });
 }

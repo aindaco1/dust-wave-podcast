@@ -88,7 +88,16 @@ iHeartRadio, and Deezer.
   ordinary source-audio QC run for the completed candidate. It remains
   staging-only and private. A zero-blocker, current-policy result still needs
   an explicit Super-admin promotion before it becomes a new immutable master;
-  delivery audio and player peaks remain the next downstream boundary.
+  it cannot replace delivery audio by itself.
+- The delivery boundary now snapshots that exact current master into one
+  deterministic 44.1 kHz stereo 128 kbps MP3 and bounded
+  `dustwave-player-peaks-v1` document. The staging-only workflow fully decodes
+  the output, validates every complete MPEG frame, verifies checksum-bound
+  multipart uploads, and keeps both objects private until recent Super-admin
+  approval atomically selects them for the episode. News/RSS publication now
+  fails closed unless the selected audio and player peaks still descend from
+  the current master. The bilingual workbench uses the existing Digest player
+  for authenticated waveform preview and download.
 - Transcribe Spanish and English and expose bounded confidence/provenance. The
   signed staging alignment bridge now binds the exact approved transcript,
   working master, normalized projection, adapter, and pinned runner; validates

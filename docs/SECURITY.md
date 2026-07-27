@@ -549,6 +549,34 @@ one atomic batch creates the immutable replacement, advances the pointer, and
 writes conditional audit evidence. Neither free-form approval text nor object
 keys enter audit metadata.
 
+## Delivery-audio and player-peaks boundary
+
+Delivery rendering is absent outside staging and accepts only the exact current
+working master. Its shared contract fixes codec, sample rate, channel count,
+bitrate, metadata policy, full-decode evidence, complete MPEG frame accounting,
+and a bounded waveform schema; callers cannot provide FFmpeg filters or output
+locations. A master change makes queued, rendering, completing, and ready jobs
+stale. Replacing episode audio makes the old approval historical.
+
+The processor receives no R2 credential. Manifest/source/part/finalization
+requests use purpose-bound timestamped HMACs, bounded bodies, exact
+Content-Length, per-part SHA-256, ordered multipart evidence, native R2
+checksums, and fixed object metadata. The shared client rejects any endpoint
+outside the pinned staging Worker origin. Private source, MP3, waveform,
+manifest, and callback files are removed before GitHub retains a 30-day
+content-free evidence artifact.
+
+Authenticated admin media is show-scoped, credentialed, range-safe where
+applicable, `no-store`, `noindex`, and served only from ready/approved jobs.
+Approval requires fresh Super-admin authentication and re-heads both R2
+objects before an atomic episode/job/audit mutation. D1 triggers repeat the
+current-master, complete-evidence, and exact-selected-audio checks if
+application code is bypassed. The public peaks route is available only for a
+published, due full episode whose enclosure still matches that approved job;
+premium-only, stale, draft, and future states all return the same `404`.
+Publication readiness, direct Publish, and asynchronous GitHub News projection
+each enforce the exact approved/current binding independently.
+
 The separately authorized Shorts test stores one publication per render and
 revalidates the current revision plus the same D1/R2 evidence before any
 provider call. The confirmed URL must match both show metadata and the

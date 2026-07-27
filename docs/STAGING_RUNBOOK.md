@@ -382,8 +382,43 @@ revision, and non-Super-admin session; each must fail closed without a master
 or audit row. Anonymous derivative media is `401`; production queue,
 processor, and object state remain untouched.
 
+With the final working master selected, queue Delivery audio and player
+waveform from Production and dispatch the returned job ID:
+
+```sh
+gh workflow run process-delivery-audio.yml \
+  --ref agent/launch-configuration \
+  -f job_id="delivery_audio_REPLACE_WITH_QUEUED_ID"
+```
+
+Confirm the run fetches only the exact signed master, emits raw complete
+44.1 kHz stereo 128 kbps MP3 frames without ID3/Xing metadata, fully decodes
+the complete output, creates no more than 8,192 waveform peak pairs, and
+uploads every 32 MiB-bounded part through the Worker with exact length and
+SHA-256. The retained artifact must contain only IDs, byte/count totals, and
+digests—not the source, MP3, waveform, manifest, callback, R2 key, or FFmpeg
+log.
+
+Refresh the workbench and exercise the existing authenticated player,
+waveform, range request, and download. Anonymous admin media/peaks must be
+`401`; production queue/processor routes must be `404`. From a fresh
+Super-admin session, approve with a 10–500 character reason and exact-byte
+acknowledgement. Confirm the episode enclosure and approved job change in one
+transaction and readiness changes to a ready `core.delivery_audio` node.
+Repeat against a changed master, mismatched MP3 ETag/SHA, altered peaks
+digest, stale recent authentication, non-Super-admin identity, and replayed
+callback; all must fail closed without a new audit row.
+
+For a disposable published/due public episode, confirm
+`GET|HEAD /episodes/{id}/peaks` returns the approved bounded JSON with public
+short-cache headers and a conditional ETag. Draft, future, premium-only, stale,
+and replaced-audio fixtures must return the same no-store `404`. Confirm direct
+Publish and the asynchronous News projector each reject an episode lacking the
+same exact approved/current delivery job. Do not migrate or deploy production
+for this rehearsal.
+
 Using an isolated fully reviewed fixture, confirm
-`GET /v1/admin/episodes/{id}/readiness` returns 15 ordered nodes, the existing
+`GET /v1/admin/episodes/{id}/readiness` returns the documented ordered nodes, the existing
 legacy Publish checks pass unchanged, every current review target is counted,
 the candidate is ready, and repeated reads return the same `snapshotDigest`
 despite different `generatedAt` values. Confirm Analyst access succeeds,
@@ -891,3 +926,6 @@ For the full-episode YouTube test, use a separate fixture publication:
 - A Worker-code rollback after migration `0026` is also safe because the new
   notification table/index is additive. Leave it in place; older code neither
   reads it nor implies consent from its presence.
+- A Worker-code rollback after migration `0052` must leave delivery job/part
+  tables and triggers in place. They preserve immutable evidence and prevent
+  older/manual delivery audio from silently replacing a current-master render.

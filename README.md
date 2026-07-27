@@ -36,6 +36,14 @@ accountant-approved tax/provider evidence; dynamic audio assembly, public clip
 distribution, and production-live YouTube/GitHub publishing remain roadmap
 work.
 
+The delivery boundary now derives one fixed-profile MP3 and bounded player
+waveform from the exact approved working master through a staging-only,
+credential-minimized workflow. Full decode, complete-frame validation,
+checksummed multipart upload, private existing-player review, and recent
+Super-admin approval are required before the episode enclosure can satisfy
+News/RSS publication. Master changes make unapproved delivery work stale, and
+the public waveform exists only for the exact published approval.
+
 Audience reporting now combines provisional qualified downloads, daily
 60-second engaged Dust Wave web-player listens, app/device/country breakdowns,
 and daily 25/50/75/100 completion milestones. Completion uses cumulative

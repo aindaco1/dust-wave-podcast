@@ -85,6 +85,23 @@ export async function createMultipartUpload(
   if (["source_audio", "delivery_audio", "video_source", "transcript"].includes(kind) && !episodeId) {
     throw new RequestValidationError("episodeId is required for this upload kind");
   }
+  if (kind === "delivery_audio" && episodeId) {
+    const workingMaster = await env.DB.prepare(
+      `SELECT current_master_id
+       FROM episode_working_master_states
+       WHERE episode_id = ? AND current_master_id IS NOT NULL`
+    ).bind(episodeId).first<{ current_master_id: string }>();
+    if (workingMaster) {
+      return privateJson(
+        request,
+        env.ALLOWED_ORIGINS,
+        {
+          error: "delivery_audio_must_be_rendered_from_working_master"
+        },
+        { status: 409 }
+      );
+    }
+  }
   const filename = safeFilename(body.filename);
   const contentType = requiredText(body.contentType, "contentType", 160).toLowerCase();
   validateContentType(kind, contentType);
