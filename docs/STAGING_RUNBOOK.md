@@ -640,6 +640,27 @@ Replace it with a dedicated restricted Podcast test key before step 2, then
 repeat the preflight. Never reuse the Pool/Store webhook signing secret or a
 live API key.
 
+Run the same evidence contract without copying provider output into a shell
+transcript:
+
+```sh
+npm run gate:stripe:staging
+```
+
+The safe pre-activation result is `14 pass, 1 block, 0 fail`; the sole blocker
+is the absent accountant-approved tax version. The gate exits nonzero for any
+configuration/provider drift. During final promotion, require the blocker to
+be gone as well:
+
+```sh
+npm run gate:stripe:staging -- --require-ready
+```
+
+The gate accepts no production selector, performs no Stripe or D1 mutation,
+reads only Worker secret names, and never emits a provider key. Run it only
+from the reviewed Podcast repository with authenticated test-mode Stripe and
+Wrangler CLIs.
+
 Required for the isolated ad-plan processor:
 
 - Worker secret `MEDIA_PROCESSOR_CALLBACK_SECRET`

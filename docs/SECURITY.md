@@ -150,6 +150,13 @@
   Checkout stays disabled behind `SUBSCRIPTION_CHECKOUT_ENABLED` until the
   provider, signed webhook, listener email-HMAC, rate-limit HMAC, Turnstile,
   active price, and approved tax gates all pass.
+- `npm run gate:stripe:staging` is structurally read-only and staging-scoped.
+  It uses Wrangler only for bounded D1 reads and secret-name inventory, and
+  Stripe only for test Product, Price, Portal, and webhook reads. It emits
+  allowlisted posture/count evidence instead of secret values, customer data,
+  addresses, provider payloads, or hosted Checkout URLs. Provider drift is a
+  failure; inactive objects and the disabled kill switch are required until
+  the accountant gate passes.
 - Subscription tax estimates reuse Store-characterized destination and
   integer-cent primitives through `@dustwave/tax-core`; provider lookup,
   jurisdiction approval, and subscription policy remain in their owning
