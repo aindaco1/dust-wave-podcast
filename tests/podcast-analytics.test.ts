@@ -7,7 +7,7 @@ import {
   recordPodcastPlayerEvent
 } from "../src/podcast-analytics";
 
-function analyticsHarness() {
+function analyticsHarness({ authorized = false } = {}) {
   const boundValues: unknown[][] = [];
   const batches: Array<Array<{ values: unknown[] }>> = [];
   const dataPoints: AnalyticsEngineDataPoint[] = [];
@@ -30,7 +30,77 @@ function analyticsHarness() {
               audio_bytes: 1_200
             };
           }
+          if (authorized && query.includes("FROM admin_sessions")) {
+            return {
+              admin_user_id: "admin_fixture",
+              csrf_token_hash: "csrf_fixture"
+            };
+          }
+          if (authorized && query.includes("FROM subscriptions")) {
+            return { listener_count: 4 };
+          }
           return null;
+        },
+        async all() {
+          if (authorized && query.includes("FROM admin_user_roles")) {
+            return {
+              results: [{
+                role: "analyst",
+                show_id: "show_fixture"
+              }]
+            };
+          }
+          if (
+            authorized
+            && query.includes("FROM podcast_analytics_rollups")
+          ) {
+            const windowDate = new Date().toISOString().slice(0, 10);
+            return {
+              results: [
+                {
+                  event_type: "qualified_download",
+                  window_date: windowDate,
+                  episode_id: "episode_fixture",
+                  episode_title: "Episode fixture",
+                  app_code: "browser",
+                  device_code: "desktop",
+                  country_code: "US",
+                  event_count: 10
+                },
+                {
+                  event_type: "engaged_play",
+                  window_date: windowDate,
+                  episode_id: "episode_fixture",
+                  episode_title: "Episode fixture",
+                  app_code: "browser",
+                  device_code: "desktop",
+                  country_code: "US",
+                  event_count: 5
+                }
+              ]
+            };
+          }
+          if (
+            authorized
+            && query.includes("FROM podcast_analytics_progress_rollups")
+          ) {
+            const windowDate = new Date().toISOString().slice(0, 10);
+            return {
+              results: [25, 50, 75, 100].map(
+                (milestone, index) => ({
+                  window_date: windowDate,
+                  episode_id: "episode_fixture",
+                  episode_title: "Episode fixture",
+                  milestone_percent: milestone,
+                  event_count: 4 - index
+                })
+              )
+            };
+          }
+          return { results: [] };
+        },
+        async run() {
+          return { success: true };
         }
       };
       return statement;
@@ -48,6 +118,9 @@ function analyticsHarness() {
       }
     },
     ANALYTICS_HASH_SECRET: "analytics_hash_secret_fixture",
+    ...(authorized
+      ? { ADMIN_SESSION_SECRET: "admin_session_secret_fixture" }
+      : {}),
     ALLOWED_ORIGINS: "https://dustwave.xyz,https://www.dustwave.xyz",
     SITE_ORIGIN: "https://dustwave.xyz"
   } as unknown as PodcastEnv;
@@ -164,6 +237,136 @@ describe("privacy-minimized podcast analytics", () => {
     expect(response.status).toBe(202);
     expect(harness.batches).toHaveLength(1);
     expect(harness.dataPoints[0]?.blobs).toContain("engaged_play");
+  });
+
+  it("records only validated web-player completion milestones", async () => {
+    const harness = analyticsHarness();
+    const response = await recordPodcastPlayerEvent(
+      listenerRequest(
+        "https://feeds.dustwave.xyz/v1/analytics/player-events",
+        {
+          method: "POST",
+          headers: {
+            origin: "https://dustwave.xyz",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            episodeId: "episode_fixture",
+            event: "web_player_completion",
+            seconds: 120,
+            milestones: [25, 50, 75, 100]
+          })
+        }
+      ),
+      harness.env
+    );
+
+    expect(response.status).toBe(202);
+    expect(harness.batches).toHaveLength(1);
+    expect(harness.batches[0]).toHaveLength(8);
+    expect(harness.dataPoints).toHaveLength(4);
+    expect(harness.dataPoints.map((point) => point.doubles?.[3])).toEqual(
+      [25, 50, 75, 100]
+    );
+    expect(harness.boundValues.flat()).not.toContain(
+      "2001:db8:1234:5678:aaaa:bbbb:cccc:dddd"
+    );
+    expect(harness.boundValues.flat()).not.toContain(
+      "Spotify/9.0 (iPhone; iOS 19) Mozilla/5.0"
+    );
+  });
+
+  it("rejects impossible, duplicate, or unordered completion claims", async () => {
+    const harness = analyticsHarness();
+    const request = (seconds: number, milestones: number[]) =>
+      recordPodcastPlayerEvent(
+        listenerRequest(
+          "https://feeds.dustwave.xyz/v1/analytics/player-events",
+          {
+            method: "POST",
+            headers: {
+              origin: "https://dustwave.xyz",
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              episodeId: "episode_fixture",
+              event: "web_player_completion",
+              seconds,
+              milestones
+            })
+          }
+        ),
+        harness.env
+      );
+
+    await expect(request(60, [100])).rejects.toThrow(
+      "seconds do not reach"
+    );
+    await expect(request(120, [25, 25])).rejects.toThrow(
+      "unique ascending"
+    );
+    await expect(request(120, [50, 25])).rejects.toThrow(
+      "unique ascending"
+    );
+    expect(harness.batches).toHaveLength(0);
+    expect(harness.dataPoints).toHaveLength(0);
+  });
+
+  it("returns bounded completion counts and rates to a show analyst", async () => {
+    const harness = analyticsHarness({ authorized: true });
+    const response = await getAdminPodcastAnalyticsOverview(
+      new Request(
+        "https://feeds.dustwave.xyz/v1/admin/shows/show_fixture/analytics/overview?days=7",
+        {
+          headers: {
+            cookie:
+              "dustwave_podcast_admin_session=session_token_fixture"
+          }
+        }
+      ),
+      harness.env,
+      "show_fixture"
+    );
+    const payload = await response.json<{
+      totals: {
+        qualifiedDownloads: number;
+        engagedPlays: number;
+        activePremiumListeners: number;
+      };
+      episodes: Array<{
+        webPlayerCompletion: Record<string, number>;
+        webPlayerCompletionRates: Record<string, number>;
+      }>;
+      webPlayerCompletion: {
+        scope: string;
+        engagedPlays: number;
+        counts: Record<string, number>;
+        rates: Record<string, number>;
+      };
+    }>();
+
+    expect(response.status).toBe(200);
+    expect(payload.totals).toEqual({
+      qualifiedDownloads: 10,
+      engagedPlays: 5,
+      activePremiumListeners: 4
+    });
+    expect(payload.webPlayerCompletion).toMatchObject({
+      scope: "dust_wave_web_player_only",
+      engagedPlays: 5,
+      counts: { 25: 4, 50: 3, 75: 2, 100: 1 },
+      rates: { 25: 0.8, 50: 0.6, 75: 0.4, 100: 0.2 }
+    });
+    expect(payload.episodes[0]).toMatchObject({
+      webPlayerCompletion: { 25: 4, 50: 3, 75: 2, 100: 1 },
+      webPlayerCompletionRates: {
+        25: 0.8,
+        50: 0.6,
+        75: 0.4,
+        100: 0.2
+      }
+    });
+    expect(response.headers.get("cache-control")).toContain("private");
   });
 
   it("rejects cross-origin player events and anonymous admin reads", async () => {

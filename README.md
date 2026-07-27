@@ -34,6 +34,14 @@ alignment adapter's human-reviewed benchmark evidence remain gated. Checkout rem
 accountant-approved tax/provider evidence; dynamic audio assembly, public clip
 distribution, and live YouTube/GitHub publishing remain roadmap work.
 
+Audience reporting now combines provisional qualified downloads, daily
+60-second engaged Dust Wave web-player listens, app/device/country breakdowns,
+and daily 25/50/75/100 completion milestones. Completion uses cumulative
+foreground playback rather than playhead position and cannot represent
+third-party podcast-app retention. Exact HMAC-deduplicated aggregates remain in
+D1; raw IP addresses, user agents, elapsed seconds, and seek history are never
+stored.
+
 The transcript review workbench stores versioned English/Spanish cue records,
 uses optimistic revisions and idempotency keys, and keeps word-linked controls
 off unless a matching alignment revision passed the launch gate. Producer

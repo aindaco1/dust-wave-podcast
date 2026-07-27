@@ -180,7 +180,10 @@ iHeartRadio, and Deezer.
   engagement, sponsors, subscriptions, YouTube, and publication health. The
   implemented audience slice now exposes show-scoped 7/30/90-day qualified
   downloads, first-party engaged plays, point-in-time active premium listeners,
-  daily trends, top episodes, normalized breakdowns, and a formula-safe CSV.
+  daily trends, top episodes, normalized breakdowns, daily first-party
+  web-player 25/50/75/100 completion, and a formula-safe CSV. Completion uses
+  cumulative foreground playback rather than playhead position and is never
+  represented as third-party-app retention.
 - Keep raw delivery data privacy-minimized, methodology-versioned, deduplicated,
   filterable, and exportable. `dustwave-analytics-v1` stores no raw IP or user
   agent: an HMAC daily uniqueness key expires after 35 days, exact aggregate

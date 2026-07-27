@@ -155,18 +155,24 @@ invoice evidence and customer tax-change previews.
 ### First-party audience analytics
 
 `POST /v1/analytics/player-events` accepts only an exact configured site
-`Origin`, a bounded `engaged_play` body, a published and publicly due episode,
-and at least 60 seconds reported by the shared Dust Wave web player. It returns
-no listener identity. Daily HMAC deduplication uses a normalized network prefix
-and user agent in memory; neither raw value is persisted.
+`Origin`, a bounded `engaged_play` or `web_player_completion` body, a published
+and publicly due episode, and at least 60 seconds reported by the shared Dust
+Wave web player. Completion accepts only unique ascending `25`, `50`, `75`,
+and `100` milestones that the supplied cumulative foreground seconds can
+actually reach against the episode duration. It returns no listener identity.
+Daily HMAC deduplication uses a normalized network prefix and user agent in
+memory; neither raw value nor the supplied second count is persisted.
 
 `GET /v1/admin/shows/{showId}/analytics/overview?days=7|30|90` requires an
 Analyst-or-higher role scoped to that show. It returns zero-filled UTC daily
-series, totals, top episodes, normalized app/device/country breakdowns, the
-current active-premium-listener count, methodology and caveats. The companion
-`overview.csv` route exports the daily series through the shared bounded,
-formula-neutralized CSV response. Both admin routes are private/no-store and
-return no hashes or listener identifiers.
+series, totals, top episodes, normalized app/device/country breakdowns,
+first-party web-player completion counts/rates, the current
+active-premium-listener count, methodology and caveats. Completion is
+explicitly scoped to the Dust Wave web player and uses daily engaged episode
+listeners as its cohort; third-party podcast apps do not expose this evidence.
+The companion `overview.csv` route exports the daily series and completion
+counts through the shared bounded, formula-neutralized CSV response. Both
+admin routes are private/no-store and return no hashes or listener identifiers.
 
 Qualified downloads are provisional `dustwave-analytics-v1` evidence, not IAB
 certification: one eligible `GET` per episode and daily HMAC key qualifies when
@@ -174,6 +180,8 @@ a `200` or a single `206` response contains at least an estimated minute of
 audio. `HEAD`, sub-threshold probes, known bots, command-line clients, and
 watchOS are excluded. The implementation cannot confirm transfer completion or
 reassemble multiple range requests, and the admin states those limitations.
+Completion measures cumulative foreground playback time rather than playhead
+position, so seeking alone cannot advance a milestone.
 
 ### Subscriber administration
 

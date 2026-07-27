@@ -216,10 +216,13 @@
   non-identifying dimensions. Missing secrets, D1 failures, and Analytics
   Engine failures are best effort and cannot block media delivery.
 - The public player event endpoint accepts only configured exact origins,
-  bounded JSON, the closed `engaged_play` event, and a public, due, ready-media
-  episode. Daily deduplication limits replay value. The dashboard and exports
-  are show-scoped, credentialed, private/no-store, and contain no listener
-  identifiers or HMAC keys.
+  bounded JSON, the closed `engaged_play`/`web_player_completion` events, and a
+  public, due, ready-media episode. Completion allows only unique ascending
+  25/50/75/100 milestones that cumulative foreground seconds can reach against
+  the canonical duration. Raw second counts and playhead positions are not
+  stored. Daily per-episode/per-milestone deduplication limits replay value.
+  The dashboard and exports are show-scoped, credentialed, private/no-store,
+  and contain no listener identifiers or HMAC keys.
 - The ad-plan staging processor requires its own least-privilege R2-capable
   Cloudflare token. The clip processor deliberately receives no R2 credential:
   it uses purpose-bound signed source/output routes that stream through the

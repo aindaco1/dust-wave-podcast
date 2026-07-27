@@ -218,6 +218,10 @@ backup into a disposable local SQLite file, and verify `quick_check`, foreign
 keys, all 39 prior migration records, and row counts. After applying, verify
 the seven benchmark evidence columns, unique submission/input indexes,
 non-unique report index, passing-evidence view, and recreated approval trigger.
+A manually inserted passing benchmark without private evidence or the exact
+runner revision must still fail approval. Replay every migration from zero.
+Before any real benchmark import, `alignment_benchmark_runs` and private
+benchmark R2 objects must remain zero.
 
 For migration `0046`, verify both analytics tables, the expiry and show/date
 indexes, closed event/methodology checks, 64-character key checks, UTC-date
@@ -229,11 +233,16 @@ agent values do not appear in D1, then confirm the admin 7/30/90-day JSON and
 CSV remain private/no-store. Known bots, `HEAD`, watchOS, untrusted player
 origins, and premium/non-public player events must not count. Production stays
 unmigrated and undeployed until owner review.
-A manually inserted
-passing benchmark without private evidence or the exact runner revision must
-still fail approval. Replay all 40 migrations from zero. Before any real
-benchmark import, `alignment_benchmark_runs` and private benchmark R2 objects
-must remain zero.
+For migration `0047`, verify the two isolated web-player completion tables,
+their expiry and show/date indexes, the closed 25/50/75/100 milestone check,
+64-character key checks, positive rollup counts, and clean foreign keys.
+Replay one exact unique/milestone pair twice and confirm its rollup stays at
+one. From the trusted staging site, exercise a 60-second engaged play followed
+by bounded cumulative completion events; seeking without foreground elapsed
+time must not advance a milestone. Confirm D1 contains no raw IP, user agent,
+playhead position, or elapsed-second value and that the 7/30/90 JSON/CSV and
+English/Spanish dashboard identify the scope as Dust Wave web player only.
+Production remains unmigrated and undeployed.
 
 After this workflow is present on a dispatchable branch, queue the current
 source from Production and run:

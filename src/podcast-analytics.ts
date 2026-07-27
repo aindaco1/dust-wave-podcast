@@ -33,6 +33,10 @@ const BOT_PATTERN =
 const WATCH_OS_PATTERN = /\b(?:watch\s?os|watch\d+,\d+)\b/i;
 
 type AnalyticsEventType = "qualified_download" | "engaged_play";
+type AnalyticsTelemetryEventType =
+  | AnalyticsEventType
+  | "web_player_completion";
+type ProgressMilestone = 25 | 50 | 75 | 100;
 type AnalyticsDimensions = {
   appCode: string;
   countryCode: string;
@@ -56,6 +60,13 @@ type RollupRow = {
   app_code: string;
   device_code: string;
   country_code: string;
+  event_count: number;
+};
+type ProgressRollupRow = {
+  window_date: string;
+  episode_id: string;
+  episode_title: string;
+  milestone_percent: ProgressMilestone;
   event_count: number;
 };
 
@@ -103,13 +114,19 @@ export async function recordPodcastPlayerEvent(
   }
   const body = await readJsonObject(request, 2_048);
   const episodeId = validIdentifier(body.episodeId, "episodeId");
-  if (body.event !== "engaged_play") {
+  if (
+    body.event !== "engaged_play"
+    && body.event !== "web_player_completion"
+  ) {
     throw new RequestValidationError("event is invalid");
   }
   const seconds = Number(body.seconds);
   if (!Number.isFinite(seconds) || seconds < 60 || seconds > 86_400) {
     throw new RequestValidationError("seconds must be between 60 and 86400");
   }
+  const milestones = body.event === "web_player_completion"
+    ? progressMilestones(body.milestones)
+    : [];
   const episode = await env.DB.prepare(
     `SELECT
        id, show_id, duration_seconds, audio_bytes
@@ -134,6 +151,13 @@ export async function recordPodcastPlayerEvent(
       { status: 404 }
     );
   }
+  if (body.event === "web_player_completion") {
+    validateProgressThresholds(
+      milestones,
+      seconds,
+      episode.duration_seconds
+    );
+  }
   const identity = analyticsIdentity(request);
   if (identity) {
     const dimensions = analyticsDimensions(request, identity.userAgent);
@@ -143,23 +167,46 @@ export async function recordPodcastPlayerEvent(
       durationSeconds: episode.duration_seconds,
       audioBytes: Number(episode.audio_bytes)
     };
-    writeAnalyticsEngine(env, {
-      eventType: "engaged_play",
-      episode: analyticsEpisode,
-      dimensions,
-      eventCount: 1,
-      status: 202,
-      bytes: 0
-    });
-    if (env.ANALYTICS_HASH_SECRET) {
-      await recordUniqueEvent(
-        env,
-        "engaged_play",
-        analyticsEpisode,
+    if (body.event === "engaged_play") {
+      writeAnalyticsEngine(env, {
+        eventType: "engaged_play",
+        episode: analyticsEpisode,
         dimensions,
-        identity,
-        env.ANALYTICS_HASH_SECRET
-      );
+        eventCount: 1,
+        status: 202,
+        bytes: 0
+      });
+      if (env.ANALYTICS_HASH_SECRET) {
+        await recordUniqueEvent(
+          env,
+          "engaged_play",
+          analyticsEpisode,
+          dimensions,
+          identity,
+          env.ANALYTICS_HASH_SECRET
+        );
+      }
+    } else {
+      for (const milestonePercent of milestones) {
+        writeAnalyticsEngine(env, {
+          eventType: "web_player_completion",
+          episode: analyticsEpisode,
+          dimensions,
+          eventCount: 1,
+          status: 202,
+          bytes: 0,
+          milestonePercent
+        });
+      }
+      if (env.ANALYTICS_HASH_SECRET) {
+        await recordUniqueProgress(
+          env,
+          analyticsEpisode,
+          milestones,
+          identity,
+          env.ANALYTICS_HASH_SECRET
+        );
+      }
     }
   }
   return privateJson(
@@ -205,12 +252,20 @@ export async function exportAdminPodcastAnalyticsCsv(
       "date",
       "qualified_downloads",
       "engaged_plays",
+      "web_player_completion_25",
+      "web_player_completion_50",
+      "web_player_completion_75",
+      "web_player_completion_100",
       "methodology_version"
     ],
     rows: overview.daily.map((day) => ({
       date: day.date,
       qualified_downloads: day.qualifiedDownloads,
       engaged_plays: day.engagedPlays,
+      web_player_completion_25: day.webPlayerCompletion[25],
+      web_player_completion_50: day.webPlayerCompletion[50],
+      web_player_completion_75: day.webPlayerCompletion[75],
+      web_player_completion_100: day.webPlayerCompletion[100],
       methodology_version: METHODOLOGY_VERSION
     }))
   });
@@ -224,6 +279,14 @@ export async function cleanupPodcastAnalytics(db: D1Database): Promise<void> {
     ),
     db.prepare(
       `DELETE FROM podcast_analytics_rollups
+       WHERE window_date < date('now', ?)`
+    ).bind(`-${ANALYTICS_ROLLUP_RETENTION_DAYS} days`),
+    db.prepare(
+      `DELETE FROM podcast_analytics_progress_uniques
+       WHERE expires_at <= datetime('now')`
+    ),
+    db.prepare(
+      `DELETE FROM podcast_analytics_progress_rollups
        WHERE window_date < date('now', ?)`
     ).bind(`-${ANALYTICS_ROLLUP_RETENTION_DAYS} days`)
   ]);
@@ -245,7 +308,7 @@ async function loadAnalyticsOverview(
 ) {
   const startDate = utcDateOffset(-(days - 1));
   const endDate = utcDateOffset(0);
-  const [rollups, premiumRow] = await Promise.all([
+  const [rollups, progressRollups, premiumRow] = await Promise.all([
     db.prepare(
       `SELECT
          rollup.event_type, rollup.window_date, rollup.episode_id,
@@ -268,6 +331,25 @@ async function loadAnalyticsOverview(
       endDate
     ).all<RollupRow>(),
     db.prepare(
+      `SELECT
+         progress.window_date, progress.episode_id,
+         episode.title AS episode_title, progress.milestone_percent,
+         SUM(progress.event_count) AS event_count
+       FROM podcast_analytics_progress_rollups progress
+       JOIN episodes episode ON episode.id = progress.episode_id
+       WHERE progress.show_id = ?
+         AND progress.methodology_version = ?
+         AND progress.window_date BETWEEN ? AND ?
+       GROUP BY
+         progress.window_date, progress.episode_id, episode.title,
+         progress.milestone_percent`
+    ).bind(
+      showId,
+      METHODOLOGY_VERSION,
+      startDate,
+      endDate
+    ).all<ProgressRollupRow>(),
+    db.prepare(
       `SELECT COUNT(DISTINCT listener_id) AS listener_count
        FROM subscriptions
        WHERE show_id = ?
@@ -281,7 +363,8 @@ async function loadAnalyticsOverview(
   const daily = Array.from({ length: days }, (_, index) => ({
     date: utcDateOffset(-(days - index - 1)),
     qualifiedDownloads: 0,
-    engagedPlays: 0
+    engagedPlays: 0,
+    webPlayerCompletion: emptyProgressCounts()
   }));
   const dailyByDate = new Map(daily.map((row) => [row.date, row]));
   const episodeMap = new Map<string, {
@@ -289,12 +372,14 @@ async function loadAnalyticsOverview(
     title: string;
     qualifiedDownloads: number;
     engagedPlays: number;
+    webPlayerCompletion: Record<ProgressMilestone, number>;
   }>();
   const appMap = new Map<string, number>();
   const deviceMap = new Map<string, number>();
   const countryMap = new Map<string, number>();
   let qualifiedDownloads = 0;
   let engagedPlays = 0;
+  const webPlayerCompletion = emptyProgressCounts();
 
   for (const row of rollups.results) {
     const count = Number(row.event_count ?? 0);
@@ -303,7 +388,8 @@ async function loadAnalyticsOverview(
       episodeId: row.episode_id,
       title: row.episode_title,
       qualifiedDownloads: 0,
-      engagedPlays: 0
+      engagedPlays: 0,
+      webPlayerCompletion: emptyProgressCounts()
     };
     if (row.event_type === "qualified_download") {
       qualifiedDownloads += count;
@@ -320,6 +406,24 @@ async function loadAnalyticsOverview(
     episodeMap.set(row.episode_id, episodeRow);
   }
 
+  for (const row of progressRollups.results) {
+    const count = Number(row.event_count ?? 0);
+    const milestone = Number(row.milestone_percent) as ProgressMilestone;
+    if (!isProgressMilestone(milestone)) continue;
+    webPlayerCompletion[milestone] += count;
+    const dailyRow = dailyByDate.get(row.window_date);
+    if (dailyRow) dailyRow.webPlayerCompletion[milestone] += count;
+    const episodeRow = episodeMap.get(row.episode_id) ?? {
+      episodeId: row.episode_id,
+      title: row.episode_title,
+      qualifiedDownloads: 0,
+      engagedPlays: 0,
+      webPlayerCompletion: emptyProgressCounts()
+    };
+    episodeRow.webPlayerCompletion[milestone] += count;
+    episodeMap.set(row.episode_id, episodeRow);
+  }
+
   return {
     showId,
     range: { days, startDate, endDate, timeZone: "UTC" },
@@ -331,8 +435,10 @@ async function loadAnalyticsOverview(
         "One eligible GET per episode and privacy-minimized network plus user-agent key per UTC day when a 200 response or one 206 response contains at least an estimated minute of audio. HEAD, byte probes, known bots, command-line clients, and watchOS traffic are excluded.",
       engagedPlay:
         "One first-party Dust Wave web-player event per episode and privacy-minimized network plus user-agent key per UTC day after at least 60 cumulative seconds of foreground playback.",
+      webPlayerCompletion:
+        "First-party Dust Wave web-player completion counts use cumulative foreground playback time, not playhead position. A daily episode listener is counted once at each reached 25%, 50%, 75%, or 100% milestone after the 60-second engagement threshold.",
       caveat:
-        "This provisional first-party method estimates audio duration from file bytes, does not reassemble ranges or confirm transfer completion, and must not be represented as IAB certification."
+        "This provisional first-party method estimates download duration from file bytes, does not reassemble ranges or confirm transfer completion, cannot measure playback completion in third-party podcast apps, and must not be represented as IAB certification."
     },
     totals: {
       qualifiedDownloads,
@@ -341,12 +447,26 @@ async function loadAnalyticsOverview(
     },
     daily,
     episodes: [...episodeMap.values()]
+      .map((episode) => ({
+        ...episode,
+        webPlayerCompletionRates: progressRates(
+          episode.webPlayerCompletion,
+          episode.engagedPlays
+        )
+      }))
       .sort((left, right) =>
         right.qualifiedDownloads - left.qualifiedDownloads
         || right.engagedPlays - left.engagedPlays
         || left.title.localeCompare(right.title)
       )
       .slice(0, 20),
+    webPlayerCompletion: {
+      scope: "dust_wave_web_player_only",
+      cohort: "engaged_plays",
+      engagedPlays,
+      counts: webPlayerCompletion,
+      rates: progressRates(webPlayerCompletion, engagedPlays)
+    },
     breakdowns: {
       apps: sortedBreakdown(appMap, 20),
       devices: sortedBreakdown(deviceMap, 20),
@@ -429,6 +549,74 @@ async function recordUniqueEvent(
       dimensions.countryCode
     )
   ]);
+}
+
+async function recordUniqueProgress(
+  env: PodcastEnv,
+  episode: AnalyticsEpisode,
+  milestones: ProgressMilestone[],
+  identity: { network: string; userAgent: string },
+  analyticsHashSecret: string
+): Promise<void> {
+  const windowDate = utcDateOffset(0);
+  const hashes = await Promise.all(milestones.map(async (milestone) => ({
+    milestone,
+    identityKey: await hmacSha256(
+      [
+        METHODOLOGY_VERSION,
+        "web_player_completion",
+        milestone,
+        windowDate,
+        episode.id,
+        identity.network,
+        identity.userAgent
+      ].join("\0"),
+      analyticsHashSecret,
+      "hex"
+    ),
+    rollupId: await sha256Hex([
+      METHODOLOGY_VERSION,
+      "web_player_completion",
+      milestone,
+      windowDate,
+      episode.showId,
+      episode.id
+    ].join("\0"))
+  })));
+  await env.DB.batch(hashes.flatMap((hash) => [
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO podcast_analytics_progress_uniques (
+         unique_key, methodology_version, window_date, show_id,
+         episode_id, milestone_percent, expires_at
+       ) VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))`
+    ).bind(
+      hash.identityKey,
+      METHODOLOGY_VERSION,
+      windowDate,
+      episode.showId,
+      episode.id,
+      hash.milestone,
+      `+${ANALYTICS_UNIQUE_RETENTION_DAYS} days`
+    ),
+    env.DB.prepare(
+      `INSERT INTO podcast_analytics_progress_rollups (
+         id, methodology_version, window_date, show_id, episode_id,
+         milestone_percent, event_count
+       )
+       SELECT ?, ?, ?, ?, ?, ?, 1
+       WHERE changes() = 1
+       ON CONFLICT(id) DO UPDATE SET
+         event_count = event_count + 1,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+    ).bind(
+      hash.rollupId,
+      METHODOLOGY_VERSION,
+      windowDate,
+      episode.showId,
+      episode.id,
+      hash.milestone
+    )
+  ]));
 }
 
 function qualifiedMediaDelivery(
@@ -541,12 +729,13 @@ function countryCode(request: Request): string {
 function writeAnalyticsEngine(
   env: PodcastEnv,
   event: {
-    eventType: AnalyticsEventType;
+    eventType: AnalyticsTelemetryEventType;
     episode: AnalyticsEpisode;
     dimensions: AnalyticsDimensions;
     eventCount: number;
     status: number;
     bytes: number;
+    milestonePercent?: ProgressMilestone;
   }
 ): void {
   try {
@@ -564,12 +753,77 @@ function writeAnalyticsEngine(
       doubles: [
         event.eventCount,
         event.status,
-        event.bytes
+        event.bytes,
+        event.milestonePercent ?? 0
       ]
     });
   } catch {
     // Analytics is intentionally best effort and must never affect playback.
   }
+}
+
+function progressMilestones(value: unknown): ProgressMilestone[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 4) {
+    throw new RequestValidationError(
+      "milestones must contain one through four completion thresholds"
+    );
+  }
+  const milestones = value.map(Number);
+  if (
+    milestones.some((milestone) => !isProgressMilestone(milestone))
+    || new Set(milestones).size !== milestones.length
+    || milestones.some((milestone, index) =>
+      index > 0 && milestone <= milestones[index - 1]
+    )
+  ) {
+    throw new RequestValidationError(
+      "milestones must be unique ascending values from 25, 50, 75, and 100"
+    );
+  }
+  return milestones as ProgressMilestone[];
+}
+
+function validateProgressThresholds(
+  milestones: ProgressMilestone[],
+  seconds: number,
+  durationSeconds: number | null
+): void {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new RequestValidationError(
+      "episode duration is required for completion analytics"
+    );
+  }
+  const highest = milestones[milestones.length - 1];
+  if (seconds + 2 < duration * highest / 100) {
+    throw new RequestValidationError(
+      "seconds do not reach the highest completion milestone"
+    );
+  }
+}
+
+function isProgressMilestone(value: number): value is ProgressMilestone {
+  return value === 25 || value === 50 || value === 75 || value === 100;
+}
+
+function emptyProgressCounts(): Record<ProgressMilestone, number> {
+  return { 25: 0, 50: 0, 75: 0, 100: 0 };
+}
+
+function progressRates(
+  counts: Record<ProgressMilestone, number>,
+  engagedPlays: number
+): Record<ProgressMilestone, number | null> {
+  const denominator = Number(engagedPlays);
+  if (!Number.isFinite(denominator) || denominator <= 0) {
+    return { 25: null, 50: null, 75: null, 100: null };
+  }
+  return {
+    25: Math.min(1, counts[25] / denominator),
+    50: Math.min(1, counts[50] / denominator),
+    75: Math.min(1, counts[75] / denominator),
+    100: Math.min(1, counts[100] / denominator)
+  };
 }
 
 function utcDateOffset(offsetDays: number): string {
