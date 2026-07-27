@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import {
   open,
@@ -152,24 +153,20 @@ export function createStagingMediaProcessorClient({
           sha256: sha256(bytes),
           manifestSha256: manifest.manifestSha256
         })).toString("base64url");
-        const response = await signedRequest(
+        const result = curlSignedBinaryPut(
           manifest.endpoints.partTemplate.replace(
             "{partNumber}",
             String(partNumber)
           ),
+          bytes,
+          payload,
           {
-            method: "PUT",
-            body: bytes,
-            signedMessage: payload,
-            headers: {
-              "content-type": "application/octet-stream",
-              "content-length": String(length),
-              "x-podcast-processor-part-payload": payload
-            },
-            timeoutMs: 10 * 60_000
-          }
+            "content-type": "application/octet-stream",
+            "content-length": String(length),
+            "x-podcast-processor-part-payload": payload
+          },
+          10 * 60_000
         );
-        const result = await boundedJson(response);
         if (
           result.checksumVerified !== true
           || result.partNumber !== partNumber
@@ -206,11 +203,74 @@ export function createStagingMediaProcessorClient({
     return completed;
   }
 
+  function curlSignedBinaryPut(
+    url,
+    bytes,
+    signedMessage,
+    headers,
+    timeoutMs
+  ) {
+    if (!url.startsWith(`${origin}/`)) {
+      throw new Error(
+        "Refusing a processor request outside isolated staging."
+      );
+    }
+    const signed = mediaProcessorSignature(signedMessage, secret);
+    const result = spawnSync("curl", [
+      "--http1.1",
+      "--silent",
+      "--show-error",
+      "--fail-with-body",
+      "--retry", "3",
+      "--retry-all-errors",
+      "--retry-delay", "1",
+      "--connect-timeout", "30",
+      "--max-time", String(Math.ceil(timeoutMs / 1_000)),
+      "--request", "PUT",
+      "--header", "Expect:",
+      "--header",
+      `x-podcast-processor-timestamp: ${signed.timestamp}`,
+      "--header",
+      `x-podcast-processor-signature: ${signed.signature}`,
+      ...Object.entries(headers).flatMap(([name, value]) => [
+        "--header", `${name}: ${value}`
+      ]),
+      "--data-binary", "@-",
+      url
+    ], {
+      input: bytes,
+      encoding: null,
+      maxBuffer: 2_100_000,
+      timeout: timeoutMs + 30_000
+    });
+    if (result.status !== 0) {
+      const detail = Buffer.concat([
+        result.stdout || Buffer.alloc(0),
+        result.stderr || Buffer.alloc(0)
+      ]).subarray(0, 20_000).toString("utf8").trim();
+      throw new Error(
+        `Processor binary upload failed safely: ${detail || "curl failed"}`
+      );
+    }
+    return boundedJsonBytes(result.stdout);
+  }
+
   return {
     downloadSignedSource,
     signedJsonRequest,
     uploadMultipartFile
   };
+}
+
+function boundedJsonBytes(bytes) {
+  if (!bytes || bytes.byteLength > 2_000_000) {
+    throw new Error("The processor response exceeded its byte limit.");
+  }
+  const value = JSON.parse(bytes.toString("utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The processor response was not a JSON object.");
+  }
+  return value;
 }
 
 async function boundedJson(response) {

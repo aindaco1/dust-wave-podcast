@@ -10,6 +10,8 @@ const WORKFLOWS = [
   ".github/workflows/process-audio-enhancement-preview.yml",
   ".github/workflows/process-clip-render.yml"
 ];
+const STAGING_MEDIA_CLIENT =
+  "scripts/lib/staging-media-processor-client.mjs";
 
 describe("signed workflow media uploads", () => {
   for (const workflowPath of WORKFLOWS) {
@@ -29,6 +31,15 @@ describe("signed workflow media uploads", () => {
       }
     });
   }
+
+  it("uses the same resilient transport for multipart media clients", async () => {
+    const client = await readFile(STAGING_MEDIA_CLIENT, "utf8");
+
+    expect(client).toContain('"--http1.1"');
+    expect(client).toContain('"--retry-all-errors"');
+    expect(client).toContain('"--header", "Expect:"');
+    expect(client).toContain('"--data-binary", "@-"');
+  });
 });
 
 function indexesOf(value, pattern) {
