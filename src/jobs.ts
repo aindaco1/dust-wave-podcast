@@ -7,6 +7,7 @@ import type { PodcastJob } from "./types";
 import { processClipYouTubePublication } from "./clip-youtube";
 import { processAnnouncementDelivery } from "./announcement-delivery";
 import { processEpisodeYouTubePublication } from "./episode-youtube";
+import { validateAndRecordPublicFeed } from "./feed-validation";
 
 export type PublicationDestination = "rss" | "youtube" | "news" | "email";
 
@@ -231,7 +232,12 @@ export async function processPodcastJob(
     } else if (job.type === "publish-youtube") {
       providerId = await processEpisodeYouTubePublication(env, job);
     } else if (job.type === "publish-rss") {
-      providerId = "dynamic-feed";
+      const validation = await validateAndRecordPublicFeed(env, job.showId);
+      providerId = [
+        "validated-feed",
+        validation.feedSha256.slice(0, 16),
+        validation.itemCount
+      ].join(":");
     } else {
       providerId = "queued-contract";
     }

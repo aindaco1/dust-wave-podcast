@@ -127,7 +127,10 @@ target changes. A separate read-only publication snapshot now combines the
 unchanged legacy Publish prerequisites with strict launch-candidate evidence
 for timing, bilingual transcripts, word alignment, chapters, every current
 review target, clip/ad freshness, News, RSS, YouTube applicability, and the
-10+ directory checklist. Its digest is stable for the same evidence. A
+10+ directory certification. The directory node is ready only after at least
+ten enabled destinations have owner setup, a validated exact canonical feed,
+an evidence-backed ingestion observation, and a recorded failed-to-observed
+recovery sequence. Its digest is stable for the same evidence. A
 three-mode publication gate now keeps production on legacy checks, compares
 the exact snapshot without blocking in staging shadow mode, and can later
 enforce it through a configuration-only rollback switch. Enforcement supports
@@ -249,7 +252,14 @@ idempotent without creating a new episode revision.
 After owner setup, Producer+ operators can reconcile a current episode revision
 as observed only with a bounded HTTPS listing/dashboard evidence link, or as
 failed with a bounded detail. Stale revisions, incomplete setup, and disabled
-directories fail closed; the audit trail stores no evidence text or URL.
+directories fail closed. Each non-idempotent transition also creates an
+append-only launch-evidence event, so recovery is derived from an actual later
+observation rather than a checkbox. Publish independently validates the exact
+generated RSS document, its strong ETag, required podcast metadata, unique
+GUIDs, and every enclosure under a 5 MiB bound before the RSS root job can
+succeed. The admin renders all four certification states in English or Spanish;
+the audit trail stores only evidence-presence booleans, not evidence text or
+URLs.
 
 The permanent feed and media origins are reserved as `feeds.dustwave.xyz` and
 `media.dustwave.xyz`. Both will terminate at the Podcast Worker; R2 remains

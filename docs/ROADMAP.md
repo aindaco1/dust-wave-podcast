@@ -216,6 +216,12 @@ iHeartRadio, and Deezer.
   account label, verification state, submission date, provider receipt or
   dashboard URL, public listing, and bounded notes. Never store provider
   passwords or verification codes.
+- Keep the public “10+ platforms” promise behind the implemented certification
+  gate: Publish validates and fingerprints the exact generated RSS before its
+  root job succeeds; every non-idempotent directory observation/failure becomes
+  immutable evidence; and a destination counts only after owner setup, feed
+  validation, observed ingestion, and a real failed-to-observed recovery
+  sequence. At least ten enabled destinations must pass all four proofs.
 - Reuse the versioned Pool/Store Marketing boundary for policy-injected tagged
   URLs and accessible PNG/SVG QR generation. The Dust Wave adapter now saves
   show-scoped tagged links in audited D1 state with optimistic updates and

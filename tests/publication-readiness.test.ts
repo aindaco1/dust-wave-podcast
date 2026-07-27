@@ -124,6 +124,38 @@ describe("publication readiness graph", () => {
       })
     ]));
   });
+
+  it("requires ten fully certified directories for the platform claim", () => {
+    const belowGate = readyInput();
+    belowGate.directories.certified = 9;
+    belowGate.directories.failure_recovery_verified = 9;
+    const pending = evaluatePublicationReadiness(belowGate);
+    expect(pending.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "distribution.directories",
+        status: "pending",
+        evidence: expect.objectContaining({
+          certified: 9,
+          required: 10,
+          remaining: 1
+        })
+      })
+    ]));
+
+    belowGate.directories.certified = 10;
+    belowGate.directories.failure_recovery_verified = 10;
+    const ready = evaluatePublicationReadiness(belowGate);
+    expect(ready.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "distribution.directories",
+        status: "ready",
+        evidence: expect.objectContaining({
+          certified: 10,
+          remaining: 0
+        })
+      })
+    ]));
+  });
 });
 
 describe("production review readiness semantics", () => {
@@ -288,7 +320,11 @@ function readyInput(): ReadinessInput {
     directories: {
       total: 11,
       enabled: 11,
-      setup_complete: 11
+      setup_complete: 11,
+      feed_validated: 1,
+      ingestion_observed: 11,
+      failure_recovery_verified: 11,
+      certified: 11
     },
     jobs: [],
     reviews: {

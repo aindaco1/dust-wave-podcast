@@ -152,6 +152,30 @@ invalid calendar dates, multiline account labels, control characters, unknown
 fields, passwords, and verification codes. Do not fabricate a provider
 submission merely to exercise staging.
 
+For migration `0053`, verify `show_feed_validations`, the append-only
+`distribution_observation_events` sequence, both show/destination and
+episode/revision indexes, the immutability trigger, publication-evidence
+triggers, and clean foreign keys. Before applying remotely, take the standard
+staging export or exact Time Travel bookmark and record only aggregate counts.
+After apply:
+
+- publish one isolated eligible fixture and confirm the RSS root job records a
+  `valid` current feed with a 64-character SHA-256, the expected self URL,
+  validator version, and item count before that job succeeds;
+- remove one required metadata fragment in a local/fixture-only validator test
+  and confirm the closed failure code is recorded while the RSS job fails;
+- record one evidence-backed `observed` state and confirm ingestion is ready
+  but recovery is not;
+- record a bounded `failed` state and then a later HTTPS-evidenced `observed`
+  state for the same directory; confirm exactly one failed-to-observed recovery
+  proof, replay the final request, and confirm no second event;
+- verify the Distribution response and bilingual admin cards show all four
+  proofs independently, remain readable at 320 CSS pixels, and announce no
+  status by color alone; and
+- verify nine certified destinations remain below the claim gate while ten
+  become ready. Do not mark real owner, ingestion, or recovery evidence in
+  staging merely to make the counter green.
+
 For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
 the four `episode_chapter_*` review/history tables and indexes exist, any
 legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key

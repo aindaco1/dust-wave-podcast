@@ -76,6 +76,34 @@ describe("publication job revisions", () => {
               return this;
             },
             async first() {
+              if (
+                query.includes("SELECT id, rss_slug")
+                && query.includes("status != 'archived'")
+              ) {
+                return {
+                  id: "show_opera",
+                  rss_slug: "opera-en-la-selva"
+                };
+              }
+              if (
+                query.includes("rss_slug, author_name")
+                && query.includes("WHERE rss_slug = ?")
+              ) {
+                return {
+                  id: "show_opera",
+                  slug: "opera-en-la-selva",
+                  title: "Ópera en la Selva",
+                  description: "Una conversación sobre la ópera.",
+                  language: "es",
+                  artwork_url: "https://dustwave.xyz/opera.jpg",
+                  canonical_url:
+                    "https://dustwave.xyz/podcasts/opera-en-la-selva/",
+                  rss_slug: "opera-en-la-selva",
+                  author_name: "Dust Wave",
+                  category: "Arts",
+                  explicit: 0
+                };
+              }
               return {
                 status: "queued",
                 scheduled_at: "2026-07-25 00:00:00",
@@ -86,12 +114,19 @@ describe("publication job revisions", () => {
                 github_commit_sha: null
               };
             },
+            async all() {
+              return { results: [] };
+            },
             async run() {
               return { success: true, meta: { changes: 1 } };
             }
           };
         }
-      }
+      },
+      FEED_ORIGIN: "https://feeds.dustwave.xyz",
+      MEDIA_ORIGIN: "https://media.dustwave.xyz",
+      PODCAST_AUTHOR_NAME: "Dust Wave",
+      PODCAST_OWNER_EMAIL: "podcasts@dustwave.xyz"
     } as unknown as PodcastEnv;
     const job: PodcastJob = {
       id: "job_rss_revision_4",
@@ -112,7 +147,15 @@ describe("publication job revisions", () => {
     expect(
       statements.some(({ query, values }) =>
         query.includes("status = 'succeeded'")
-        && values[0] === "dynamic-feed"
+        && String(values[0]).startsWith("validated-feed:")
+      )
+    ).toBe(true);
+    expect(
+      statements.some(({ query, values }) =>
+        query.includes("INSERT INTO show_feed_validations")
+        && values[0] === "show_opera"
+        && values[1] === "valid"
+        && values[5] === 0
       )
     ).toBe(true);
     expect(

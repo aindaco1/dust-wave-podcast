@@ -358,6 +358,40 @@ including under concurrent requests.
 | `POST` | `/v1/admin/ads/campaigns/{id}/approve` | admin+ | Approve only complete, validated inventory |
 | `POST` | `/v1/admin/ads/campaigns/{id}/kill` | admin+ | Immediately and idempotently revoke a campaign |
 
+### Streamlined publishing certification
+
+Publish creates one immutable revision and the existing root RSS, News, and
+eligible YouTube jobs. The RSS job no longer succeeds merely because the feed
+route exists: it renders the same public feed used by clients, reads at most
+5 MiB, rejects unsafe XML declarations, verifies the exact self URL and strong
+ETag, requires the launch RSS/iTunes/Podcasting 2.0 metadata, and checks every
+item for a unique stable GUID and a positive HTTPS enclosure. The current
+validation digest, item count, validator version, and content-free failure code
+are stored per show.
+
+Every non-idempotent
+`PATCH /v1/admin/episodes/{id}/distribution/{destinationId}` transition also
+appends an immutable evidence event in the same D1 batch as its conditional
+audit and current-state update. Ingestion is satisfied by an evidence-backed
+`observed` event. Recovery is satisfied only when a later `observed` event has
+a greater durable sequence than a prior `failed` event for that show and
+directory; operators cannot assert recovery directly.
+
+The Distribution responses retain the current episode state and add:
+
+- `launchClaim`: required/certified/remaining counts plus the current
+  show-feed validation;
+- `summary.ingestionObserved`, `summary.failureRecoveryVerified`, and
+  `summary.certified`; and
+- a four-boolean `certification` object on every destination.
+
+A destination is certified only when it is enabled and has verified or
+not-required owner setup, a valid current feed, an observed ingestion event,
+and the failed-to-observed recovery sequence. The publication-readiness
+“10+ listening platforms” node remains a warning until at least ten
+destinations are certified. This does not submit a show, store credentials, or
+claim that a directory ingests instantly.
+
 ### Isolated-staging transcription chunk processor
 
 These HMAC-authenticated routes are `404` in production. They use the existing

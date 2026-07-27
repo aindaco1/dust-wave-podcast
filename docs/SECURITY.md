@@ -37,6 +37,14 @@
   user deletion attempts; API preflight returns a stable conflict first.
 - Every implemented content, media, and publication mutation emits a D1 audit
   event without credentials or raw email addresses.
+- The “10+ platforms” state cannot be enabled by owner notes or a single mutable
+  status. RSS root work validates the exact generated body under a fixed byte
+  limit and records only its SHA-256, item count, version, timestamps, and a
+  closed failure code. Directory observation transitions append immutable
+  show/episode/destination evidence. Recovery requires a later observed
+  sequence after a failed sequence; D1 triggers make that evidence part of the
+  show publication epoch. Listing/dashboard URLs stay in private admin state
+  and audit metadata retains only presence booleans.
 - Sponsor campaign creation, edits, approval, and the kill switch are
   show-scoped admin mutations with CSRF/origin enforcement and audit events.
   Edits reset approval; direct campaigns require an active sponsor; revoked

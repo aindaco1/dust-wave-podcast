@@ -119,6 +119,10 @@ type DirectoryReadinessAggregate = {
   total: number;
   enabled: number;
   setup_complete: number;
+  feed_validated: number;
+  ingestion_observed: number;
+  failure_recovery_verified: number;
+  certified: number;
 };
 
 type ReleaseJobRow = {
@@ -454,11 +458,97 @@ async function loadEpisodePublicationReadiness(
                ) IN ('verified', 'not_required')
              THEN 1 ELSE 0
            END
-         ), 0) AS setup_complete
+         ), 0) AS setup_complete,
+         EXISTS (
+           SELECT 1
+           FROM show_feed_validations feed
+           WHERE feed.show_id = ?
+             AND feed.status = 'valid'
+         ) AS feed_validated,
+         COALESCE(SUM(
+           CASE
+             WHEN COALESCE(setup.enabled, destination.enabled) = 1
+               AND EXISTS (
+                 SELECT 1
+                 FROM distribution_observation_events observed
+                 WHERE observed.show_id = ?
+                   AND observed.destination_id = destination.id
+                   AND observed.status = 'observed'
+               )
+             THEN 1 ELSE 0
+           END
+         ), 0) AS ingestion_observed,
+         COALESCE(SUM(
+           CASE
+             WHEN COALESCE(setup.enabled, destination.enabled) = 1
+               AND EXISTS (
+                 SELECT 1
+                 FROM distribution_observation_events failed
+                 WHERE failed.show_id = ?
+                   AND failed.destination_id = destination.id
+                   AND failed.status = 'failed'
+                   AND EXISTS (
+                     SELECT 1
+                     FROM distribution_observation_events recovered
+                     WHERE recovered.show_id = failed.show_id
+                       AND recovered.destination_id = failed.destination_id
+                       AND recovered.status = 'observed'
+                       AND recovered.sequence > failed.sequence
+                   )
+               )
+             THEN 1 ELSE 0
+           END
+         ), 0) AS failure_recovery_verified,
+         COALESCE(SUM(
+           CASE
+             WHEN COALESCE(setup.enabled, destination.enabled) = 1
+               AND COALESCE(
+                 setup.owner_setup_status,
+                 destination.owner_setup_status
+               ) IN ('verified', 'not_required')
+               AND EXISTS (
+                 SELECT 1
+                 FROM show_feed_validations feed
+                 WHERE feed.show_id = ?
+                   AND feed.status = 'valid'
+               )
+               AND EXISTS (
+                 SELECT 1
+                 FROM distribution_observation_events observed
+                 WHERE observed.show_id = ?
+                   AND observed.destination_id = destination.id
+                   AND observed.status = 'observed'
+               )
+               AND EXISTS (
+                 SELECT 1
+                 FROM distribution_observation_events failed
+                 WHERE failed.show_id = ?
+                   AND failed.destination_id = destination.id
+                   AND failed.status = 'failed'
+                   AND EXISTS (
+                     SELECT 1
+                     FROM distribution_observation_events recovered
+                     WHERE recovered.show_id = failed.show_id
+                       AND recovered.destination_id = failed.destination_id
+                       AND recovered.status = 'observed'
+                       AND recovered.sequence > failed.sequence
+                   )
+               )
+             THEN 1 ELSE 0
+           END
+         ), 0) AS certified
        FROM distribution_destinations destination
        LEFT JOIN show_distribution_destinations setup
          ON setup.destination_id = destination.id AND setup.show_id = ?`
-    ).bind(episode.show_id).first<DirectoryReadinessAggregate>(),
+    ).bind(
+      episode.show_id,
+      episode.show_id,
+      episode.show_id,
+      episode.show_id,
+      episode.show_id,
+      episode.show_id,
+      episode.show_id
+    ).first<DirectoryReadinessAggregate>(),
     env.DB.prepare(
       `SELECT
          job.destination, job.status, job.publication_revision,
@@ -489,7 +579,11 @@ async function loadEpisodePublicationReadiness(
     directories: directories ?? {
       total: 0,
       enabled: 0,
-      setup_complete: 0
+      setup_complete: 0,
+      feed_validated: 0,
+      ingestion_observed: 0,
+      failure_recovery_verified: 0,
+      certified: 0
     },
     jobs: jobs.results,
     reviews,
@@ -1155,7 +1249,13 @@ function directoryNode(
 ): PublicationReadinessNode {
   const enabled = Number(directories.enabled);
   const setupComplete = Number(directories.setup_complete);
-  const ready = enabled > 0 && setupComplete === enabled;
+  const feedValidated = Number(directories.feed_validated) === 1;
+  const ingestionObserved = Number(directories.ingestion_observed);
+  const failureRecoveryVerified = Number(
+    directories.failure_recovery_verified
+  );
+  const certified = Number(directories.certified);
+  const ready = certified >= 10;
   return node({
     id: "distribution.directories",
     group: "distribution",
@@ -1163,13 +1263,19 @@ function directoryNode(
     status: ready ? "ready" : enabled > 0 ? "pending" : "missing",
     severity: "warning",
     summary: ready
-      ? "Every enabled directory has verified or not-required owner setup."
-      : "Finish the one-time owner setup for every enabled directory before making the 10+ platforms claim.",
+      ? "At least ten directories have owner, feed, ingestion, and recovery evidence."
+      : "Certify owner setup, the canonical feed, ingestion, and failure recovery for at least ten directories before making the 10+ platforms claim.",
     evidence: {
       registered: Number(directories.total),
       enabled,
       setupComplete,
-      setupRequired: Math.max(0, enabled - setupComplete)
+      setupRequired: Math.max(0, enabled - setupComplete),
+      feedValidated,
+      ingestionObserved,
+      failureRecoveryVerified,
+      certified,
+      required: 10,
+      remaining: Math.max(0, 10 - certified)
     }
   });
 }

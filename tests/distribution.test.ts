@@ -28,6 +28,16 @@ describe("streamlined publishing directory registry", () => {
         setupComplete: number;
         setupRequired: number;
         observed: number;
+        ingestionObserved: number;
+        failureRecoveryVerified: number;
+        certified: number;
+      };
+      launchClaim: {
+        ready: boolean;
+        requiredDestinations: number;
+        certifiedDestinations: number;
+        remainingDestinations: number;
+        feedValidation: Record<string, unknown>;
       };
       destinations: Array<Record<string, unknown>>;
     };
@@ -42,7 +52,20 @@ describe("streamlined publishing directory registry", () => {
         total: 2,
         setupComplete: 1,
         setupRequired: 1,
-        observed: 0
+        observed: 0,
+        ingestionObserved: 1,
+        failureRecoveryVerified: 1,
+        certified: 1
+      },
+      launchClaim: {
+        ready: false,
+        requiredDestinations: 10,
+        certifiedDestinations: 1,
+        remainingDestinations: 9,
+        feedValidation: {
+          status: "valid",
+          itemCount: 1
+        }
       }
     });
     expect(payload.destinations).toEqual([
@@ -56,12 +79,23 @@ describe("streamlined publishing directory registry", () => {
         submissionEvidenceUrl:
           "https://podcasters.spotify.com/show/dust-wave-fixture",
         setupNotes: "Ownership verified without storing credentials.",
-        publicationStatus: null
+        publicationStatus: null,
+        certification: {
+          ownerVerified: true,
+          feedValidated: true,
+          ingestionObserved: true,
+          failureRecoveryVerified: true,
+          certified: true
+        }
       }),
       expect.objectContaining({
         id: "apple_podcasts",
         enabled: true,
-        ownerSetupStatus: "not_started"
+        ownerSetupStatus: "not_started",
+        certification: expect.objectContaining({
+          ownerVerified: false,
+          certified: false
+        })
       })
     ]);
     expect(JSON.stringify(payload.destinations)).not.toContain(
@@ -290,6 +324,14 @@ describe("streamlined publishing directory registry", () => {
         && values.includes(
           "https://open.spotify.com/episode/dust-wave-fixture"
         )
+      )
+    ).toBe(true);
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("INSERT INTO distribution_observation_events")
+        && values.includes("show_opera_en_la_selva")
+        && values.includes("spotify")
+        && values.includes("observed")
       )
     ).toBe(true);
   });
@@ -599,6 +641,19 @@ async function distributionFixture({
               rss_slug: "opera-en-la-selva"
             };
           }
+          if (query.includes("FROM show_feed_validations")) {
+            return {
+              status: "valid",
+              feed_url:
+                "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
+              validator_version: "dustwave-rss-launch-v1",
+              feed_sha256: "a".repeat(64),
+              item_count: 1,
+              failure_code: null,
+              checked_at: "2026-07-25 00:00:00",
+              validated_at: "2026-07-25 00:00:00"
+            };
+          }
           if (
             query.includes("FROM shows s")
             && query.includes("JOIN distribution_destinations")
@@ -620,6 +675,22 @@ async function distributionFixture({
           if (query.includes("FROM admin_user_roles")) {
             return {
               results: [{ role, show_id: roleShowId }]
+            };
+          }
+          if (query.includes("distribution_observation_events")) {
+            return {
+              results: [
+                {
+                  destination_id: "spotify",
+                  ingestion_observed: 1,
+                  failure_recovery_verified: 1
+                },
+                {
+                  destination_id: "apple_podcasts",
+                  ingestion_observed: 0,
+                  failure_recovery_verified: 0
+                }
+              ]
             };
           }
           if (query.includes("FROM distribution_destinations")) {
