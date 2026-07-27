@@ -30,6 +30,7 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
   readSignedJsonBody,
   verifySignedText
@@ -606,12 +607,12 @@ export async function completeDeliveryAudioMultipartUpload(
      SET status = 'completing', updated_at = datetime('now')
      WHERE id = ? AND status IN ('queued', 'rendering', 'completing')`
   ).bind(jobId).run();
-  let object: R2Object;
+  let object: R2Object | null;
   try {
-    object = await env.MEDIA_BUCKET.resumeMultipartUpload(
+    object = await completeMultipartUploadAndHead(
+      env.MEDIA_BUCKET,
       job.output_object_key,
-      job.r2_upload_id
-    ).complete(
+      job.r2_upload_id,
       parts.map(({ part_number, etag }) => ({
         partNumber: part_number,
         etag
@@ -630,8 +631,8 @@ export async function completeDeliveryAudioMultipartUpload(
   }
   return privateJson(request, env.ALLOWED_ORIGINS, {
     jobId,
-    objectBytes: object.size,
-    etag: object.httpEtag,
+    objectBytes: object!.size,
+    etag: object!.httpEtag,
     outputSha256: evidence.outputSha256,
     multipartCompleted: true,
     idempotent: false

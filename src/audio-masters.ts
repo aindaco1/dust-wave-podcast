@@ -147,6 +147,35 @@ type ProcessorUploadPayload = {
   sha256: string;
 };
 
+export function workingMasterCommitMatches(
+  master: Pick<
+    WorkingMasterRow,
+    "id" | "episode_id" | "revision" | "quality_control_run_id"
+  > | null,
+  state: Pick<
+    WorkingMasterStateRow,
+    "episode_id" | "revision" | "current_master_id"
+  > | null,
+  expected: {
+    episodeId: string;
+    masterId: string;
+    revision: number;
+    qualityControlRunId: string;
+  }
+): boolean {
+  return Boolean(
+    master
+    && state
+    && master.id === expected.masterId
+    && master.episode_id === expected.episodeId
+    && master.revision === expected.revision
+    && master.quality_control_run_id === expected.qualityControlRunId
+    && state.episode_id === expected.episodeId
+    && state.revision === expected.revision
+    && state.current_master_id === expected.masterId
+  );
+}
+
 export async function getAdminEpisodeAudioMaster(
   request: Request,
   env: PodcastEnv,
@@ -330,9 +359,8 @@ export async function approveAdminEpisodeSourceMaster(
   const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
   const approvalGuardId =
     `master_guard_${crypto.randomUUID().replace(/-/g, "")}`;
-  let results: D1Result<unknown>[];
   try {
-    results = await env.DB.batch([
+    await env.DB.batch([
       env.DB.prepare(
       `INSERT OR IGNORE INTO episode_working_masters (
          id, episode_id, revision, origin_kind, source_upload_id,
@@ -456,25 +484,23 @@ export async function approveAdminEpisodeSourceMaster(
     }
     throw error;
   }
-  if (
-    Number(results[0]?.meta?.changes ?? 0) !== 1
-    || Number(results[1]?.meta?.changes ?? 0) !== 1
-  ) {
-    return masterConflict(
-      request,
-      env,
-      "working_master_approval_conflict",
-      {
-        currentRevision: (
-          await loadWorkingMasterState(env.DB, access.episode.id)
-        )?.revision ?? null
-      }
-    );
-  }
   const [approved, currentState] = await Promise.all([
     loadWorkingMaster(env.DB, masterId),
     loadWorkingMasterState(env.DB, access.episode.id)
   ]);
+  if (!workingMasterCommitMatches(approved, currentState, {
+    episodeId: access.episode.id,
+    masterId,
+    revision: nextRevision,
+    qualityControlRunId
+  })) {
+    return masterConflict(
+      request,
+      env,
+      "working_master_approval_conflict",
+      { currentRevision: currentState?.revision ?? null }
+    );
+  }
   return privateJson(request, env.ALLOWED_ORIGINS, {
     state: currentState ? presentState(currentState) : null,
     master: approved ? presentMaster(approved, true) : null,

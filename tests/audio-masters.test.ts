@@ -5,12 +5,40 @@ import {
   completeAudioEnhancementPreview,
   getAdminEpisodeAudioMaster,
   queueAdminAudioEnhancementPreview,
-  uploadAudioEnhancementProcessorOutput
+  uploadAudioEnhancementProcessorOutput,
+  workingMasterCommitMatches
 } from "../src/audio-masters";
 import type { PodcastEnv } from "../src/env";
 import { handleRequest } from "../src/app";
 
 describe("working-master and enhancement boundaries", () => {
+  it("trusts the authoritative committed master snapshot", () => {
+    const expected = {
+      episodeId: "episode_fixture",
+      masterId: "master_fixture",
+      revision: 1,
+      qualityControlRunId: "qc_fixture"
+    };
+    const master = {
+      id: expected.masterId,
+      episode_id: expected.episodeId,
+      revision: expected.revision,
+      quality_control_run_id: expected.qualityControlRunId
+    };
+    const state = {
+      episode_id: expected.episodeId,
+      revision: expected.revision,
+      current_master_id: expected.masterId
+    };
+
+    expect(workingMasterCommitMatches(master, state, expected)).toBe(true);
+    expect(workingMasterCommitMatches(
+      master,
+      { ...state, current_master_id: "master_other" },
+      expected
+    )).toBe(false);
+  });
+
   it("keeps master state private without an admin session", async () => {
     const env = {
       ALLOWED_ORIGINS: "https://dustwave.xyz"

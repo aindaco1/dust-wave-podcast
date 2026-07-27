@@ -8,6 +8,7 @@ import { authorizeAdminEpisode } from "./admin-episode-access";
 import { recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
   readSignedJsonBody,
   verifySignedText
@@ -642,13 +643,12 @@ export async function completeYouTubeAudioRenditionMultipartUpload(
      SET status = 'completing', updated_at = datetime('now')
      WHERE id = ? AND status IN ('queued', 'rendering', 'completing')`
   ).bind(renditionId).run();
-  const multipart = env.MEDIA_BUCKET.resumeMultipartUpload(
-    rendition.output_object_key,
-    rendition.r2_upload_id
-  );
-  let object: R2Object;
+  let object: R2Object | null;
   try {
-    object = await multipart.complete(
+    object = await completeMultipartUploadAndHead(
+      env.MEDIA_BUCKET,
+      rendition.output_object_key,
+      rendition.r2_upload_id,
       parts.map(({ part_number, etag }) => ({
         partNumber: part_number,
         etag
@@ -662,7 +662,8 @@ export async function completeYouTubeAudioRenditionMultipartUpload(
     );
   }
   if (
-    object.size !== evidence.objectBytes
+    !object
+    || object.size !== evidence.objectBytes
     || object.httpMetadata?.contentType !== "video/mp4"
     || object.customMetadata?.["processor-manifest-sha256"]
       !== rendition.processor_manifest_sha256
@@ -678,8 +679,8 @@ export async function completeYouTubeAudioRenditionMultipartUpload(
   }
   return privateJson(request, env.ALLOWED_ORIGINS, {
     renditionId,
-    objectBytes: object.size,
-    etag: object.httpEtag,
+    objectBytes: object!.size,
+    etag: object!.httpEtag,
     outputSha256: evidence.outputSha256,
     multipartCompleted: true,
     idempotent: false
