@@ -95,6 +95,7 @@ try {
   installDiagnosticSecret();
   await waitForDiagnostic(origin, 200);
   await preflightAndUploadObjects(fixtureDirectory);
+  await waitForVirtualAudioStability();
 
   const childEnvironment = {
     ...process.env,
@@ -262,6 +263,43 @@ async function waitForDiagnostic(targetOrigin, expectedStatus) {
   }
   throw new Error(
     `Staging diagnostic did not reach HTTP ${expectedStatus} within 30 seconds.`
+  );
+}
+
+async function waitForVirtualAudioStability() {
+  const baseUrl = new URL(
+    `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}/virtual`,
+    origin
+  );
+  let consecutivePasses = 0;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      const url = new URL(baseUrl);
+      url.searchParams.set("readiness", String(attempt));
+      const response = await fetch(url, {
+        redirect: "error",
+        cache: "no-store",
+        headers: { range: "bytes=0-0" }
+      });
+      const body = new Uint8Array(await response.arrayBuffer());
+      if (
+        response.status === 206
+        && body.byteLength === 1
+        && response.headers.get("content-range")
+          === `bytes 0-0/${contract.assemblies.virtual.bytes}`
+      ) {
+        consecutivePasses += 1;
+        if (consecutivePasses >= 10) return;
+      } else {
+        consecutivePasses = 0;
+      }
+    } catch {
+      consecutivePasses = 0;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error(
+    "Staging ranged audio did not stabilize for ten consecutive probes."
   );
 }
 

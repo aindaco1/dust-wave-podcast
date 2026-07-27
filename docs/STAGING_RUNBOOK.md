@@ -610,6 +610,7 @@ nonempty evidence directory, or any non-matching pre-existing fixture object.
 Its exact-name setup endpoint verifies byte length, MIME type, and SHA-256
 before writing through the Worker's private R2 binding. It preserves matching
 pre-existing objects, removes only objects uploaded by the current run, waits
+for ten consecutive ranged readiness probes before recording evidence, waits
 for secret removal to propagate, and fails if cleanup cannot be confirmed.
 After an uncatchable force kill, list staging secret names and inspect the four
 exact `fixtures/virtual-audio/` keys before doing anything else; never use a
