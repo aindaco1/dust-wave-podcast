@@ -54,21 +54,38 @@ hashes, filenames, and segment boundaries. The tone fixture proves framing and
 byte behavior only; listening-client acceptance still requires the matrix
 below.
 
-The staging Worker exposes this exact fixture only at an opaque, manually
-rotatable path under `/v1/diagnostics/virtual-audio/`. The path token is a
-staging-only Worker secret, is compared in constant time, and is never
-committed or printed in evidence. Production returns `404` even if a token is
-supplied. Rotate or remove the secret after the client matrix.
-For browser checks, open `/v1/diagnostics/virtual-audio/player` and enter the
-token into its password field. The no-store, no-referrer, staging-only harness
-keeps the value in page memory, clears the field, and exposes explicit load,
-play, seek, and pause status without putting the token in navigation history.
+The staging Worker exposes this exact fixture only at an opaque, short-lived
+capability path under `/v1/diagnostics/virtual-audio/`. Production returns
+`404` for the capability exchange, player, fixture management, and stream
+routes.
 
-Run the redacted HTTP protocol matrix with the token supplied only through the
-environment:
+The complete staging wrapper creates a 15-minute, one-time D1 lease containing
+only a domain-separated SHA-256 hash of a random token. It exchanges the raw
+token once for a capability signed with the existing staging
+`AD_DECISION_SIGNING_SECRET` under an independent domain. The raw token and
+signed capability are never committed, printed, written to evidence, or passed
+as command arguments. The exchange atomically marks the lease used, so it
+cannot be replayed.
+
+Fixture-management requests require both the signed capability and its active
+exchanged D1 lease. Streaming verifies the short-lived signature locally and
+does not query D1, keeping the measured path representative of launch traffic.
+Cleanup deletes only objects uploaded by the current run and then deletes its
+exact lease ID, immediately revoking fixture management. The stream capability
+expires within 15 minutes; uploaded fixtures are removed before the lease is
+revoked.
+
+For browser checks, open `/v1/diagnostics/virtual-audio/player` and enter a
+capability issued by the wrapper into its password field. The no-store,
+no-referrer, staging-only harness keeps it in page memory, clears the field,
+and exposes explicit load, play, seek, and pause status without putting the
+capability in navigation history.
+
+Run the redacted HTTP protocol matrix with an unexpired capability supplied
+only through the environment:
 
 ```sh
-VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN=... npm run matrix:virtual-audio -- \
+VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY=... npm run matrix:virtual-audio -- \
   --origin https://dust-wave-podcast-staging.example.workers.dev \
   --output /absolute/private/evidence/protocol-matrix.json
 ```
@@ -83,7 +100,7 @@ For the sustained staging gate, upload the generated
 `virtual-midroll.mp3` alongside its three component objects and run:
 
 ```sh
-VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN=... npm run load:virtual-audio -- \
+VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY=... npm run load:virtual-audio -- \
   --origin https://dust-wave-podcast-staging.example.workers.dev \
   --output /absolute/private/evidence/paired-load.json \
   --pairs 5000 --concurrency 12
@@ -95,7 +112,7 @@ alternates request order, excludes warmups, uses five deterministic range
 patterns including both object boundaries, and compares 5,000 pairs (10,000
 measured requests). It fails at a 0.1% or higher request error rate, any
 content mismatch, or more than 250 ms of added virtual p95 latency. Evidence
-redacts the token path and stores only bounded aggregate/error data.
+redacts the capability path and stores only bounded aggregate/error data.
 
 For the complete synthetic staging gate, prefer the fail-closed orchestration
 command:
@@ -106,23 +123,21 @@ npm run gate:virtual-audio:staging -- \
   --pairs 5000 --concurrency 12
 ```
 
-It is hard-bound to the Dust Wave staging origin and bucket, refuses any
-existing diagnostic secret or non-matching R2 object, generates and verifies
-the fixture contract, and installs a new cryptographically random temporary
-token through stdin. It then uploads only missing objects through an
-exact-name, hash-verifying, staging-only R2-binding endpoint, runs both
-matrices, and removes the token and only the objects it uploaded. Before
-recording evidence it requires ten consecutive exact one-byte range responses,
-so secret-deployment propagation is setup rather than a hidden matrix retry.
-The wrapper resolves the temporary secret's exact 100% Worker version from
-Wrangler's JSON deployment record and pins setup and matrix requests with
-Cloudflare's version-override header. The UUID is represented only as a
-boolean capability in evidence, and the override is cleared before
-secret-removal verification. Signal handling also attempts the same cleanup.
-The command fails unless cleanup is
-confirmed and writes a redacted `staging-gate.json`; production cannot be
-selected by an argument. A force-killed process still requires the manual
-secret/object audit in the staging runbook.
+It is hard-bound to the Dust Wave staging origin, D1 database binding, and
+bucket. It refuses a nonempty evidence directory or any non-matching R2
+object, generates and verifies the fixture contract, inserts one exact
+cryptographically random hashed lease, and exchanges it once for a signed
+capability. It then uploads only missing objects through an exact-name,
+hash-verifying, staging-only R2-binding endpoint and runs both matrices.
+
+Before recording evidence it requires ten consecutive exact one-byte range
+responses. Signal handling attempts the same fail-closed cleanup as the normal
+path: remove only objects uploaded by this run, delete only the generated lease
+ID, verify both cleanup steps, and write redacted evidence. The command fails
+unless cleanup is confirmed; production cannot be selected by an argument. It
+does not mutate Worker secrets or create Worker versions during a run. A
+force-killed process still requires the exact lease/object audit in the staging
+runbook.
 
 ## Required fixture set
 

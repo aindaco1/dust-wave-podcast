@@ -9,19 +9,14 @@ import contract from "../config/virtual-audio-synthetic-fixture.json"
 
 process.umask(0o077);
 const options = parseOptions(process.argv.slice(2));
-const token = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN;
-const versionOverrideId =
-  process.env.VIRTUAL_AUDIO_VERSION_OVERRIDE_ID;
-if (!token || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
-  fail(
-    "VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN must be supplied through the environment."
-  );
-}
+const capability = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY;
 if (
-  versionOverrideId
-  && !/^[a-f0-9-]{36}$/.test(versionOverrideId)
+  !capability
+  || !/^[A-Za-z0-9_-]{16,64}\.[0-9]{10}\.[a-f0-9]{64}$/.test(capability)
 ) {
-  fail("VIRTUAL_AUDIO_VERSION_OVERRIDE_ID is invalid.");
+  fail(
+    "VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY must be supplied through the environment."
+  );
 }
 if (!options.origin || !options.output) {
   fail(
@@ -42,7 +37,8 @@ const concurrency = boundedInteger(
   50
 );
 const outputPath = path.resolve(options.output);
-const fixtureRoot = `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}`;
+const fixtureRoot =
+  `/v1/diagnostics/virtual-audio/${encodeURIComponent(capability)}`;
 const urls = {
   virtual: new URL(`${fixtureRoot}/virtual`, origin),
   baseline: new URL(`${fixtureRoot}/baseline`, origin)
@@ -118,7 +114,6 @@ const evidence = {
     concurrency,
     warmupPairsExcluded: WARMUP_PAIRS,
     nativeClientValidation: false,
-    versionOverride: Boolean(versionOverrideId),
     note:
       "Paired edge-to-Worker timings include public-network variance. "
       + "The baseline is the byte-identical preassembled private-R2 object."
@@ -161,8 +156,8 @@ if (!passed) process.exit(1);
 async function verifyHeads() {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const [virtual, baseline] = await Promise.all([
-      diagnosticFetch(urls.virtual, { method: "HEAD", redirect: "error" }),
-      diagnosticFetch(urls.baseline, { method: "HEAD", redirect: "error" })
+      fetch(urls.virtual, { method: "HEAD", redirect: "error" }),
+      fetch(urls.baseline, { method: "HEAD", redirect: "error" })
     ]);
     const valid = [virtual, baseline].every((response) =>
       response.status === 200
@@ -238,7 +233,7 @@ async function executePair(index, measured) {
 async function probe(variant, pattern) {
   const startedAt = performance.now();
   try {
-    const response = await diagnosticFetch(urls[variant], {
+    const response = await fetch(urls[variant], {
       redirect: "error",
       headers: {
         range: pattern.range,
@@ -273,17 +268,6 @@ async function probe(variant, pattern) {
       sha256: null
     };
   }
-}
-
-function diagnosticFetch(url, init = {}) {
-  const headers = new Headers(init.headers);
-  if (versionOverrideId) {
-    headers.set(
-      "cloudflare-workers-version-overrides",
-      `dust-wave-podcast-staging="${versionOverrideId}"`
-    );
-  }
-  return fetch(url, { ...init, headers });
 }
 
 function requestPattern(index) {

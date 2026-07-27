@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -19,7 +19,6 @@ process.umask(0o077);
 const STAGING_ORIGIN =
   "https://dust-wave-podcast-staging.jogo.workers.dev";
 const STAGING_BUCKET = "dustwave-media-staging";
-const DIAGNOSTIC_SECRET = "VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN";
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   ".."
@@ -54,11 +53,12 @@ const concurrency = boundedInteger(
 );
 const outputDirectory = path.resolve(options.output);
 const fixtureDirectory = path.resolve(outputDirectory, "fixtures");
-const token = randomBytes(48).toString("base64url");
-let versionOverrideId = null;
+const leaseId = `lease_${randomBytes(18).toString("base64url")}`;
+const leaseToken = randomBytes(48).toString("base64url");
+let capability = null;
 const uploadedObjects = [];
-let diagnosticSecretInstalled = false;
-let diagnosticSecretCleanupComplete = true;
+let diagnosticLeaseCreated = false;
+let diagnosticLeaseCleanupComplete = true;
 let uploadedObjectCleanupComplete = true;
 let cleanupPromise = null;
 let cleanupComplete = false;
@@ -92,16 +92,14 @@ try {
     await readFile(path.resolve(fixtureDirectory, "evidence.json"), "utf8")
   );
   verifyFixtureEvidence(fixtureEvidence);
-  ensureDiagnosticSecretIsAbsent();
-  await installDiagnosticSecret();
-  await waitForDiagnostic(origin, 200);
+  createDiagnosticLease();
+  await exchangeDiagnosticLease();
   await preflightAndUploadObjects(fixtureDirectory);
   await waitForVirtualAudioStability();
 
   const childEnvironment = {
     ...process.env,
-    VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: token,
-    VIRTUAL_AUDIO_VERSION_OVERRIDE_ID: versionOverrideId
+    VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY: capability
   };
   run(process.execPath, [
     path.resolve(repositoryRoot, "scripts/run-virtual-audio-protocol-matrix.mjs"),
@@ -211,83 +209,66 @@ async function preflightAndUploadObjects(sourceDirectory) {
   }
 }
 
-function ensureDiagnosticSecretIsAbsent() {
-  if (diagnosticSecretNamePresent()) {
-    throw new Error(
-      `${DIAGNOSTIC_SECRET} already exists; refusing to rotate an unknown value.`
-    );
-  }
-}
-
-async function installDiagnosticSecret() {
-  const previousDeploymentId = latestStagingDeployment()?.id ?? null;
-  run(wrangler, [
-    "secret",
-    "put",
-    DIAGNOSTIC_SECRET,
+function createDiagnosticLease() {
+  const tokenHash = createHash("sha256")
+    .update([
+      "dust-wave-virtual-audio-lease-v1",
+      leaseId,
+      leaseToken
+    ].join("\n"))
+    .digest("hex");
+  const sql =
+    "INSERT INTO virtual_audio_diagnostic_leases "
+    + "(id, token_hash, expires_at) VALUES "
+    + `('${leaseId}', '${tokenHash}', datetime('now', '+15 minutes'))`;
+  // A CLI or JSON-decoding failure can happen after the remote write. Always
+  // attempt exact-ID cleanup once the insert has been submitted.
+  diagnosticLeaseCreated = true;
+  diagnosticLeaseCleanupComplete = false;
+  const result = runResult(wrangler, [
+    "d1",
+    "execute",
+    "DB",
+    "--remote",
     "--env",
-    "staging"
-  ], { input: `${token}\n` });
-  diagnosticSecretInstalled = true;
-  diagnosticSecretCleanupComplete = false;
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    const deployment = latestStagingDeployment();
-    const version = deployment?.versions?.[0];
-    if (
-      deployment
-      && deployment.id !== previousDeploymentId
-      && deployment.versions.length === 1
-      && version?.percentage === 100
-      && /^[a-f0-9-]{36}$/.test(version.version_id)
-    ) {
-      versionOverrideId = version.version_id;
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    "staging",
+    "--command",
+    sql,
+    "--json"
+  ]);
+  if (result.status !== 0 || !d1CommandSucceeded(result.stdout)) {
+    throw new Error("Could not create the temporary diagnostic lease.");
   }
-  throw new Error("Could not resolve the temporary secret Worker version.");
 }
 
-async function waitForDiagnostic(targetOrigin, expectedStatus) {
-  const url = new URL(
-    `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}/virtual`,
-    targetOrigin
-  );
-  const objectUrl = diagnosticObjectUrl(contract.sources[0].filename);
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    try {
-      const [response, objectResponse] = await Promise.all([
-        diagnosticFetch(url, {
-          method: "HEAD",
-          redirect: "error",
-          cache: "no-store"
-        }),
-        diagnosticFetch(objectUrl, {
-          redirect: "error",
-          cache: "no-store"
-        })
-      ]);
-      if (
-        response.status === expectedStatus
-        && (
-          expectedStatus !== 200
-          || objectResponse.status === 200
-          || objectResponse.status === 404
-        )
-      ) return;
-    } catch {
-      // Deployment propagation is retried within the bounded window.
+async function exchangeDiagnosticLease() {
+  const response = await fetch(
+    new URL("/v1/diagnostics/virtual-audio/capability", origin),
+    {
+      method: "POST",
+      redirect: "error",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ leaseId, token: leaseToken })
     }
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-  }
-  throw new Error(
-    `Staging diagnostic did not reach HTTP ${expectedStatus} within 30 seconds.`
   );
+  const payload = await response.json().catch(() => null);
+  if (
+    response.status !== 201
+    || !payload
+    || typeof payload !== "object"
+    || typeof payload.capability !== "string"
+    || !/^[A-Za-z0-9_-]{16,64}\.[0-9]{10}\.[a-f0-9]{64}$/.test(
+      payload.capability
+    )
+  ) {
+    throw new Error("Could not exchange the temporary diagnostic lease.");
+  }
+  capability = payload.capability;
 }
 
 async function waitForVirtualAudioStability() {
   const baseUrl = new URL(
-    `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}/virtual`,
+    `/v1/diagnostics/virtual-audio/${encodeURIComponent(capability)}/virtual`,
     origin
   );
   let consecutivePasses = 0;
@@ -362,56 +343,49 @@ async function performCleanup() {
       );
     }
   }
-  if (diagnosticSecretInstalled) {
+  if (diagnosticLeaseCreated) {
+    const deletionSql =
+      `DELETE FROM virtual_audio_diagnostic_leases WHERE id = '${leaseId}'`;
     const deletion = runResult(wrangler, [
-      "secret",
-      "delete",
-      DIAGNOSTIC_SECRET,
+      "d1",
+      "execute",
+      "DB",
+      "--remote",
       "--env",
-      "staging"
-    ], { input: "y\n" });
-    if (deletion.status !== 0) {
-      process.stderr.write(
-        `Cleanup warning: could not delete ${DIAGNOSTIC_SECRET}.\n`
-      );
+      "staging",
+      "--command",
+      deletionSql,
+      "--json"
+    ]);
+    const verification = runResult(wrangler, [
+      "d1",
+      "execute",
+      "DB",
+      "--remote",
+      "--env",
+      "staging",
+      "--command",
+      `SELECT COUNT(*) AS count FROM virtual_audio_diagnostic_leases `
+      + `WHERE id = '${leaseId}'`,
+      "--json"
+    ]);
+    if (
+      deletion.status === 0
+      && d1CommandSucceeded(deletion.stdout)
+      && verification.status === 0
+      && d1ScalarCount(verification.stdout) === 0
+    ) {
+      diagnosticLeaseCreated = false;
+      diagnosticLeaseCleanupComplete = true;
     } else {
-      diagnosticSecretInstalled = false;
-      versionOverrideId = null;
-      try {
-        await waitForDiagnostic(origin, 404);
-        if (diagnosticSecretNamePresent()) {
-          throw new Error("Diagnostic secret name is still present.");
-        }
-        diagnosticSecretCleanupComplete = true;
-      } catch {
-        process.stderr.write(
-          "Cleanup warning: diagnostic secret removal did not propagate.\n"
-        );
-      }
+      process.stderr.write(
+        "Cleanup warning: could not remove the diagnostic lease.\n"
+      );
     }
   }
   cleanupComplete =
     uploadedObjectCleanupComplete
-    && diagnosticSecretCleanupComplete;
-}
-
-function diagnosticSecretNamePresent() {
-  const result = runResult(wrangler, [
-    "secret",
-    "list",
-    "--env",
-    "staging"
-  ]);
-  if (result.status !== 0) {
-    throw new Error("Could not inspect staging Worker secret names.");
-  }
-  let secrets;
-  try {
-    secrets = JSON.parse(result.stdout);
-  } catch {
-    throw new Error("Wrangler returned an invalid staging secret list.");
-  }
-  return secrets.some((secret) => secret?.name === DIAGNOSTIC_SECRET);
+    && diagnosticLeaseCleanupComplete;
 }
 
 async function writeGateEvidence() {
@@ -427,14 +401,14 @@ async function writeGateEvidence() {
     scope: {
       syntheticProtocolEmulation: true,
       nativeClientValidation: false,
-      versionOverride: true,
+      signedCapability: true,
       pairs,
       totalMeasuredRequests: pairs * 2
     },
     result: {
       passed: completed,
       cleanupComplete,
-      temporarySecretRemoved: diagnosticSecretCleanupComplete,
+      diagnosticLeaseRemoved: diagnosticLeaseCleanupComplete,
       uploadedObjectsRemoved: uploadedObjectCleanupComplete,
       failureCode: failureMessage ? "gate_failed" : null
     }
@@ -528,46 +502,41 @@ function runResult(command, args, options = {}) {
 }
 
 function diagnosticObjectUrl(filename) {
+  if (!capability) {
+    throw new Error("The diagnostic capability has not been issued.");
+  }
   return new URL(
-    `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}`
+    `/v1/diagnostics/virtual-audio/${encodeURIComponent(capability)}`
     + `/objects/${encodeURIComponent(filename)}`,
     origin
   );
 }
 
 function diagnosticFetch(url, init = {}) {
-  const headers = new Headers(init.headers);
-  if (versionOverrideId) {
-    headers.set(
-      "cloudflare-workers-version-overrides",
-      `dust-wave-podcast-staging="${versionOverrideId}"`
-    );
-  }
-  return fetch(url, { ...init, headers });
+  return fetch(url, init);
 }
 
-function latestStagingDeployment() {
-  const result = runResult(wrangler, [
-    "deployments",
-    "list",
-    "--env",
-    "staging",
-    "--json"
-  ]);
-  if (result.status !== 0) {
-    throw new Error("Could not inspect staging Worker deployments.");
-  }
-  let deployments;
+function d1CommandSucceeded(value) {
+  let results;
   try {
-    deployments = JSON.parse(result.stdout);
+    results = JSON.parse(value);
   } catch {
-    throw new Error("Wrangler returned invalid deployment JSON.");
+    return false;
   }
-  if (!Array.isArray(deployments) || deployments.length === 0) return null;
-  return [...deployments].sort(
-    (left, right) =>
-      Date.parse(right.created_on) - Date.parse(left.created_on)
-  )[0];
+  return Array.isArray(results)
+    && results.length > 0
+    && results.every((result) => result?.success === true);
+}
+
+function d1ScalarCount(value) {
+  let results;
+  try {
+    results = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  const count = results?.[0]?.results?.[0]?.count;
+  return Number.isSafeInteger(count) ? count : null;
 }
 
 function boundedInteger(value, name, minimum, maximum) {

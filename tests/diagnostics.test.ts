@@ -1,22 +1,28 @@
 import { describe, expect, it } from "vitest";
+import { hmacSha256 } from "@dustwave/worker-core/crypto";
 
 import syntheticFixture from "../config/virtual-audio-synthetic-fixture.json";
 import type { PodcastEnv } from "../src/env";
 import {
+  issueStagingVirtualAudioCapability,
   manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "../src/diagnostics";
 
+const TEST_SIGNING_SECRET = "diagnostic-test-signing-secret";
+
 describe("staging virtual-audio diagnostic", () => {
   it("is unavailable outside staging even with a matching token", async () => {
+    const capability = await testCapability();
     const response = await serveStagingVirtualAudioDiagnostic(
       new Request("https://example.test/fixture"),
       {
         ENVIRONMENT: "production",
-        VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: "a".repeat(32)
+        AD_DECISION_MODE: "staging_validate",
+        AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET
       } as unknown as PodcastEnv,
-      "a".repeat(32)
+      capability
     );
 
     expect(response.status).toBe(404);
@@ -35,7 +41,8 @@ describe("staging virtual-audio diagnostic", () => {
   it("serves a no-store, staging-only player without embedding a token", async () => {
     const response = serveStagingVirtualAudioPlayer({
       ENVIRONMENT: "staging",
-      VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: "b".repeat(32)
+      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET
     } as PodcastEnv);
     const html = await response.text();
 
@@ -45,10 +52,12 @@ describe("staging virtual-audio diagnostic", () => {
     );
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(html).toContain('type="password"');
-    expect(html).not.toContain("VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN");
+    expect(html).not.toContain(TEST_SIGNING_SECRET);
+    expect(html).not.toContain("AD_DECISION_SIGNING_SECRET");
   });
 
-  it("streams only when a constant-time staging token matches", async () => {
+  it("streams only when a constant-time staging capability matches", async () => {
+    const capability = await testCapability();
     const bytesByKey: Record<string, Uint8Array> = Object.fromEntries([
       ...syntheticFixture.sources.map((source) => [
         source.objectKey,
@@ -79,14 +88,15 @@ describe("staging virtual-audio diagnostic", () => {
     } as unknown as R2Bucket;
     const env = {
       ENVIRONMENT: "staging",
-      VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: "b".repeat(32),
+      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET,
       MEDIA_BUCKET: bucket
     } as PodcastEnv;
 
     const hidden = await serveStagingVirtualAudioDiagnostic(
       new Request("https://example.test/fixture"),
       env,
-      "a".repeat(32)
+      `invalid.${Math.floor(Date.now() / 1_000) + 600}.${"a".repeat(64)}`
     );
     expect(hidden.status).toBe(404);
 
@@ -95,7 +105,7 @@ describe("staging virtual-audio diagnostic", () => {
         headers: { range: "bytes=80664-80668" }
       }),
       env,
-      "b".repeat(32)
+      capability
     );
     expect(response.status).toBe(206);
     expect(response.headers.get("content-range")).toBe(
@@ -108,7 +118,7 @@ describe("staging virtual-audio diagnostic", () => {
         headers: { range: "bytes=80664-80668" }
       }),
       env,
-      "b".repeat(32),
+      capability,
       "baseline"
     );
     expect(baseline.status).toBe(206);
@@ -122,7 +132,8 @@ describe("staging virtual-audio diagnostic", () => {
     });
   });
 
-  it("bounds exact fixture-object setup and keeps it staging-token-only", async () => {
+  it("bounds fixture setup and requires an active staging lease", async () => {
+    const capability = await testCapability();
     const fixture = syntheticFixture.sources[0];
     const objects = new Map<string, Uint8Array>([
       [fixture.objectKey, new Uint8Array(fixture.bytes)]
@@ -152,27 +163,40 @@ describe("staging virtual-audio diagnostic", () => {
     } as unknown as R2Bucket;
     const env = {
       ENVIRONMENT: "staging",
-      VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: "b".repeat(32),
+      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET,
+      DB: activeLeaseDb(),
       MEDIA_BUCKET: bucket
     } as PodcastEnv;
     const objectUrl =
-      `https://example.test/v1/diagnostics/virtual-audio/${"b".repeat(32)}`
+      `https://example.test/v1/diagnostics/virtual-audio/${capability}`
       + `/objects/${fixture.filename}`;
 
     const hidden = await manageStagingVirtualAudioFixtureObject(
       new Request(objectUrl),
       env,
-      "a".repeat(32),
+      `invalid.${Math.floor(Date.now() / 1_000) + 600}.${"a".repeat(64)}`,
       fixture.filename
     );
     expect(hidden.status).toBe(404);
+
+    const revoked = await manageStagingVirtualAudioFixtureObject(
+      new Request(objectUrl),
+      {
+        ...env,
+        DB: activeLeaseDb(false)
+      },
+      capability,
+      fixture.filename
+    );
+    expect(revoked.status).toBe(404);
 
     const mismatched = await manageStagingVirtualAudioFixtureObject(
       new Request(objectUrl, {
         method: "GET"
       }),
       env,
-      "b".repeat(32),
+      capability,
       fixture.filename
     );
     expect(mismatched.status).toBe(200);
@@ -192,7 +216,7 @@ describe("staging virtual-audio diagnostic", () => {
         body: new Uint8Array(fixture.bytes)
       }),
       env,
-      "b".repeat(32),
+      capability,
       fixture.filename
     );
     expect(rejected.status).toBe(400);
@@ -204,10 +228,111 @@ describe("staging virtual-audio diagnostic", () => {
     const deleted = await manageStagingVirtualAudioFixtureObject(
       new Request(objectUrl, { method: "DELETE" }),
       env,
-      "b".repeat(32),
+      capability,
       fixture.filename
     );
     expect(deleted.status).toBe(204);
     expect(objects.has(fixture.objectKey)).toBe(false);
   });
+
+  it("exchanges a one-time hashed lease for a bounded signed capability", async () => {
+    const leaseId = "lease_diagnostic_test_01";
+    const leaseToken = "t".repeat(48);
+    const expiresAt = new Date(Date.now() + 10 * 60_000)
+      .toISOString()
+      .replace("T", " ")
+      .slice(0, 19);
+    const bindings: unknown[][] = [];
+    let exchangeAvailable = true;
+    const db = {
+      prepare() {
+        return {
+          bind(...values: unknown[]) {
+            bindings.push(values);
+            return {
+              async first() {
+                if (!exchangeAvailable) return null;
+                exchangeAvailable = false;
+                return { expires_at: expiresAt };
+              }
+            };
+          }
+        };
+      }
+    } as unknown as D1Database;
+    const response = await issueStagingVirtualAudioCapability(
+      new Request("https://example.test/capability", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ leaseId, token: leaseToken })
+      }),
+      {
+        ENVIRONMENT: "staging",
+        AD_DECISION_MODE: "staging_validate",
+        AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET,
+        DB: db
+      } as PodcastEnv
+    );
+    const payload = await response.json<{
+      capability: string;
+      expiresAt: string;
+    }>();
+
+    expect(response.status).toBe(201);
+    expect(payload.capability).toMatch(
+      new RegExp(`^${leaseId}\\.[0-9]{10}\\.[a-f0-9]{64}$`)
+    );
+    expect(JSON.stringify(payload)).not.toContain(leaseToken);
+    expect(bindings).toHaveLength(1);
+    expect(bindings[0][0]).toBe(leaseId);
+    expect(bindings[0][1]).toMatch(/^[a-f0-9]{64}$/);
+    expect(bindings[0][1]).not.toBe(leaseToken);
+
+    const replay = await issueStagingVirtualAudioCapability(
+      new Request("https://example.test/capability", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ leaseId, token: leaseToken })
+      }),
+      {
+        ENVIRONMENT: "staging",
+        AD_DECISION_MODE: "staging_validate",
+        AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET,
+        DB: db
+      } as PodcastEnv
+    );
+    expect(replay.status).toBe(404);
+    expect(bindings).toHaveLength(2);
+  });
 });
+
+async function testCapability(): Promise<string> {
+  const leaseId = "lease_diagnostic_test_01";
+  const expires = Math.floor(Date.now() / 1_000) + 10 * 60;
+  const signature = await hmacSha256(
+    [
+      "dust-wave-virtual-audio-capability-v1",
+      leaseId,
+      String(expires)
+    ].join("\n"),
+    TEST_SIGNING_SECRET,
+    "hex"
+  );
+  return `${leaseId}.${expires}.${signature}`;
+}
+
+function activeLeaseDb(active = true): D1Database {
+  return {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async first() {
+              return active ? { id: "lease_diagnostic_test_01" } : null;
+            }
+          };
+        }
+      };
+    }
+  } as unknown as D1Database;
+}

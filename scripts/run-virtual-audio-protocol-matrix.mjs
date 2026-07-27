@@ -6,19 +6,14 @@ import path from "node:path";
 
 process.umask(0o077);
 const options = parseOptions(process.argv.slice(2));
-const token = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN;
-const versionOverrideId =
-  process.env.VIRTUAL_AUDIO_VERSION_OVERRIDE_ID;
-if (!token || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
-  fail(
-    "VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN must be supplied through the environment."
-  );
-}
+const capability = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY;
 if (
-  versionOverrideId
-  && !/^[a-f0-9-]{36}$/.test(versionOverrideId)
+  !capability
+  || !/^[A-Za-z0-9_-]{16,64}\.[0-9]{10}\.[a-f0-9]{64}$/.test(capability)
 ) {
-  fail("VIRTUAL_AUDIO_VERSION_OVERRIDE_ID is invalid.");
+  fail(
+    "VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY must be supplied through the environment."
+  );
 }
 if (!options.origin || !options.output) {
   fail(
@@ -32,7 +27,7 @@ if (origin.protocol !== "https:" || origin.pathname !== "/") {
 }
 const outputPath = path.resolve(options.output);
 const diagnosticUrl = new URL(
-  `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}/virtual`,
+  `/v1/diagnostics/virtual-audio/${encodeURIComponent(capability)}/virtual`,
   origin
 );
 const results = [];
@@ -182,7 +177,6 @@ const evidence = {
   scope: {
     syntheticProtocolEmulation: true,
     nativeClientValidation: false,
-    versionOverride: Boolean(versionOverrideId),
     note:
       "User-Agent probes validate HTTP invariants only; they do not count "
       + "as real native-app playback evidence."
@@ -229,17 +223,9 @@ async function rangedProbe(
 
 async function probe(name, init = {}, clientProfile = null) {
   const startedAt = performance.now();
-  const headers = new Headers(init.headers);
-  if (versionOverrideId) {
-    headers.set(
-      "cloudflare-workers-version-overrides",
-      `dust-wave-podcast-staging="${versionOverrideId}"`
-    );
-  }
   const response = await fetch(diagnosticUrl, {
     redirect: "error",
-    ...init,
-    headers
+    ...init
   });
   const body = new Uint8Array(await response.arrayBuffer());
   const result = {

@@ -13,6 +13,9 @@ import {
   schedulePendingAnnouncementDeliveries
 } from "./announcement-delivery";
 import { cleanupPodcastAnalytics } from "./podcast-analytics";
+import {
+  cleanupVirtualAudioDiagnosticLeases
+} from "./diagnostics";
 
 export default {
   async fetch(
@@ -90,6 +93,7 @@ export default {
       pruneSubscriptionBillingRateLimits(env.DB),
       pruneTaxQuoteRateLimits(env.DB),
       cleanupPodcastAnalytics(env.DB),
+      cleanupVirtualAudioDiagnosticLeases(env.DB),
       schedulePendingAnnouncementDeliveries(env),
       schedulePendingTranscriptions(env)
     ]);

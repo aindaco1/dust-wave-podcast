@@ -584,18 +584,22 @@ from creating a second qualification.
 
 Required only while the synthetic real-client audio matrix is active:
 
-- `VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN`
+- migration `0048_virtual_audio_diagnostic_leases.sql` on the staging D1
+  database;
+- staging secret `AD_DECISION_SIGNING_SECRET`; and
+- staging variable `AD_DECISION_MODE=staging_validate`.
 
-Supply that token to `npm run matrix:virtual-audio` through the environment,
-never a command argument. The generated JSON redacts the fixture path and
-labels header-level app probes as protocol emulation rather than native-client
-evidence.
+The gate reuses the ad-decision signing secret only through a distinct HMAC
+domain. It does not create, rotate, or delete Worker secrets. Its one-time
+lease contains only a domain-separated SHA-256 hash of a random token and
+expires after 15 minutes.
 
-Use the same environment-only token with `npm run load:virtual-audio` after
-uploading the generated `virtual-midroll.mp3` baseline. The default 5,000
-paired cases produce 10,000 measured requests across identical virtual and
-preassembled bytes. Remove all four objects and the diagnostic secret
-immediately after saving the redacted evidence.
+If running an individual matrix for diagnosis, supply its signed capability to
+`npm run matrix:virtual-audio` or `npm run load:virtual-audio` through
+`VIRTUAL_AUDIO_DIAGNOSTIC_CAPABILITY`, never a command argument. Generated JSON
+redacts the fixture path and labels header-level app probes as protocol
+emulation rather than native-client evidence. Remove all four exact fixture
+objects and the matching D1 lease immediately after saving the evidence.
 
 Prefer the atomic staging-only wrapper for routine evidence runs:
 
@@ -605,19 +609,27 @@ npm run gate:virtual-audio:staging -- \
   --pairs 5000 --concurrency 12
 ```
 
-The wrapper refuses the production origin, an existing diagnostic secret, a
-nonempty evidence directory, or any non-matching pre-existing fixture object.
-Its exact-name setup endpoint verifies byte length, MIME type, and SHA-256
-before writing through the Worker's private R2 binding. It preserves matching
-pre-existing objects, removes only objects uploaded by the current run, waits
-for ten consecutive ranged readiness probes before recording evidence, waits
-for secret removal to propagate, and fails if cleanup cannot be confirmed. A
-Cloudflare version override pins setup and matrix requests to the exact
-temporary-secret Worker version and is cleared before secret-removal
-verification.
-After an uncatchable force kill, list staging secret names and inspect the four
-exact `fixtures/virtual-audio/` keys before doing anything else; never use a
-prefix-wide delete.
+The wrapper refuses the production origin, a nonempty evidence directory, or
+any non-matching pre-existing fixture object. It inserts one exact hashed lease
+in the dedicated D1 table, exchanges the raw token once, and keeps the returned
+15-minute capability only in memory and child-process environment state. The
+raw token and capability are not printed or persisted in evidence.
+
+Its exact-name setup endpoint requires both the signed capability and an active
+exchanged lease, then verifies byte length, MIME type, and SHA-256 before
+writing through the Worker's private R2 binding. Streaming verifies the
+signature without a D1 request so load evidence measures the launch hot path.
+The wrapper preserves matching pre-existing objects, removes only objects
+uploaded by the current run, deletes only its generated lease ID, waits for ten
+consecutive ranged readiness probes before recording evidence, and fails if
+either cleanup step cannot be confirmed.
+
+After an uncatchable force kill, inspect the dedicated
+`virtual_audio_diagnostic_leases` table for unexpired or recently expired rows,
+then inspect the four exact `fixtures/virtual-audio/` keys. Delete only a
+confirmed diagnostic lease ID and confirmed fixture keys; never use a
+prefix-wide R2 delete. The scheduled Worker cleanup also removes expired
+leases, but it does not replace the manual object audit.
 
 Use least-privilege staging credentials. Cloudflare does not expose existing
 secret values, so rotate or enter them rather than attempting to copy them from

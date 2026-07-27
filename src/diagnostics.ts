@@ -1,4 +1,8 @@
-import { timingSafeEqual } from "@dustwave/worker-core/crypto";
+import {
+  hmacSha256,
+  sha256Hex,
+  timingSafeEqual
+} from "@dustwave/worker-core/crypto";
 
 import syntheticFixture from "../config/virtual-audio-synthetic-fixture.json";
 import type { PodcastEnv } from "./env";
@@ -10,9 +14,11 @@ import {
 } from "./virtual-media";
 import {
   readBoundedBytes,
+  readJsonObject,
   RequestValidationError
 } from "./validation";
 
+const DIAGNOSTIC_CAPABILITY_MAXIMUM_SECONDS = 15 * 60;
 const {
   virtual: SYNTHETIC_MIDROLL_MANIFEST,
   baseline: SYNTHETIC_BASELINE_MANIFEST
@@ -44,7 +50,7 @@ export async function serveStagingVirtualAudioDiagnostic(
   suppliedToken: string,
   variant: "virtual" | "baseline" = "virtual"
 ): Promise<Response> {
-  if (!stagingDiagnosticTokenMatches(env, suppliedToken)) {
+  if (!await verifyStagingDiagnosticCapability(env, suppliedToken)) {
     return diagnosticNotFound();
   }
   return serveVirtualMedia(
@@ -56,13 +62,75 @@ export async function serveStagingVirtualAudioDiagnostic(
   );
 }
 
+export async function issueStagingVirtualAudioCapability(
+  request: Request,
+  env: PodcastEnv
+): Promise<Response> {
+  if (!stagingDiagnosticConfigured(env)) return diagnosticNotFound();
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonObject(request, 1_000);
+  } catch {
+    return diagnosticJson({ error: "invalid_diagnostic_lease" }, 400);
+  }
+  const leaseId = String(body.leaseId ?? "").trim();
+  const leaseToken = String(body.token ?? "").trim();
+  if (
+    !/^[A-Za-z0-9_-]{16,64}$/.test(leaseId)
+    || !/^[A-Za-z0-9_-]{32,128}$/.test(leaseToken)
+  ) {
+    return diagnosticJson({ error: "invalid_diagnostic_lease" }, 400);
+  }
+  const tokenHash = await sha256Hex([
+    "dust-wave-virtual-audio-lease-v1",
+    leaseId,
+    leaseToken
+  ].join("\n"));
+  const lease = await env.DB.prepare(
+    `UPDATE virtual_audio_diagnostic_leases
+     SET exchanged_at = datetime('now')
+     WHERE
+       id = ?
+       AND token_hash = ?
+       AND exchanged_at IS NULL
+       AND expires_at > datetime('now')
+     RETURNING expires_at`
+  ).bind(leaseId, tokenHash).first<{ expires_at: string }>();
+  if (!lease) return diagnosticNotFound();
+  const expires = parseDiagnosticExpiry(lease.expires_at);
+  const now = Math.floor(Date.now() / 1_000);
+  if (
+    !Number.isSafeInteger(expires)
+    || expires <= now
+    || expires > now + DIAGNOSTIC_CAPABILITY_MAXIMUM_SECONDS
+  ) {
+    return diagnosticNotFound();
+  }
+  const signature = await signDiagnosticCapability(
+    leaseId,
+    expires,
+    env.AD_DECISION_SIGNING_SECRET as string
+  );
+  return diagnosticJson({
+    capability: `${leaseId}.${expires}.${signature}`,
+    expiresAt: new Date(expires * 1_000).toISOString()
+  }, 201);
+}
+
 export async function manageStagingVirtualAudioFixtureObject(
   request: Request,
   env: PodcastEnv,
   suppliedToken: string,
   filename: string
 ): Promise<Response> {
-  if (!stagingDiagnosticTokenMatches(env, suppliedToken)) {
+  const capability = await verifyStagingDiagnosticCapability(
+    env,
+    suppliedToken
+  );
+  if (
+    !capability
+    || !await stagingDiagnosticLeaseActive(env.DB, capability.leaseId)
+  ) {
     return diagnosticNotFound();
   }
   const fixture = SYNTHETIC_FIXTURE_OBJECTS.get(filename);
@@ -158,10 +226,7 @@ export async function manageStagingVirtualAudioFixtureObject(
 export function serveStagingVirtualAudioPlayer(
   env: PodcastEnv
 ): Response {
-  if (
-    env.ENVIRONMENT !== "staging"
-    || !env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN
-  ) {
+  if (!stagingDiagnosticConfigured(env)) {
     return diagnosticNotFound();
   }
   const nonce = "dust-wave-virtual-audio-diagnostic";
@@ -175,16 +240,16 @@ export function serveStagingVirtualAudioPlayer(
 <body>
   <main>
     <h1>Virtual-audio diagnostic</h1>
-    <p>Synthetic tones only. The staging token is kept in this page's memory.</p>
+    <p>Synthetic tones only. The staging capability stays in page memory.</p>
     <form id="fixture-form">
-      <label for="fixture-token">Staging token</label>
+      <label for="fixture-token">Staging capability</label>
       <input id="fixture-token" type="password" required autocomplete="off">
       <button type="submit">Load and play fixture</button>
     </form>
     <audio id="fixture-audio" controls preload="metadata"></audio>
     <button id="seek" type="button" disabled>Seek to 7 seconds</button>
     <button id="pause" type="button" disabled>Pause</button>
-    <output id="status" aria-live="polite">Waiting for a token.</output>
+    <output id="status" aria-live="polite">Waiting for a capability.</output>
   </main>
   <script nonce="${nonce}">
     const form = document.querySelector("#fixture-form");
@@ -313,16 +378,87 @@ function syntheticSegmentKind(value: string): VirtualMediaSegmentKind {
   throw new Error("Unsupported synthetic virtual-audio segment kind.");
 }
 
-function stagingDiagnosticTokenMatches(
+async function verifyStagingDiagnosticCapability(
   env: PodcastEnv,
   suppliedToken: string
-): boolean {
+): Promise<{ leaseId: string; expires: number } | null> {
+  if (!stagingDiagnosticConfigured(env)) return null;
+  const match = suppliedToken.match(
+    /^([A-Za-z0-9_-]{16,64})\.([0-9]{10})\.([a-f0-9]{64})$/
+  );
+  if (!match) return null;
+  const expires = Number(match[2]);
+  const now = Math.floor(Date.now() / 1_000);
+  if (
+    !Number.isSafeInteger(expires)
+    || expires <= now
+    || expires > now + DIAGNOSTIC_CAPABILITY_MAXIMUM_SECONDS
+  ) {
+    return null;
+  }
+  const expected = await signDiagnosticCapability(
+    match[1],
+    expires,
+    env.AD_DECISION_SIGNING_SECRET as string
+  );
+  return timingSafeEqual(match[3], expected)
+    ? { leaseId: match[1], expires }
+    : null;
+}
+
+function stagingDiagnosticConfigured(env: PodcastEnv): boolean {
   return env.ENVIRONMENT === "staging"
-    && Boolean(env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN)
-    && timingSafeEqual(
-      suppliedToken,
-      env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN
-    );
+    && env.AD_DECISION_MODE === "staging_validate"
+    && Boolean(env.AD_DECISION_SIGNING_SECRET);
+}
+
+function signDiagnosticCapability(
+  leaseId: string,
+  expires: number,
+  secret: string
+): Promise<string> {
+  return hmacSha256(
+    [
+      "dust-wave-virtual-audio-capability-v1",
+      leaseId,
+      String(expires)
+    ].join("\n"),
+    secret,
+    "hex"
+  );
+}
+
+function parseDiagnosticExpiry(value: string): number {
+  const normalized = /(?:Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value)
+    ? value
+    : `${value.replace(" ", "T")}Z`;
+  return Math.floor(Date.parse(normalized) / 1_000);
+}
+
+async function stagingDiagnosticLeaseActive(
+  db: D1Database,
+  leaseId: string
+): Promise<boolean> {
+  const lease = await db.prepare(
+    `SELECT id
+     FROM virtual_audio_diagnostic_leases
+     WHERE
+       id = ?
+       AND exchanged_at IS NOT NULL
+       AND expires_at > datetime('now')`
+  ).bind(leaseId).first<{ id: string }>();
+  return Boolean(lease);
+}
+
+export async function cleanupVirtualAudioDiagnosticLeases(
+  db: D1Database
+): Promise<void> {
+  await db.prepare(
+    `DELETE FROM virtual_audio_diagnostic_leases
+     WHERE
+       expires_at <= datetime('now')
+       OR exchanged_at < datetime('now', '-1 day')`
+  ).run();
 }
 
 async function sha256Bytes(bytes: Uint8Array): Promise<string> {
