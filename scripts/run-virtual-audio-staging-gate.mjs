@@ -175,7 +175,8 @@ async function preflightAndUploadObjects(sourceDirectory) {
     }
     if (retrieval.status !== 404) {
       throw new Error(
-        `Could not preflight staging object ${object.objectKey}.`
+        `Could not preflight staging object ${object.objectKey} `
+        + `(HTTP ${retrieval.status}).`
       );
     }
     const bytes = await readFile(
@@ -232,14 +233,28 @@ async function waitForDiagnostic(targetOrigin, expectedStatus) {
     `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}/virtual`,
     targetOrigin
   );
+  const objectUrl = diagnosticObjectUrl(contract.sources[0].filename);
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
-      const response = await fetch(url, {
-        method: "HEAD",
-        redirect: "error",
-        cache: "no-store"
-      });
-      if (response.status === expectedStatus) return;
+      const [response, objectResponse] = await Promise.all([
+        fetch(url, {
+          method: "HEAD",
+          redirect: "error",
+          cache: "no-store"
+        }),
+        fetch(objectUrl, {
+          redirect: "error",
+          cache: "no-store"
+        })
+      ]);
+      if (
+        response.status === expectedStatus
+        && (
+          expectedStatus !== 200
+          || objectResponse.status === 200
+          || objectResponse.status === 404
+        )
+      ) return;
     } catch {
       // Deployment propagation is retried within the bounded window.
     }
