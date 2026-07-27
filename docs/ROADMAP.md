@@ -233,8 +233,11 @@ iHeartRadio, and Deezer.
   entitlement, destination HMAC, and suppression at delivery, exposes a
   one-click unsubscribe path, consumes signed Resend events idempotently, and
   retains only count-level admin evidence. Staging is dry-run and production is
-  disabled. A signed-webhook exercise plus a tightly controlled staging live
-  send remain promotion gates before enabling the Resend sender.
+  disabled. The dedicated staging webhook now rejects unsigned requests and
+  has passed a signed unmatched-event plus exact-replay deduplication exercise
+  with its active rotated secret. A tightly controlled consented staging live
+  send, matched delivery transition, and suppression exercise remain promotion
+  gates before enabling the Resend sender.
 - Keep the implemented portable embeds and build-time share-card previews
   read-only. Add scheduling only after its storage, accessibility, privacy,
   cancellation, and cache contracts are characterized.

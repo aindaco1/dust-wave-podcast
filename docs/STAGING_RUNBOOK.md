@@ -775,6 +775,18 @@ staging Turnstile widget and matching secret are installed. A dummy Turnstile
 pair is suitable for local/automated tests only, not the public `workers.dev`
 deployment.
 
+The staging Podcast webhook contract passed its provider-independent
+signature/replay exercise on 2026-07-27. The dedicated active webhook subscribes
+only to delivered, bounced, complained, failed, and suppressed events; its
+one-time signing secret was rotated after the exercise and installed only as
+`RESEND_WEBHOOK_SECRET`. An unsigned JSON request returned `401`; after edge
+propagation stabilized, one signed content-free unmatched delivery event
+returned `200`, and its exact replay returned `200` with `duplicate: true`.
+The exercised secret/webhook was disabled, not deleted, and no listener,
+announcement, address, or delivery row was fabricated. This is signature and
+replay evidence only: `ANNOUNCEMENT_DELIVERY_MODE` remains `dry_run` until one
+consented staging listener can receive the bounded live-send test below.
+
 ## 5. Deploy and smoke test
 
 ```sh

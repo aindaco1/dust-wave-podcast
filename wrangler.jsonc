@@ -28,6 +28,7 @@
           "LISTENER_EMAIL_LOOKUP_PEPPER",
           "LISTENER_SESSION_SECRET",
           "MEDIA_PROCESSOR_CALLBACK_SECRET",
+          "RESEND_WEBHOOK_SECRET",
           "TAX_QUOTE_HASH_SECRET"
         ]
       },
