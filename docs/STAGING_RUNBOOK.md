@@ -615,14 +615,16 @@ in the dedicated D1 table, exchanges the raw token once, and keeps the returned
 15-minute capability only in memory and child-process environment state. The
 raw token and capability are not printed or persisted in evidence.
 
-Its exact-name setup endpoint requires both the signed capability and an active
-exchanged lease, then verifies byte length, MIME type, and SHA-256 before
-writing through the Worker's private R2 binding. Streaming verifies the
-signature without a D1 request so load evidence measures the launch hot path.
-The wrapper preserves matching pre-existing objects, removes only objects
-uploaded by the current run, deletes only its generated lease ID, waits for ten
-consecutive ranged readiness probes before recording evidence, and fails if
-either cleanup step cannot be confirmed.
+Before creating that temporary lease, it requires three consecutive successful
+responses from the non-sensitive staging player route. Its exact-name setup
+endpoint then requires both the signed capability and an active exchanged
+lease, and verifies byte length, MIME type, and SHA-256 before writing through
+the Worker's private R2 binding. Streaming verifies the signature without a D1
+request so load evidence measures the launch hot path. The wrapper preserves
+matching pre-existing objects, removes only objects uploaded by the current
+run, deletes only its generated lease ID, waits for ten consecutive ranged
+readiness probes before recording evidence, and fails if either cleanup step
+cannot be confirmed.
 
 After an uncatchable force kill, inspect the dedicated
 `virtual_audio_diagnostic_leases` table for unexpired or recently expired rows,

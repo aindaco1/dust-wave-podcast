@@ -92,6 +92,7 @@ try {
     await readFile(path.resolve(fixtureDirectory, "evidence.json"), "utf8")
   );
   verifyFixtureEvidence(fixtureEvidence);
+  await waitForStagingPlayer();
   createDiagnosticLease();
   await exchangeDiagnosticLease();
   await preflightAndUploadObjects(fixtureDirectory);
@@ -207,6 +208,32 @@ async function preflightAndUploadObjects(sourceDirectory) {
       );
     }
   }
+}
+
+async function waitForStagingPlayer() {
+  const url = new URL("/v1/diagnostics/virtual-audio/player", origin);
+  let consecutivePasses = 0;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: "HEAD",
+        redirect: "error",
+        cache: "no-store"
+      });
+      if (response.status === 200) {
+        consecutivePasses += 1;
+        if (consecutivePasses >= 3) return;
+      } else {
+        consecutivePasses = 0;
+      }
+    } catch {
+      consecutivePasses = 0;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error(
+    "Staging diagnostic player did not become ready within 60 seconds."
+  );
 }
 
 function createDiagnosticLease() {

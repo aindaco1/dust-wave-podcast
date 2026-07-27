@@ -125,9 +125,11 @@ npm run gate:virtual-audio:staging -- \
 
 It is hard-bound to the Dust Wave staging origin, D1 database binding, and
 bucket. It refuses a nonempty evidence directory or any non-matching R2
-object, generates and verifies the fixture contract, inserts one exact
-cryptographically random hashed lease, and exchanges it once for a signed
-capability. It then uploads only missing objects through an exact-name,
+object, generates and verifies the fixture contract, and waits for three
+consecutive responses from the non-sensitive staging player route before
+creating temporary state. It then inserts one exact cryptographically random
+hashed lease and exchanges it once for a signed capability. It uploads only
+missing objects through an exact-name,
 hash-verifying, staging-only R2-binding endpoint and runs both matrices.
 
 Before recording evidence it requires ten consecutive exact one-byte range
