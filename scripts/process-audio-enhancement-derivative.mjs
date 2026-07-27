@@ -54,6 +54,8 @@ const processorBase =
 await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
 
 let manifest;
+let callback;
+let multipartCompleted = false;
 try {
   const manifestResponse = await client.signedJsonRequest(
     `${processorBase}/manifest`,
@@ -85,7 +87,7 @@ try {
     "--output", outputDirectory,
     "--callback-body", callbackPath
   ], 5 * 60 * 60_000);
-  const callback = JSON.parse(await readFile(callbackPath, "utf8"));
+  callback = JSON.parse(await readFile(callbackPath, "utf8"));
   await validateAudioEnhancementDerivativeReport(
     callback.report,
     manifest
@@ -96,6 +98,7 @@ try {
     output: callback.report.output,
     partIdentity: { derivativeId }
   });
+  multipartCompleted = true;
   const completion = await client.signedJsonRequest(
     manifest.endpoints.evidenceComplete,
     JSON.stringify(callback)
@@ -138,7 +141,7 @@ try {
   }
   await removePrivateWorkFiles();
 } catch (error) {
-  if (manifest) {
+  if (manifest && !multipartCompleted) {
     const failure = {
       jobId: derivativeId,
       manifestSha256: manifest.manifestSha256,
@@ -161,7 +164,24 @@ try {
       { mode: 0o600 }
     );
   }
-  await removePrivateWorkFiles();
+  if (manifest && multipartCompleted && callback) {
+    await writeFile(
+      processorEvidencePath,
+      `${JSON.stringify({
+        schemaVersion: "audio-enhancement-derivative-evidence-v1",
+        derivativeId,
+        status: "completion_pending",
+        manifestSha256: manifest.manifestSha256,
+        reportSha256: callback.reportSha256,
+        outputBytes: callback.report?.output?.objectBytes ?? null,
+        outputSha256: callback.report?.output?.sha256 ?? null
+      }, null, 2)}\n`,
+      { mode: 0o600 }
+    );
+  }
+  await removePrivateWorkFiles({
+    preserveCompletionEvidence: multipartCompleted
+  });
   throw error;
 }
 
@@ -175,11 +195,17 @@ function run(command, args, timeout) {
   }
 }
 
-async function removePrivateWorkFiles() {
-  await Promise.all([
-    manifestPath,
+async function removePrivateWorkFiles({
+  preserveCompletionEvidence = false
+} = {}) {
+  const privateFiles = [
     sourcePath,
-    outputPath,
-    callbackPath
-  ].map((filename) => rm(filename, { force: true }).catch(() => {})));
+    outputPath
+  ];
+  if (!preserveCompletionEvidence) {
+    privateFiles.push(manifestPath, callbackPath);
+  }
+  await Promise.all(privateFiles.map(
+    (filename) => rm(filename, { force: true }).catch(() => {})
+  ));
 }

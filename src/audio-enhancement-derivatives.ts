@@ -966,14 +966,23 @@ export async function completeAudioEnhancementDerivative(
       "audio_enhancement_derivative_qc_policy_not_found"
     );
   }
-  const qcManifest = await buildDerivativeQcManifest(
-    env,
-    derivative,
-    object!,
-    report,
-    identifiers.qcRunId,
-    policy
-  );
+  let qcManifest: AudioQcManifest;
+  try {
+    qcManifest = await buildDerivativeQcManifest(
+      env,
+      derivative,
+      object!,
+      report,
+      identifiers.qcRunId,
+      policy
+    );
+  } catch {
+    return derivativeConflict(
+      request,
+      env,
+      "audio_enhancement_derivative_qc_manifest_invalid"
+    );
+  }
   const existingUpload = await loadMediaUploadByIdentity(
     env.DB,
     identifiers.outputUploadId,
@@ -1040,8 +1049,10 @@ export async function completeAudioEnhancementDerivative(
     );
   }
   const policyJson = JSON.stringify(audioQcPolicyContract(policy));
-  const results = await env.DB.batch([
-    env.DB.prepare(
+  let results: D1Result<unknown>[];
+  try {
+    results = await env.DB.batch([
+      env.DB.prepare(
       `INSERT OR IGNORE INTO media_uploads (
          id, show_id, episode_id, kind, object_key, r2_upload_id,
          filename, content_type, expected_bytes, status, completed_bytes,
@@ -1061,8 +1072,8 @@ export async function completeAudioEnhancementDerivative(
       report.output.objectBytes,
       object!.httpEtag,
       derivative.requested_by_admin_user_id
-    ),
-    env.DB.prepare(
+      ),
+      env.DB.prepare(
       `INSERT OR IGNORE INTO audio_qc_runs (
          id, episode_id, source_upload_id, source_object_key,
          source_object_bytes, source_object_etag, source_mime_type,
@@ -1080,8 +1091,8 @@ export async function completeAudioEnhancementDerivative(
       policyJson,
       qcManifest.manifestSha256,
       derivative.requested_by_admin_user_id
-    ),
-    env.DB.prepare(
+      ),
+      env.DB.prepare(
       `UPDATE audio_enhancement_derivatives
        SET
          status = 'ready',
@@ -1111,23 +1122,30 @@ export async function completeAudioEnhancementDerivative(
       reportSha256,
       derivativeId,
       manifest.manifestSha256
-    ),
-    prepareAdminAuditAfterSingleChange(env.DB, {
-      adminUserId: derivative.requested_by_admin_user_id,
-      action: "audio_enhancement_derivative.ready",
-      targetType: "audio_enhancement_derivative",
-      targetId: derivativeId,
-      metadata: {
-        episodeId: derivative.episode_id,
-        outputUploadId: identifiers.outputUploadId,
-        qualityControlRunId: identifiers.qcRunId,
-        outputBytes: report.output.objectBytes,
-        outputSha256: report.output.sha256,
-        processorReportSha256: reportSha256,
-        qualityControlManifestSha256: qcManifest.manifestSha256
-      }
-    })
-  ]);
+      ),
+      prepareAdminAuditAfterSingleChange(env.DB, {
+        adminUserId: derivative.requested_by_admin_user_id,
+        action: "audio_enhancement_derivative.ready",
+        targetType: "audio_enhancement_derivative",
+        targetId: derivativeId,
+        metadata: {
+          episodeId: derivative.episode_id,
+          outputUploadId: identifiers.outputUploadId,
+          qualityControlRunId: identifiers.qcRunId,
+          outputBytes: report.output.objectBytes,
+          outputSha256: report.output.sha256,
+          processorReportSha256: reportSha256,
+          qualityControlManifestSha256: qcManifest.manifestSha256
+        }
+      })
+    ]);
+  } catch {
+    return derivativeConflict(
+      request,
+      env,
+      "audio_enhancement_derivative_persistence_failed"
+    );
+  }
   if (Number(results[2]?.meta?.changes ?? 0) !== 1) {
     return derivativeConflict(
       request,
