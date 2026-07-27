@@ -106,6 +106,15 @@ import {
   reconcileAdminEpisodeYouTubePublication
 } from "./episode-youtube";
 import {
+  completeYouTubeAudioRendition,
+  completeYouTubeAudioRenditionMultipartUpload,
+  getYouTubeAudioRenditionProcessorManifest,
+  getYouTubeAudioRenditionProcessorSource,
+  listAdminEpisodeYouTubeAudioRenditions,
+  queueAdminEpisodeYouTubeAudioRendition,
+  uploadYouTubeAudioRenditionProcessorPart
+} from "./youtube-audio-renditions";
+import {
   issueStagingVirtualAudioCapability,
   manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
@@ -264,6 +273,8 @@ const ADMIN_EPISODE_READINESS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/readiness$/;
 const ADMIN_EPISODE_YOUTUBE_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/youtube$/;
+const ADMIN_EPISODE_YOUTUBE_AUDIO_RENDITIONS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/youtube-audio-renditions$/;
 const ADMIN_EPISODE_AUDIO_QC_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-qc$/;
 const ADMIN_EPISODE_AUDIO_MASTER_PATH =
@@ -351,6 +362,16 @@ const PROCESSOR_CLIP_RENDER_SOURCE_PATH =
   /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/source$/;
 const PROCESSOR_CLIP_RENDER_OUTPUT_PATH =
   /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/output$/;
+const PROCESSOR_YOUTUBE_AUDIO_RENDITION_MANIFEST_PATH =
+  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/manifest$/;
+const PROCESSOR_YOUTUBE_AUDIO_RENDITION_SOURCE_PATH =
+  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/sources\/(audio|artwork)$/;
+const PROCESSOR_YOUTUBE_AUDIO_RENDITION_PART_PATH =
+  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/parts\/([0-9]{1,5})$/;
+const PROCESSOR_YOUTUBE_AUDIO_RENDITION_UPLOAD_COMPLETE_PATH =
+  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/upload-complete$/;
+const PROCESSOR_YOUTUBE_AUDIO_RENDITION_COMPLETE_PATH =
+  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/complete$/;
 const PROCESSOR_AUDIO_QC_COMPLETE_PATH =
   /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/complete$/;
 const PROCESSOR_AUDIO_QC_MANIFEST_PATH =
@@ -1002,6 +1023,25 @@ async function routeRequest(
       adminEpisodeYouTubeMatch[1]
     );
   }
+  const adminEpisodeYouTubeAudioRenditionsMatch = url.pathname.match(
+    ADMIN_EPISODE_YOUTUBE_AUDIO_RENDITIONS_PATH
+  );
+  if (adminEpisodeYouTubeAudioRenditionsMatch) {
+    if (method === "GET") {
+      return listAdminEpisodeYouTubeAudioRenditions(
+        request,
+        env,
+        adminEpisodeYouTubeAudioRenditionsMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return queueAdminEpisodeYouTubeAudioRendition(
+        request,
+        env,
+        adminEpisodeYouTubeAudioRenditionsMatch[1]
+      );
+    }
+  }
   const adminEpisodeYouTubeApproveMatch = url.pathname.match(
     ADMIN_EPISODE_YOUTUBE_APPROVE_PATH
   );
@@ -1391,6 +1431,75 @@ async function routeRequest(
       request,
       env,
       processorClipRenderOutputMatch[1]
+    );
+  }
+  const processorYouTubeAudioRenditionManifestMatch = url.pathname.match(
+    PROCESSOR_YOUTUBE_AUDIO_RENDITION_MANIFEST_PATH
+  );
+  if (
+    processorYouTubeAudioRenditionManifestMatch
+    && method === "POST"
+  ) {
+    return getYouTubeAudioRenditionProcessorManifest(
+      request,
+      env,
+      processorYouTubeAudioRenditionManifestMatch[1]
+    );
+  }
+  const processorYouTubeAudioRenditionSourceMatch = url.pathname.match(
+    PROCESSOR_YOUTUBE_AUDIO_RENDITION_SOURCE_PATH
+  );
+  if (
+    processorYouTubeAudioRenditionSourceMatch
+    && method === "POST"
+  ) {
+    return getYouTubeAudioRenditionProcessorSource(
+      request,
+      env,
+      processorYouTubeAudioRenditionSourceMatch[1],
+      processorYouTubeAudioRenditionSourceMatch[2] as
+        "audio" | "artwork"
+    );
+  }
+  const processorYouTubeAudioRenditionPartMatch = url.pathname.match(
+    PROCESSOR_YOUTUBE_AUDIO_RENDITION_PART_PATH
+  );
+  if (
+    processorYouTubeAudioRenditionPartMatch
+    && method === "PUT"
+  ) {
+    return uploadYouTubeAudioRenditionProcessorPart(
+      request,
+      env,
+      processorYouTubeAudioRenditionPartMatch[1],
+      processorYouTubeAudioRenditionPartMatch[2]
+    );
+  }
+  const processorYouTubeAudioRenditionUploadCompleteMatch =
+    url.pathname.match(
+      PROCESSOR_YOUTUBE_AUDIO_RENDITION_UPLOAD_COMPLETE_PATH
+    );
+  if (
+    processorYouTubeAudioRenditionUploadCompleteMatch
+    && method === "POST"
+  ) {
+    return completeYouTubeAudioRenditionMultipartUpload(
+      request,
+      env,
+      processorYouTubeAudioRenditionUploadCompleteMatch[1]
+    );
+  }
+  const processorYouTubeAudioRenditionCompleteMatch = url.pathname.match(
+    PROCESSOR_YOUTUBE_AUDIO_RENDITION_COMPLETE_PATH
+  );
+  if (
+    processorYouTubeAudioRenditionCompleteMatch
+    && method === "POST"
+  ) {
+    return completeYouTubeAudioRendition(
+      request,
+      env,
+      processorYouTubeAudioRenditionCompleteMatch[1]
     );
   }
   const processorAudioQcCompleteMatch = url.pathname.match(

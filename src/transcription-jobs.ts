@@ -6,7 +6,10 @@ import {
 import {
   mergeChunkTranscriptions
 } from "@dustwave/timed-text/chunking";
-import { sha256Hex } from "@dustwave/worker-core/crypto";
+import {
+  sha256BytesHex,
+  sha256Hex
+} from "@dustwave/worker-core/crypto";
 
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
@@ -466,7 +469,7 @@ export async function processTranscriptionJob(
       return;
     }
     const sourceBytes = await source.bytes();
-    if (await byteSha256Hex(sourceBytes) !== job.working_master_sha256) {
+    if (await sha256BytesHex(sourceBytes) !== job.working_master_sha256) {
       await markTranscriptionTerminal(
         env.DB,
         job.id,
@@ -737,7 +740,7 @@ async function processOneTranscriptionChunk(
       throw new Error("Prepared transcription chunk object changed");
     }
     const bytes = await object.bytes();
-    if (await byteSha256Hex(bytes) !== chunk.sha256) {
+    if (await sha256BytesHex(bytes) !== chunk.sha256) {
       throw new Error("Prepared transcription chunk digest changed");
     }
     const localDurationMs = chunk.encoded_duration_ms;
@@ -1585,13 +1588,6 @@ function transcriptionConflict(
     { error, ...detail },
     { status: 409 }
   );
-}
-
-async function byteSha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

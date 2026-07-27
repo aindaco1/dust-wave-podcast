@@ -24,4 +24,18 @@ describe("root publication intent", () => {
         .toBe(access !== "premium_bonus" && videoSourceKey !== null);
     }
   );
+
+  it("uses a ready audio rendition when no native video was uploaded", () => {
+    const plan = planEpisodePublication({
+      access: "public",
+      videoSourceKey: null,
+      youtubeVideoKey:
+        "podcasts/show/episode/youtube_audio_rendition/render.mp4"
+    });
+    expect(plan.intents.map(({ destination }) => destination)).toEqual([
+      "rss",
+      "news",
+      "youtube"
+    ]);
+  });
 });

@@ -18,13 +18,15 @@ export type EpisodePublicationPlan = {
 
 export function planEpisodePublication(input: {
   access: EpisodeAccess;
-  videoSourceKey: string | null;
+  videoSourceKey?: string | null;
+  youtubeVideoKey?: string | null;
 }): EpisodePublicationPlan {
   const intents: RootPublicationIntent[] = [
     { destination: "rss", jobType: "publish-rss" },
     { destination: "news", jobType: "publish-news" }
   ];
-  if (input.access !== "premium_bonus" && Boolean(input.videoSourceKey)) {
+  const youtubeVideoKey = input.youtubeVideoKey ?? input.videoSourceKey ?? null;
+  if (input.access !== "premium_bonus" && Boolean(youtubeVideoKey)) {
     intents.push({ destination: "youtube", jobType: "publish-youtube" });
   }
   return {

@@ -42,6 +42,7 @@ type ReadyEpisodeVideoRow = {
   access: string;
   episode_status: string;
   video_source_key: string | null;
+  selected_video_key: string | null;
   episode_title: string;
   episode_summary: string;
   youtube_channel_url: string | null;
@@ -600,7 +601,16 @@ export async function reconcileAdminEpisodeYouTubePublication(
          SET youtube_video_id = ?, updated_at = datetime('now')
          WHERE id = ?
            AND publication_revision = ?
-           AND video_source_key = ?`
+           AND COALESCE(
+             video_source_key,
+             (
+               SELECT selected.object_key
+               FROM media_uploads selected
+               WHERE selected.id = episodes.youtube_rendition_upload_id
+                 AND selected.status = 'completed'
+                 AND selected.kind = 'video_source'
+             )
+           ) = ?`
       ).bind(
         providerVideoId,
         publication.episode_id,
@@ -804,7 +814,16 @@ export async function processEpisodeYouTubePublication(
          SET youtube_video_id = ?, updated_at = datetime('now')
          WHERE id = ?
            AND publication_revision = ?
-           AND video_source_key = ?`
+           AND COALESCE(
+             video_source_key,
+             (
+               SELECT selected.object_key
+               FROM media_uploads selected
+               WHERE selected.id = episodes.youtube_rendition_upload_id
+                 AND selected.status = 'completed'
+                 AND selected.kind = 'video_source'
+             )
+           ) = ?`
       ).bind(
         uploaded.videoId,
         publication.episode_id,
@@ -950,6 +969,7 @@ function readyEpisodeVideoSelect(): string {
       e.id AS episode_id, e.show_id,
       e.publication_revision AS current_publication_revision,
       e.access, e.status AS episode_status, e.video_source_key,
+      upload.object_key AS selected_video_key,
       e.title AS episode_title, e.summary AS episode_summary,
       s.youtube_channel_url,
       job.id AS distribution_job_id,
@@ -969,9 +989,21 @@ function readyEpisodeVideoSelect(): string {
       AND job.destination = 'youtube'
       AND job.publication_revision = e.publication_revision
     JOIN media_uploads upload
-      ON upload.episode_id = e.id
-      AND upload.kind = 'video_source'
-      AND upload.object_key = e.video_source_key`;
+      ON upload.id = COALESCE(
+        (
+          SELECT native.id
+          FROM media_uploads native
+          WHERE native.episode_id = e.id
+            AND native.kind = 'video_source'
+            AND native.status = 'completed'
+            AND native.object_key = e.video_source_key
+          ORDER BY native.completed_at DESC, native.id DESC
+          LIMIT 1
+        ),
+        e.youtube_rendition_upload_id
+      )
+      AND upload.episode_id = e.id
+      AND upload.kind = 'video_source'`;
 }
 
 function episodeYouTubePublicationSelect(): string {
@@ -986,6 +1018,16 @@ function episodeYouTubePublicationSelect(): string {
       p.updated_at,
       e.publication_revision AS current_publication_revision,
       e.access, e.status AS episode_status, e.video_source_key,
+      COALESCE(
+        e.video_source_key,
+        (
+          SELECT selected.object_key
+          FROM media_uploads selected
+          WHERE selected.id = e.youtube_rendition_upload_id
+            AND selected.status = 'completed'
+            AND selected.kind = 'video_source'
+        )
+      ) AS selected_video_key,
       e.title AS episode_title, e.summary AS episode_summary,
       s.youtube_channel_url,
       job.status AS distribution_job_status,
@@ -1016,6 +1058,8 @@ function episodeYouTubePublicationSelect(): string {
 function readyEpisodeVideoEvidencePresent(
   video: ReadyEpisodeVideoRow | EpisodeYouTubePublicationRow
 ): boolean {
+  const selectedVideoKey =
+    video.selected_video_key ?? video.video_source_key;
   const key = "video_object_key" in video
     ? video.video_object_key
     : video.upload_object_key;
@@ -1032,8 +1076,8 @@ function readyEpisodeVideoEvidencePresent(
     video.current_publication_revision > 0
     && ["scheduled", "published"].includes(video.episode_status)
     && video.access !== "premium_bonus"
-    && video.video_source_key
-    && key === video.video_source_key
+    && selectedVideoKey
+    && key === selectedVideoKey
     && video.upload_status === "completed"
     && video.upload_object_key === key
     && video.upload_object_bytes === bytes
@@ -1049,12 +1093,14 @@ function readyEpisodeVideoEvidencePresent(
 function publicationReadyForApproval(
   publication: EpisodeYouTubePublicationRow
 ): boolean {
+  const selectedVideoKey =
+    publication.selected_video_key ?? publication.video_source_key;
   return Boolean(
     publication.publication_revision
       === publication.current_publication_revision
     && publication.distribution_job_id
     && publication.channel_url === publication.youtube_channel_url
-    && publication.video_object_key === publication.video_source_key
+    && publication.video_object_key === selectedVideoKey
     && readyEpisodeVideoEvidencePresent(publication)
   );
 }

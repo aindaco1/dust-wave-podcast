@@ -509,7 +509,18 @@ export async function publishAdminEpisode(
          e.show_id, e.title, e.summary, e.guid, e.audio_key, e.audio_mime_type,
          e.audio_bytes, e.duration_seconds, e.public_at, e.canonical_url,
          e.media_status, e.status, e.access, e.content_html, e.explicit,
-         e.video_source_key, e.publication_revision, e.publication_fingerprint,
+         e.video_source_key,
+         COALESCE(
+           e.video_source_key,
+           (
+             SELECT upload.object_key
+             FROM media_uploads upload
+             WHERE upload.id = e.youtube_rendition_upload_id
+               AND upload.status = 'completed'
+               AND upload.kind = 'video_source'
+           )
+         ) AS youtube_video_key,
+         e.publication_revision, e.publication_fingerprint,
          e.publication_evidence_version,
          show_evidence.version AS show_evidence_version,
          (
@@ -542,6 +553,7 @@ export async function publishAdminEpisode(
       content_html: string;
       explicit: number;
       video_source_key: string | null;
+      youtube_video_key: string | null;
       publication_revision: number;
       publication_fingerprint: string | null;
       publication_evidence_version: number;
@@ -600,7 +612,7 @@ export async function publishAdminEpisode(
     audioMimeType: episode.audio_mime_type,
     audioBytes: episode.audio_bytes,
     durationSeconds: episode.duration_seconds,
-    videoSourceKey: episode.video_source_key,
+    videoSourceKey: episode.youtube_video_key,
     publicAt,
     canonicalUrl: episode.canonical_url
   });
@@ -724,7 +736,7 @@ export async function publishAdminEpisode(
   const revision = episode.publication_revision + 1;
   const publicationPlan = planEpisodePublication({
     access: episode.access,
-    videoSourceKey: episode.video_source_key
+    youtubeVideoKey: episode.youtube_video_key
   });
   const queueJobs = publicationPlan.intents.map((intent) => ({
     intent,

@@ -126,12 +126,15 @@ iHeartRadio, and Deezer.
   replayed. The implemented reconciliation path requires a recent
   Super-admin either to verify the exact unlisted provider video and channel
   or to attest explicitly that no channel video remains; both outcomes are
-  audited and neither replays an ambiguous upload. The next media boundary
-  renders an audio-only YouTube rendition from the exact approved delivery
-  master and show artwork, validates the complete H.264/AAC output, and pins
-  that immutable evidence into this same approval contract. Native video
-  remains a separate, preferred source and premium-only bonuses remain
-  ineligible.
+  audited and neither replays an ambiguous upload. The audio-only fallback is
+  now implemented behind the same staging boundary: it snapshots first-party
+  show artwork, pins the current working-master and delivery-audio evidence,
+  renders a fully decoded 1920×1080 H.264/AAC MP4 in a protected manually
+  dispatched workflow, verifies every 32 MiB multipart checksum, and pins the
+  completed R2 object into the existing approval contract. Delivery-audio,
+  working-master, or artwork changes invalidate selection automatically.
+  Native video remains the preferred source, production stays inert, and
+  premium-only bonuses remain ineligible.
 
 ### H1 premium and revenue
 

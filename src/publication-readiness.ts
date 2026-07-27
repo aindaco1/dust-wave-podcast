@@ -50,6 +50,7 @@ type EpisodeReadinessRow = {
   duration_seconds: number | null;
   media_status: string;
   video_source_key: string | null;
+  youtube_video_key?: string | null;
   publication_revision: number;
   publication_fingerprint: string | null;
   publication_evidence_version: number;
@@ -271,7 +272,18 @@ async function loadEpisodePublicationReadiness(
        e.content_html,
        e.guid, e.canonical_url, e.public_at, e.premium_at, e.audio_key,
        e.audio_mime_type, e.audio_bytes, e.audio_etag, e.duration_seconds,
-       e.media_status, e.video_source_key, e.publication_revision,
+       e.media_status, e.video_source_key,
+       COALESCE(
+         e.video_source_key,
+         (
+           SELECT upload.object_key
+           FROM media_uploads upload
+           WHERE upload.id = e.youtube_rendition_upload_id
+             AND upload.status = 'completed'
+             AND upload.kind = 'video_source'
+         )
+       ) AS youtube_video_key,
+       e.publication_revision,
        e.publication_fingerprint, e.publication_evidence_version,
        e.dynamic_ads_enabled,
        show_evidence.version AS show_evidence_version,
@@ -511,7 +523,7 @@ export function evaluatePublicationReadiness(
   const { episode } = input;
   const publicationPlan = planEpisodePublication({
     access: episode.access,
-    videoSourceKey: episode.video_source_key
+    youtubeVideoKey: episode.youtube_video_key ?? episode.video_source_key
   });
   const missing = publicationPrerequisiteFailures({
     title: episode.title,
@@ -1068,7 +1080,10 @@ function youtubeNode(
         : "This is an audio-only episode, so no YouTube upload is expected.",
       evidence: {
         access: episode.access,
-        hasVideoSource: Boolean(episode.video_source_key),
+        hasVideoSource: Boolean(
+          episode.youtube_video_key ?? episode.video_source_key
+        ),
+        nativeVideoSource: Boolean(episode.video_source_key),
         mode
       }
     });
@@ -1213,7 +1228,7 @@ async function currentPublicationFingerprintState(
     audioMimeType: episode.audio_mime_type,
     audioBytes: episode.audio_bytes,
     durationSeconds: episode.duration_seconds,
-    videoSourceKey: episode.video_source_key,
+    videoSourceKey: episode.youtube_video_key ?? episode.video_source_key,
     publicAt: episode.public_at,
     canonicalUrl: episode.canonical_url
   });
