@@ -204,10 +204,15 @@ and current show policy can now be explicitly approved by a Super-admin as a
 revisioned working master. Private A/B enhancement previews reuse the same
 signed streaming pattern and `@dustwave/media-core` contract; their original
 and enhanced excerpts use the same MP3 profile and can never become a master.
-Replacing a master invalidates current transcript, chapter, and clip
-approvals, and the publication-readiness graph now blocks without an exact
-approved master. Full-length enhanced derivatives, derivative QC, peaks, and
-delivery rendering remain separate follow-up boundaries.
+A selected ready preview can now queue one staging-only full-length derivative
+bound to the exact current master. The pinned processor fully decodes a 48 kHz
+192 kbps MP3, uploads checksum-verified multipart parts through the Worker,
+and queues the same source-audio QC contract against that completed private
+candidate. Only a zero-blocker, current-policy result can be explicitly
+promoted by a Super-admin. Replacing a master invalidates current transcript,
+chapter, and clip approvals, and the publication-readiness graph now blocks
+without an exact approved master. Peaks and delivery rendering remain
+separate downstream boundaries.
 
 The public show and episode pages remain canonical on `dustwave.xyz`. Episode
 publishing creates or updates a News page in the website repository.

@@ -355,6 +355,33 @@ report. In the workbench, test authenticated range playback and downloads for
 both sides. Confirm anonymous media is `401`, a changed ETag/report/recipe is
 `409`, a preview cannot become a master, and production remains untouched.
 
+Select the reviewed ready preview in the Production tab and queue its
+full-length derivative. Dispatch the returned ID:
+
+```sh
+gh workflow run process-audio-enhancement-derivative.yml \
+  --ref agent/launch-configuration \
+  -f job_id="derivative_REPLACE_WITH_QUEUED_ID"
+```
+
+The render job must finish multipart upload and return the derivative QC run
+ID; the called QC job must then finish against that exact output. Confirm the
+artifact contains only `processor-evidence.json` and no object key, source,
+rendered audio, manifest, callback body, or FFmpeg log. In the workbench,
+confirm authenticated full-file range playback/download, current-policy and
+digest-match indicators, and that the approval form appears only to a
+Super-admin after zero-blocker QC.
+
+Approve with the exact displayed base revision and a bounded operational
+reason. Confirm the response creates an `enhanced_derivative` master at the
+next revision, the old derivative becomes approved while other active
+derivatives become stale, and transcript/chapter/clip approvals are
+invalidated through the existing master triggers. Repeat with a stale
+revision, changed current master, mismatched output SHA, old QC-policy
+revision, and non-Super-admin session; each must fail closed without a master
+or audit row. Anonymous derivative media is `401`; production queue,
+processor, and object state remain untouched.
+
 Using an isolated fully reviewed fixture, confirm
 `GET /v1/admin/episodes/{id}/readiness` returns 15 ordered nodes, the existing
 legacy Publish checks pass unchanged, every current review target is counted,

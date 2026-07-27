@@ -6,7 +6,7 @@ export async function recordAdminAudit(
 }
 
 export type AdminAuditInput = {
-  adminUserId: string;
+  adminUserId: string | null;
   action: string;
   targetType: string;
   targetId?: string | null;
@@ -27,6 +27,33 @@ export function prepareAdminAudit(
       `INSERT INTO admin_audit_events (
          id, admin_user_id, action, target_type, target_id, metadata_json
        ) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      `audit_${crypto.randomUUID().replace(/-/g, "")}`,
+      adminUserId,
+      action,
+      targetType,
+      targetId,
+      JSON.stringify(metadata)
+    );
+}
+
+export function prepareAdminAuditAfterSingleChange(
+  db: D1Database,
+  {
+    adminUserId,
+    action,
+    targetType,
+    targetId = null,
+    metadata = {}
+  }: AdminAuditInput
+): D1PreparedStatement {
+  return db.prepare(
+      `INSERT INTO admin_audit_events (
+         id, admin_user_id, action, target_type, target_id, metadata_json
+       )
+       SELECT ?, ?, ?, ?, ?, ?
+       WHERE changes() = 1`
     )
     .bind(
       `audit_${crypto.randomUUID().replace(/-/g, "")}`,

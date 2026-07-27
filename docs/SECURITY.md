@@ -530,6 +530,25 @@ workflow retains only callback and upload-response evidence for 30 days; audio
 files remain only in private staging R2. Preview state is explicitly
 ineligible for master approval or publication.
 
+Full-length derivative queueing additionally binds the selected ready preview
+to the exact current master and its successful source-QC report. Production
+does not expose its queue or processor routes. The staging processor receives
+no R2 credentials; every 32 MiB part carries a purpose-bound signature,
+declared length, and SHA-256, and the Worker stores the returned multipart
+ETag before accepting the complete ordered set. Completion re-heads the
+private object, checks native R2 checksum/metadata and the shared full-decode
+report, then registers a deterministic private media/QC candidate. GitHub
+retains only content-free IDs, sizes, and digests after the manifest, source,
+render, and callback files are removed.
+
+Derivative promotion is a separate CSRF-protected Super-admin operation. D1
+requires the derivative output to have a successful zero-blocker QC report
+under the current policy and to still descend from the current master. The
+Worker also re-heads R2, and the expected master revision is compared before
+one atomic batch creates the immutable replacement, advances the pointer, and
+writes conditional audit evidence. Neither free-form approval text nor object
+keys enter audit metadata.
+
 The separately authorized Shorts test stores one publication per render and
 revalidates the current revision plus the same D1/R2 evidence before any
 provider call. The confirmed URL must match both show metadata and the

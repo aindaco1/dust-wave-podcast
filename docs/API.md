@@ -285,7 +285,11 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/audio-master` | analyst+ | Current revisioned working master, eligible zero-blocker source, immutable history, presets, and private previews |
 | `POST` | `/v1/admin/episodes/{id}/audio-master/approve-source` | super-admin | Optimistically approve the exact current source/QC evidence as a new master revision |
 | `POST` | `/v1/admin/episodes/{id}/audio-enhancement-previews` | producer+ | Staging-only queue of a curated, bounded, private A/B preview |
+| `GET` | `/v1/admin/episodes/{id}/audio-enhancement-derivatives` | analyst+ | Show-scoped full-length derivative state and QC evidence |
+| `POST` | `/v1/admin/episodes/{id}/audio-enhancement-derivatives` | producer+ | Staging-only queue from one ready preview and the exact current master |
 | `GET`, `HEAD` | `/v1/admin/audio-enhancements/{jobId}/media/{original\|enhanced}` | analyst+ | Show-scoped, range-safe, no-store preview or download |
+| `GET`, `HEAD` | `/v1/admin/audio-enhancement-derivatives/{jobId}/media` | analyst+ | Show-scoped, range-safe, no-store full derivative preview or download |
+| `POST` | `/v1/admin/audio-enhancement-derivatives/{jobId}/approve` | super-admin | Promote an exact current, zero-blocker QC candidate to a new working-master revision |
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/subscribers` | super-admin | Bounded privacy-minimized aggregate and multi-source subscriber operations view as JSON or CSV |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
@@ -874,8 +878,36 @@ These processor routes exist only in staging. The workflow receives no R2
 credential, uses argument arrays rather than user-supplied filters, retains no
 audio artifact, and uploads through the Worker binding. The admin response
 contains authenticated media URLs rather than R2 keys. A preview cannot be
-approved as a working master; a future full-length derivative must pass a new
-QC run before a separate approval.
+approved as a working master.
+
+### Full-length enhancement derivative
+
+Queueing accepts only a ready preview whose source/QC evidence still equals
+the exact current working master. The shared derivative contract snapshots the
+preview manifest, report and enhanced-output digests; source master, bytes,
+ETag, SHA-256 and QC report; curated recipe; fixed private output; and
+staging-only callback routes. One active derivative is allowed for a selected
+preview/master pair.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/audio-enhancement-derivatives/{jobId}/manifest` | Rebuild and return the exact signed staging manifest |
+| `POST` | `/v1/processor/audio-enhancement-derivatives/{jobId}/source` | Stream the ETag-pinned private current master |
+| `PUT` | `/v1/processor/audio-enhancement-derivatives/{jobId}/parts/{partNumber}` | Verify and upload one signed, length-bound, SHA-256-bound multipart part |
+| `POST` | `/v1/processor/audio-enhancement-derivatives/{jobId}/upload-complete` | Verify the complete ordered part set and finalize the private R2 object |
+| `POST` | `/v1/processor/audio-enhancement-derivatives/{jobId}/complete` | Re-head output, validate full-decode evidence, register the candidate, and create its QC run |
+
+The pinned workflow strips metadata, applies only an allowlisted filter graph,
+fully decodes the complete MP3, verifies duration/codec/sample rate and
+SHA-256, and deletes private work files before retaining a content-free
+evidence artifact. Its second job calls the same reusable audio-QC workflow
+used by original sources. A terminal QC failure moves the candidate to an
+explicit immutable failure state, freeing the selected preview/master pair
+for a fresh render without erasing diagnostic evidence. A Super-admin approval
+rechecks the current master, R2 evidence, output digest, successful
+zero-blocker QC result, and current policy revision in the same D1 transaction
+that creates the replacement master. It never changes delivery audio or
+publishes.
 
 ### Sponsor decision preview
 

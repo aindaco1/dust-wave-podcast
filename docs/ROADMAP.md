@@ -82,9 +82,13 @@ iHeartRadio, and Deezer.
   strict publication-readiness node. Replacing a master preserves authored
   material and immutable history while making transcript, chapter, and clip
   approvals stale. A preview is explicitly ineligible as a master.
-- Generate a full-length enhanced derivative only after preview selection,
-  run it through the same QC contract, require explicit master approval, and
-  then render delivery audio and player peaks from that approved revision.
+- The full-length enhancement boundary now snapshots a selected ready A/B
+  preview and the exact current master, renders only its curated preset,
+  uploads through checksum-verified multipart Worker streams, and creates an
+  ordinary source-audio QC run for the completed candidate. It remains
+  staging-only and private. A zero-blocker, current-policy result still needs
+  an explicit Super-admin promotion before it becomes a new immutable master;
+  delivery audio and player peaks remain the next downstream boundary.
 - Transcribe Spanish and English and expose bounded confidence/provenance. The
   signed staging alignment bridge now binds the exact approved transcript,
   working master, normalized projection, adapter, and pinned runner; validates
