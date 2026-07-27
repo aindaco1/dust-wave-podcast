@@ -152,6 +152,29 @@ spreadsheet-formula neutralization and a safe attachment filename; JSON is the
 default. Billing readiness exposes aggregate matched/attention counts for
 invoice evidence and customer tax-change previews.
 
+### First-party audience analytics
+
+`POST /v1/analytics/player-events` accepts only an exact configured site
+`Origin`, a bounded `engaged_play` body, a published and publicly due episode,
+and at least 60 seconds reported by the shared Dust Wave web player. It returns
+no listener identity. Daily HMAC deduplication uses a normalized network prefix
+and user agent in memory; neither raw value is persisted.
+
+`GET /v1/admin/shows/{showId}/analytics/overview?days=7|30|90` requires an
+Analyst-or-higher role scoped to that show. It returns zero-filled UTC daily
+series, totals, top episodes, normalized app/device/country breakdowns, the
+current active-premium-listener count, methodology and caveats. The companion
+`overview.csv` route exports the daily series through the shared bounded,
+formula-neutralized CSV response. Both admin routes are private/no-store and
+return no hashes or listener identifiers.
+
+Qualified downloads are provisional `dustwave-analytics-v1` evidence, not IAB
+certification: one eligible `GET` per episode and daily HMAC key qualifies when
+a `200` or a single `206` response contains at least an estimated minute of
+audio. `HEAD`, sub-threshold probes, known bots, command-line clients, and
+watchOS are excluded. The implementation cannot confirm transfer completion or
+reassemble multiple range requests, and the admin states those limitations.
+
 ### Subscriber administration
 
 `GET /v1/admin/subscribers` is Super-admin-only and returns a keyset-paginated

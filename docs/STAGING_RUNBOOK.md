@@ -218,6 +218,17 @@ backup into a disposable local SQLite file, and verify `quick_check`, foreign
 keys, all 39 prior migration records, and row counts. After applying, verify
 the seven benchmark evidence columns, unique submission/input indexes,
 non-unique report index, passing-evidence view, and recreated approval trigger.
+
+For migration `0046`, verify both analytics tables, the expiry and show/date
+indexes, closed event/methodology checks, 64-character key checks, UTC-date
+shape checks, positive rollup counts, and clean foreign keys. Set a dedicated
+staging-only `ANALYTICS_HASH_SECRET`; never copy an auth, Stripe, Resend, Pool,
+Store, or deployment secret. Exercise a full and sub-minute range with a
+controlled fixture, confirm one daily deduplicated rollup, confirm raw IP/user
+agent values do not appear in D1, then confirm the admin 7/30/90-day JSON and
+CSV remain private/no-store. Known bots, `HEAD`, watchOS, untrusted player
+origins, and premium/non-public player events must not count. Production stays
+unmigrated and undeployed until owner review.
 A manually inserted
 passing benchmark without private evidence or the exact runner revision must
 still fail approval. Replay all 40 migrations from zero. Before any real

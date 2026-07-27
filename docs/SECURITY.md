@@ -209,6 +209,17 @@
   values are path-scoped, so URL-bearing telemetry must not be enabled until a
   redacting Tail Worker or token-free routing boundary passes its own security
   gate.
+- Audience analytics never persists a raw IP address or user agent. It derives
+  a purpose- and day-bound HMAC from an IPv4 address or IPv6 `/64`, user agent,
+  episode, event type, and UTC date; uniqueness rows expire after 35 days and
+  aggregate rollups after 400 days. App/device/country values use closed,
+  non-identifying dimensions. Missing secrets, D1 failures, and Analytics
+  Engine failures are best effort and cannot block media delivery.
+- The public player event endpoint accepts only configured exact origins,
+  bounded JSON, the closed `engaged_play` event, and a public, due, ready-media
+  episode. Daily deduplication limits replay value. The dashboard and exports
+  are show-scoped, credentialed, private/no-store, and contain no listener
+  identifiers or HMAC keys.
 - The ad-plan staging processor requires its own least-privilege R2-capable
   Cloudflare token. The clip processor deliberately receives no R2 credential:
   it uses purpose-bound signed source/output routes that stream through the

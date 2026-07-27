@@ -12,11 +12,16 @@ import type { PodcastJob } from "./types";
 import {
   schedulePendingAnnouncementDeliveries
 } from "./announcement-delivery";
+import { cleanupPodcastAnalytics } from "./podcast-analytics";
 
 export default {
-  async fetch(request: Request, env: PodcastEnv): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: PodcastEnv,
+    ctx: ExecutionContext
+  ): Promise<Response> {
     try {
-      return await handleRequest(request, env);
+      return await handleRequest(request, env, ctx);
     } catch (error) {
       console.error(
         JSON.stringify({
@@ -84,6 +89,7 @@ export default {
       pruneListenerAuthState(env.DB),
       pruneSubscriptionBillingRateLimits(env.DB),
       pruneTaxQuoteRateLimits(env.DB),
+      cleanupPodcastAnalytics(env.DB),
       schedulePendingAnnouncementDeliveries(env),
       schedulePendingTranscriptions(env)
     ]);

@@ -10,15 +10,8 @@ function corsHeaders(
   allowedOrigins: string,
   { credentials = false } = {}
 ): HeadersInit {
-  const origin = request.headers.get("origin");
-  const allowed = new Set(
-    allowedOrigins
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-  );
-
-  if (!origin || !allowed.has(origin)) {
+  const origin = trustedAllowedOrigin(request, allowedOrigins);
+  if (!origin) {
     return {};
   }
 
@@ -31,6 +24,21 @@ function corsHeaders(
     ...(credentials ? { "access-control-allow-credentials": "true" } : {}),
     vary: "Origin"
   };
+}
+
+export function trustedAllowedOrigin(
+  request: Request,
+  allowedOrigins: string
+): string | null {
+  const origin = request.headers.get("origin");
+  if (!origin) return null;
+  const allowed = new Set(
+    allowedOrigins
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+  return allowed.has(origin) ? origin : null;
 }
 
 export function privateCorsHeaders(

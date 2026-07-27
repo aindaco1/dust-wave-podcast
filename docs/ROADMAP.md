@@ -177,9 +177,16 @@ iHeartRadio, and Deezer.
   read-only. Add scheduling only after its storage, accessibility, privacy,
   cancellation, and cache contracts are characterized.
 - Reuse Pool/Store reporting patterns for public and premium delivery, player
-  engagement, sponsors, subscriptions, YouTube, and publication health.
+  engagement, sponsors, subscriptions, YouTube, and publication health. The
+  implemented audience slice now exposes show-scoped 7/30/90-day qualified
+  downloads, first-party engaged plays, point-in-time active premium listeners,
+  daily trends, top episodes, normalized breakdowns, and a formula-safe CSV.
 - Keep raw delivery data privacy-minimized, methodology-versioned, deduplicated,
-  filterable, and exportable.
+  filterable, and exportable. `dustwave-analytics-v1` stores no raw IP or user
+  agent: an HMAC daily uniqueness key expires after 35 days, exact aggregate
+  rollups expire after 400 days, and Analytics Engine receives only normalized
+  best-effort telemetry. The method is deliberately labeled provisional and
+  not IAB-certified.
 - Reuse the original normalized chapter rows behind a versioned review header,
   immutable approvals, Podcasting 2.0 public/private JSON, RSS tags, and the
   existing Digest/Podcast player. Keep draft/future/premium visibility

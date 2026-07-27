@@ -8,8 +8,12 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { recordPodcastMediaDelivery } from "./podcast-analytics";
 
 type MediaEpisode = {
+  id: string;
+  show_id: string;
+  duration_seconds: number | null;
   audio_key: string;
   audio_bytes: number;
   audio_mime_type: string;
@@ -24,12 +28,14 @@ type PrivateMediaEpisode = MediaEpisode & {
 export async function servePublicEpisodeAudio(
   request: Request,
   env: PodcastEnv,
-  episodeId: string
+  episodeId: string,
+  ctx?: ExecutionContext
 ): Promise<Response> {
   const episode = await env.DB
     .prepare(
       `SELECT
-         audio_key, audio_bytes, audio_mime_type, audio_filename, audio_etag
+         id, show_id, duration_seconds, audio_key, audio_bytes,
+         audio_mime_type, audio_filename, audio_etag
        FROM episodes
        WHERE id = ?
          AND status = 'published'
@@ -41,14 +47,15 @@ export async function servePublicEpisodeAudio(
     .bind(episodeId)
     .first<MediaEpisode>();
   if (!episode) return mediaError("media_not_found", 404);
-  return serveEpisodeAudio(request, env, episode, episodeId, "public");
+  return serveEpisodeAudio(request, env, episode, episodeId, "public", ctx);
 }
 
 export async function servePrivateEpisodeAudio(
   request: Request,
   env: PodcastEnv,
   rawToken: string,
-  episodeId: string
+  episodeId: string,
+  ctx?: ExecutionContext
 ): Promise<Response> {
   if (!env.FEED_TOKEN_PEPPER) return mediaError("media_not_found", 404);
   const tokenHash = await hashPrivateFeedToken(
@@ -58,8 +65,8 @@ export async function servePrivateEpisodeAudio(
   const episode = await env.DB
     .prepare(
       `SELECT
-         e.audio_key, e.audio_bytes, e.audio_mime_type, e.audio_filename,
-         e.audio_etag, f.last_used_at
+         e.id, e.show_id, e.duration_seconds, e.audio_key, e.audio_bytes,
+         e.audio_mime_type, e.audio_filename, e.audio_etag, f.last_used_at
        FROM private_feed_tokens f
        JOIN subscriptions s
          ON s.listener_id = f.listener_id
@@ -99,7 +106,7 @@ export async function servePrivateEpisodeAudio(
   if (privateFeedTokenNeedsTouch(episode.last_used_at)) {
     await touchPrivateFeedToken(env.DB, tokenHash);
   }
-  return serveEpisodeAudio(request, env, episode, episodeId, "private");
+  return serveEpisodeAudio(request, env, episode, episodeId, "private", ctx);
 }
 
 async function serveEpisodeAudio(
@@ -107,7 +114,8 @@ async function serveEpisodeAudio(
   env: PodcastEnv,
   episode: MediaEpisode,
   episodeId: string,
-  visibility: "public" | "private"
+  visibility: "public" | "private",
+  ctx?: ExecutionContext
 ): Promise<Response> {
   const ifNoneMatch = request.headers.get("if-none-match");
   if (ifNoneMatch && episode.audio_etag && ifNoneMatch === episode.audio_etag) {
@@ -157,9 +165,11 @@ async function serveEpisodeAudio(
       `attachment; filename="${safeDownloadFilename(episode.audio_filename || `${episodeId}.mp3`)}"`
     );
   }
+  let bytesServed = episode.audio_bytes;
   if (range && object.range && "offset" in object.range) {
     const offset = object.range.offset ?? 0;
     const length = object.range.length ?? object.size - offset;
+    bytesServed = length;
     headers.set("content-length", String(length));
     headers.set(
       "content-range",
@@ -167,6 +177,31 @@ async function serveEpisodeAudio(
     );
   } else {
     headers.set("content-length", String(episode.audio_bytes));
+  }
+  if (ctx) {
+    ctx.waitUntil(
+      recordPodcastMediaDelivery(
+        request,
+        env,
+        {
+          id: episode.id,
+          showId: episode.show_id,
+          durationSeconds: episode.duration_seconds,
+          audioBytes: episode.audio_bytes
+        },
+        {
+          bytesServed,
+          status: range ? 206 : 200
+        }
+      ).catch((error: unknown) => {
+        console.error(JSON.stringify({
+          level: "error",
+          event: "podcast_analytics_record_failed",
+          episodeId,
+          errorName: error instanceof Error ? error.name : "UnknownError"
+        }));
+      })
+    );
   }
   return new Response(object.body, {
     status: range ? 206 : 200,

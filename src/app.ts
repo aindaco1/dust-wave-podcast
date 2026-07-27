@@ -131,6 +131,11 @@ import {
   servePublicEpisodeAudio
 } from "./media";
 import {
+  exportAdminPodcastAnalyticsCsv,
+  getAdminPodcastAnalyticsOverview,
+  recordPodcastPlayerEvent
+} from "./podcast-analytics";
+import {
   createListenerPrivateFeed,
   rotateListenerPrivateFeed
 } from "./private-feeds";
@@ -237,6 +242,10 @@ const ADMIN_SHOW_MARKETING_LINKS_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/links$/;
 const ADMIN_SHOW_MARKETING_LINK_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/links\/([A-Za-z0-9_-]+)$/;
+const ADMIN_SHOW_ANALYTICS_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/analytics\/overview$/;
+const ADMIN_SHOW_ANALYTICS_CSV_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/analytics\/overview\.csv$/;
 const ANNOUNCEMENT_UNSUBSCRIBE_PATH =
   /^\/v1\/notifications\/unsubscribe\/([A-Za-z0-9_-]{43})$/;
 const ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH =
@@ -372,10 +381,11 @@ const ADMIN_ALIGNMENT_BENCHMARKS_PATH =
 
 export async function handleRequest(
   request: Request,
-  env: PodcastEnv
+  env: PodcastEnv,
+  ctx?: ExecutionContext
 ): Promise<Response> {
   try {
-    return await routeRequest(request, env);
+    return await routeRequest(request, env, ctx);
   } catch (error) {
     if (error instanceof RequestValidationError) {
       return privateJson(
@@ -389,7 +399,11 @@ export async function handleRequest(
   }
 }
 
-async function routeRequest(request: Request, env: PodcastEnv): Promise<Response> {
+async function routeRequest(
+  request: Request,
+  env: PodcastEnv,
+  ctx?: ExecutionContext
+): Promise<Response> {
   const url = new URL(request.url);
   const method = request.method;
 
@@ -425,6 +439,9 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       shows,
       checkoutEnabled: subscriptionCheckoutConfigured(env)
     });
+  }
+  if (url.pathname === "/v1/analytics/player-events" && method === "POST") {
+    return recordPodcastPlayerEvent(request, env);
   }
 
   const showTaxQuoteMatch = url.pathname.match(SHOW_TAX_QUOTE_PATH);
@@ -513,12 +530,13 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       privateMediaMatch[1],
-      privateMediaMatch[2]
+      privateMediaMatch[2],
+      ctx
     );
   }
   const mediaMatch = url.pathname.match(MEDIA_PATH);
   if (mediaMatch && (method === "GET" || method === "HEAD")) {
-    return servePublicEpisodeAudio(request, env, mediaMatch[1]);
+    return servePublicEpisodeAudio(request, env, mediaMatch[1], ctx);
   }
   const adDecisionAudioMatch = url.pathname.match(AD_DECISION_AUDIO_PATH);
   if (
@@ -732,6 +750,26 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
         adminShowMarketingLinksMatch[1]
       );
     }
+  }
+  const adminShowAnalyticsCsvMatch = url.pathname.match(
+    ADMIN_SHOW_ANALYTICS_CSV_PATH
+  );
+  if (adminShowAnalyticsCsvMatch && method === "GET") {
+    return exportAdminPodcastAnalyticsCsv(
+      request,
+      env,
+      adminShowAnalyticsCsvMatch[1]
+    );
+  }
+  const adminShowAnalyticsMatch = url.pathname.match(
+    ADMIN_SHOW_ANALYTICS_PATH
+  );
+  if (adminShowAnalyticsMatch && method === "GET") {
+    return getAdminPodcastAnalyticsOverview(
+      request,
+      env,
+      adminShowAnalyticsMatch[1]
+    );
   }
   const adminShowMarketingLinkMatch = url.pathname.match(
     ADMIN_SHOW_MARKETING_LINK_PATH

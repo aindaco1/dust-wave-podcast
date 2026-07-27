@@ -1,4 +1,5 @@
 export type PodcastEnv = Env & {
+  ANALYTICS_HASH_SECRET?: string;
   AD_DECISION_MODE?: string;
   AD_DECISION_SIGNING_SECRET?: string;
   AD_DECISION_SIGNING_SECRET_PREVIOUS?: string;
