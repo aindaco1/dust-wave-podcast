@@ -78,14 +78,17 @@ two-hour URL lifetime without changing any stored manifest.
 Creative replacement now writes a new versioned object key rather than
 overwriting bytes referenced by an earlier decision. Processor program
 filenames include their SHA-256 under the unique ad-plan prefix. The permanent
-enclosure is still full-file-only; this path exists solely for isolated
-staging/client evidence.
+enclosure now has a guarded automatic runtime in code, but the committed
+staging and production modes remain `staging_validate` and `disabled`.
+`staging_public`/`live` require both feature flags, both independent secrets,
+and the exact equal-length house contract before returning a signed redirect;
+every failure stays on the approved full file before media headers.
 
 ## Privacy and identity
 
 The permanent enclosure must not derive a new byte layout for every range
-probe. Before live use, it will issue a signed decision URL. The request key is
-an HMAC over:
+probe. In an explicitly enabled automatic mode, it issues a signed decision
+URL. The request key is an HMAC over:
 
 - episode and publication revision;
 - the versioned eligible-inventory fingerprint;
@@ -144,8 +147,11 @@ unique index. A SQLite `BEFORE INSERT` trigger ignores an insertion at a
 reached hard cap, while the paired `AFTER INSERT` trigger increments the
 campaign counter in the same statement/transaction. A reconciliation view
 compares each counter with its durable rows. The trusted code path currently
-accepts only complete-download evidence for the exact creative byte count; it
-is not yet exposed as a browser endpoint.
+accepts only complete creative-window evidence. The automatic streamer invokes
+it only after successful response-body completion; partial ranges, metadata
+requests, cancellation, errors, and fallback variants cannot qualify. The
+existing signed callback remains server-to-server and is not exposed as
+browser telemetry.
 
 ## Promotion evidence
 

@@ -87,7 +87,7 @@ import {
 import {
   issueAdminStagingAdDecision,
   recordTrustedAdQualificationCallback,
-  serveStagingAdDecisionAudio
+  serveAdDecisionAudio
 } from "./ad-runtime";
 import { previewAdminAdDecision } from "./ads";
 import type { PodcastEnv } from "./env";
@@ -652,10 +652,11 @@ async function routeRequest(
     adDecisionAudioMatch
     && (method === "GET" || method === "HEAD")
   ) {
-    return serveStagingAdDecisionAudio(
+    return serveAdDecisionAudio(
       request,
       env,
-      adDecisionAudioMatch[1]
+      adDecisionAudioMatch[1],
+      ctx
     );
   }
 

@@ -841,6 +841,22 @@ Verify:
   signed full-creative completion is idempotent across secret rotation; the
   analyst reconciliation report is show-scoped, bounded, and returns zero
   counter-to-row differences.
+- with the committed `staging_validate` mode, the permanent enclosure remains
+  the approved full file even if both dynamic-ad flags are true; no automatic
+  decision row or redirect is created.
+
+Only after the synthetic protocol/load gate is green, use one isolated
+rights-cleared episode for a temporary `staging_public` exercise. Confirm both
+feature flags, complete equal-length house coverage, and both independent
+secrets before deploying that mode. Verify the stable enclosure returns a
+private/no-store `307`, persists only normalized app/device values, preserves
+range/ETag/download behavior, counts one fully emitted direct creative once,
+and does not count `HEAD`, partial, canceled, repeated, or fallback delivery.
+Invalidate the primary creative before a new decision and confirm the request
+stays on or commits the exact house fallback before headers. Then restore
+`staging_validate`, set both feature flags false, deploy, and verify the stable
+enclosure is full-file-only again. Never save an unredacted signed decision URL
+or request header set in shared evidence.
 
 Current isolated staging runtime:
 `https://dust-wave-podcast-staging.jogo.workers.dev`. This address is for

@@ -17,6 +17,7 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 | `GET`, `HEAD` | `/v1/feeds/{rss-slug}/rss.xml` | RSS alias for staging and diagnostics |
 | `GET`, `HEAD` | `/episodes/{episode-id}/audio` | Public R2-backed audio with byte ranges |
 | `GET`, `HEAD` | `/v1/media/{episode-id}` | Media alias for staging and diagnostics |
+| `GET`, `HEAD` | `/v1/ads/decisions/{decision-id}/audio` | Expiring HMAC-bound immutable virtual audio; unavailable outside an explicit decision mode |
 | `POST` | `/v1/webhooks/stripe` | Signed Stripe event intake |
 | `POST` | `/v1/shows/{slug}/tax/quote` | Rate-limited, no-store manual subscription-tax estimate |
 | `POST` | `/v1/shows/{slug}/checkout` | Turnstile-protected Stripe subscription Checkout start/resume |
@@ -24,6 +25,16 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 Append `?download=1` to the episode media URL for attachment disposition.
 Public audio is available only when the episode is published, due, eligible
 for public access, and backed by ready delivery media.
+
+The permanent public media URL remains stable. In `disabled` or
+`staging_validate` mode it streams the approved full file directly. The
+guarded automatic modes first require both show/episode flags, the signing and
+qualification secrets, complete approved program/creative evidence, and an
+exact equal-byte house fallback. Only then may the stable URL return a
+private/no-store `307` to a two-hour HMAC-bound immutable decision URL. Any
+selection, object, profile, cap, fallback, or persistence failure returns to
+the same full-file delivery before media headers are emitted. Private premium
+media never enters this path and remains ad-free.
 
 The public transcript route applies the same due/public-access/ready-media
 boundary and returns `404` for drafts, scheduled releases, premium bonuses,
@@ -1012,7 +1023,7 @@ digest, source identity, and current R2 objects and replaces active
 marker/segment rows in one D1 batch. It does not set either dynamic-ad feature
 flag, create a decision, change the public file, or count an impression.
 
-### Signed staging decisions
+### Signed decisions and guarded runtime
 
 With `AD_DECISION_MODE=staging_validate` and a staging-only signing secret, an
 authenticated Producer/Admin/Super-admin may issue a deterministic decision
@@ -1027,9 +1038,12 @@ previous value only after the two-hour maximum decision lifetime.
 
 The signed route reloads and hashes the stored manifest and preflights every
 private object size/ETag before response headers, then uses the existing
-bounded virtual range streamer. It is available only on isolated staging.
-Production sets the mode to `disabled`; the permanent episode enclosure never
-calls this route and both dynamic-ad feature flags remain false.
+bounded virtual range streamer. `staging_public` additionally connects the
+public staging enclosure, while `live` is the explicit production mode.
+Automatic selection also requires the qualification secret and both
+show/episode flags. The committed configs remain `staging_validate` and
+`disabled`, respectively, so deploying this code does not attach either
+enclosure.
 
 Every newly issued staging decision also selects a deterministic house
 fallback for each slot. A house creative is eligible only when its validated
@@ -1055,8 +1069,8 @@ fallback and atomically commits exactly one `primary` or `fallback` delivery
 variant in D1 before emitting headers. Concurrent first requests use the
 committed winner. Later range/retry requests may never switch variants; if the
 committed objects change, the route fails closed instead of returning
-different bytes under one signed URL. This staging safety path does not attach
-the permanent enclosure or enable either dynamic-ad feature flag.
+different bytes under one signed URL. The validation-mode safety path does not
+attach the permanent enclosure or enable either dynamic-ad feature flag.
 
 ### Trusted staging qualification and reconciliation
 
@@ -1076,6 +1090,15 @@ snapshotted creative byte threshold is met. D1 triggers enforce the campaign
 hard cap and counter increment atomically. Retries resolve by immutable slot
 identity, so callback-secret rotation cannot duplicate or strand an already
 recorded qualification.
+
+The guarded automatic streamer uses that same idempotent qualification
+primitive without exposing a browser endpoint. It records a direct slot only
+after the response body successfully emits a requested byte range containing
+the complete immutable creative window. `HEAD`, `304`, partial ranges,
+canceled/error streams, and committed house/full-file fallbacks do not count.
+Qualification failures are logged with content-free IDs and never corrupt the
+audio response. Dynamic responses also enter the existing privacy-minimized
+download analytics path; raw address and user-agent values remain transient.
 
 The admin reconciliation endpoint defaults to 50 campaigns, caps each page at
 100, and uses a campaign cursor. It is show- and role-scoped, reports its

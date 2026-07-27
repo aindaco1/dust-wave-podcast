@@ -61,6 +61,19 @@ export interface VirtualObjectSpan {
   segmentIds: string[];
 }
 
+export interface CompletedVirtualMediaDelivery {
+  manifest: CompiledVirtualMediaManifest;
+  range: VirtualByteRange;
+  spans: VirtualObjectSpan[];
+  status: 200 | 206;
+}
+
+export interface ServeVirtualMediaOptions {
+  onComplete?: (
+    delivery: CompletedVirtualMediaDelivery
+  ) => Promise<void>;
+}
+
 export class VirtualMediaValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -310,7 +323,8 @@ export function mapVirtualByteRange(
 export async function serveVirtualMedia(
   request: Request,
   bucket: R2Bucket,
-  sourceManifest: VirtualMediaManifest
+  sourceManifest: VirtualMediaManifest,
+  options: ServeVirtualMediaOptions = {}
 ): Promise<Response> {
   let manifest: CompiledVirtualMediaManifest;
   try {
@@ -360,8 +374,20 @@ export async function serveVirtualMedia(
   }
 
   const spans = mapVirtualByteRange(manifest, selectedRange);
+  const onComplete = options.onComplete;
   const body = withFixedLength(
-    streamVirtualObjectSpans(bucket, spans),
+    streamVirtualObjectSpans(
+      bucket,
+      spans,
+      onComplete
+        ? () => onComplete({
+          manifest,
+          range: selectedRange,
+          spans,
+          status: range ? 206 : 200
+        })
+        : undefined
+    ),
     selectedRange.length
   );
   return new Response(body, {
@@ -372,12 +398,14 @@ export async function serveVirtualMedia(
 
 export function streamVirtualObjectSpans(
   bucket: R2Bucket,
-  spans: VirtualObjectSpan[]
+  spans: VirtualObjectSpan[],
+  onComplete?: () => Promise<void>
 ): ReadableStream<Uint8Array> {
   let spanIndex = 0;
   let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let activeExpectedBytes = 0;
   let activeReadBytes = 0;
+  let completionReported = false;
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -409,6 +437,10 @@ export function streamVirtualObjectSpans(
 
         const span = spans[spanIndex];
         if (!span) {
+          if (onComplete && !completionReported) {
+            completionReported = true;
+            await onComplete();
+          }
           controller.close();
           return;
         }
@@ -439,6 +471,7 @@ export function streamVirtualObjectSpans(
       }
     },
     async cancel(reason) {
+      completionReported = true;
       if (activeReader) await activeReader.cancel(reason);
     }
   });
@@ -456,6 +489,8 @@ function virtualMediaHeaders(
     "access-control-expose-headers":
       "accept-ranges,content-length,content-range,etag,x-dust-wave-media-manifest",
     "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "x-robots-tag": "noindex, nofollow, noarchive",
     "x-dust-wave-media-manifest": manifest.id,
     etag: manifest.etag
   });

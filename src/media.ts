@@ -1,4 +1,5 @@
 import type { PodcastEnv } from "./env";
+import { redirectPublicEpisodeToAdDecision } from "./ad-runtime";
 import {
   hashPrivateFeedToken,
   privateFeedTokenNeedsTouch,
@@ -47,6 +48,12 @@ export async function servePublicEpisodeAudio(
     .bind(episodeId)
     .first<MediaEpisode>();
   if (!episode) return mediaError("media_not_found", 404);
+  const dynamicRedirect = await redirectPublicEpisodeToAdDecision(
+    request,
+    env,
+    episodeId
+  );
+  if (dynamicRedirect) return dynamicRedirect;
   return serveEpisodeAudio(request, env, episode, episodeId, "public", ctx);
 }
 

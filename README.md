@@ -31,10 +31,12 @@ implemented;
 the source-language Workers AI transcription adapter is now implemented behind
 an immutable working-master snapshot, Queue recovery, private R2 evidence, and
 versioned transcript review. A real rights-cleared transcription run plus the
-alignment adapter's human-reviewed benchmark evidence remain gated. Checkout remains disabled pending
-accountant-approved tax/provider evidence; dynamic audio assembly, public clip
-distribution, and production-live YouTube/GitHub publishing remain roadmap
-work.
+alignment adapter's human-reviewed benchmark evidence remain gated. Checkout
+remains disabled pending accountant-approved tax/provider evidence. Dynamic
+audio now has a guarded public-enclosure runtime in code, but both deployed
+modes remain non-automatic until the real-client, load, fallback, and
+sponsor-reconciliation gates pass. Public clip distribution and
+production-live YouTube/GitHub publishing remain roadmap work.
 
 The delivery boundary now derives one fixed-profile MP3 and bounded player
 waveform from the exact approved working master through a staging-only,

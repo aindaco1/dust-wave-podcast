@@ -199,6 +199,14 @@ iHeartRadio, and Deezer.
   immutable campaign/creative/object evidence with the decision.
 - Preserve a validated preassembled-file fallback until request-time assembly
   passes compatibility, latency, caching, disclosure, and measurement gates.
+- The guarded enclosure boundary now reuses the same immutable selector for
+  admin diagnostics and runtime requests, normalizes app/device from the user
+  agent without persistence, and issues a no-store signed redirect only when
+  the environment mode, both show/episode flags, qualification secret, exact
+  house coverage, and equal-byte contract are ready. Completed direct-ad byte
+  windows qualify atomically; partial, canceled, HEAD, house-fallback, or
+  failed streams do not. Staging remains `staging_validate` and production
+  remains `disabled` until the recorded client/load/pilot evidence passes.
 
 ### H1 distribution, marketing, and analytics
 

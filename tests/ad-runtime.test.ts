@@ -8,7 +8,8 @@ import {
   issueAdminStagingAdDecision,
   recordTrustedAdQualificationCallback,
   recordTrustedDownloadQualification,
-  serveStagingAdDecisionAudio
+  redirectPublicEpisodeToAdDecision,
+  serveAdDecisionAudio
 } from "../src/ad-runtime";
 import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
 import type { PodcastEnv } from "../src/env";
@@ -61,6 +62,12 @@ describe("signed staging ad decisions", () => {
     expect(issued.runtimeEnabled).toBe(false);
     expect(issued.publicEnclosureConnected).toBe(false);
     expect(fixture.batches).toHaveLength(1);
+    const decisionStatement = fixture.batches[0].find(({ query }) =>
+      query.includes("INSERT OR IGNORE INTO ad_decisions")
+    );
+    expect(decisionStatement?.query.match(/\?/g)?.length).toBe(
+      decisionStatement?.values.length
+    );
     expect(
       fixture.batches[0].filter(({ query }) =>
         query.includes("INSERT OR IGNORE INTO ad_decision_slots")
@@ -86,7 +93,7 @@ describe("signed staging ad decisions", () => {
       )?.values
     ).toContain("ad_decision.staging_issued");
 
-    const audio = await serveStagingAdDecisionAudio(
+    const audio = await serveAdDecisionAudio(
       new Request(issued.signedUrl, {
         headers: { range: "bytes=2-16" }
       }),
@@ -99,7 +106,7 @@ describe("signed staging ad decisions", () => {
 
     fixture.env.AD_DECISION_SIGNING_SECRET_PREVIOUS = decisionSecret;
     fixture.env.AD_DECISION_SIGNING_SECRET = "rotated-decision-secret";
-    const duringRotation = await serveStagingAdDecisionAudio(
+    const duringRotation = await serveAdDecisionAudio(
       new Request(issued.signedUrl),
       fixture.env,
       issued.decisionId
@@ -107,7 +114,7 @@ describe("signed staging ad decisions", () => {
     expect(duringRotation.status).toBe(200);
     expect((await duringRotation.arrayBuffer()).byteLength).toBe(19);
     fixture.env.AD_DECISION_SIGNING_SECRET_PREVIOUS = undefined;
-    const afterRetirement = await serveStagingAdDecisionAudio(
+    const afterRetirement = await serveAdDecisionAudio(
       new Request(issued.signedUrl),
       fixture.env,
       issued.decisionId
@@ -119,7 +126,7 @@ describe("signed staging ad decisions", () => {
       "podcasts/show-1/ads/creative-v1.mp3",
       '"creative-mutated"'
     );
-    const mutated = await serveStagingAdDecisionAudio(
+    const mutated = await serveAdDecisionAudio(
       new Request(issued.signedUrl),
       fixture.env,
       issued.decisionId
@@ -168,7 +175,7 @@ describe("signed staging ad decisions", () => {
     expect(fixture.batches).toHaveLength(1);
 
     fixture.setDecisionStatus("revoked");
-    const revoked = await serveStagingAdDecisionAudio(
+    const revoked = await serveAdDecisionAudio(
       new Request(issued.signedUrl),
       fixture.env,
       issued.decisionId
@@ -179,7 +186,7 @@ describe("signed staging ad decisions", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1_000 + 1_000);
-      const expired = await serveStagingAdDecisionAudio(
+      const expired = await serveAdDecisionAudio(
         new Request(issued.signedUrl),
         fixture.env,
         issued.decisionId
@@ -202,7 +209,7 @@ describe("signed staging ad decisions", () => {
       }
     } as unknown as PodcastEnv;
     const expires = Math.floor(Date.now() / 1_000) + 60;
-    const response = await serveStagingAdDecisionAudio(
+    const response = await serveAdDecisionAudio(
       new Request(
         `https://podcast.example/v1/ads/decisions/decision_fixture/audio`
         + `?expires=${expires}&manifest=${"a".repeat(64)}`
@@ -215,6 +222,30 @@ describe("signed staging ad decisions", () => {
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
       error: "invalid_ad_decision_signature"
+    });
+  });
+
+  it("fails closed on a tampered stored manifest before reading media", async () => {
+    const fixture = await runtimeEnvironment();
+    const issuedResponse = await issueAdminStagingAdDecision(
+      issueRequest(),
+      fixture.env
+    );
+    const issued = await issuedResponse.json() as {
+      decisionId: string;
+      signedUrl: string;
+    };
+    await fixture.tamperDecisionManifest();
+
+    const response = await serveAdDecisionAudio(
+      new Request(issued.signedUrl),
+      fixture.env,
+      issued.decisionId
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "ad_decision_manifest_mismatch"
     });
   });
 
@@ -234,12 +265,12 @@ describe("signed staging ad decisions", () => {
     );
 
     const [fallback, concurrentFallback] = await Promise.all([
-      serveStagingAdDecisionAudio(
+      serveAdDecisionAudio(
         new Request(issued.signedUrl),
         fixture.env,
         issued.decisionId
       ),
-      serveStagingAdDecisionAudio(
+      serveAdDecisionAudio(
         new Request(issued.signedUrl),
         fixture.env,
         issued.decisionId
@@ -257,7 +288,7 @@ describe("signed staging ad decisions", () => {
       "podcasts/show-1/ads/creative-v1.mp3",
       '"creative-v1-etag"'
     );
-    const committedFallback = await serveStagingAdDecisionAudio(
+    const committedFallback = await serveAdDecisionAudio(
       new Request(issued.signedUrl),
       fixture.env,
       issued.decisionId
@@ -286,7 +317,7 @@ describe("signed staging ad decisions", () => {
       '"creative-unavailable"'
     );
 
-    const fallback = await serveStagingAdDecisionAudio(
+    const fallback = await serveAdDecisionAudio(
       new Request(issued.signedUrl),
       fixture.env,
       issued.decisionId
@@ -309,7 +340,7 @@ describe("signed staging ad decisions", () => {
         }
       }
     } as unknown as PodcastEnv;
-    const response = await serveStagingAdDecisionAudio(
+    const response = await serveAdDecisionAudio(
       new Request(
         "https://feeds.dustwave.xyz/v1/ads/decisions/decision_fixture/audio"
       ),
@@ -319,6 +350,141 @@ describe("signed staging ad decisions", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  it("keeps the permanent enclosure on the full file in validation mode", async () => {
+    const fixture = await runtimeEnvironment({
+      dynamicEnabled: true,
+      decisionMode: "staging_validate"
+    });
+    const response = await redirectPublicEpisodeToAdDecision(
+      runtimeMediaRequest(),
+      fixture.env,
+      "episode-fixture"
+    );
+
+    expect(response).toBeNull();
+    expect(fixture.batches).toHaveLength(0);
+  });
+
+  it("requires the qualification secret and both feature flags before runtime issuance", async () => {
+    const missingSecret = await runtimeEnvironment({
+      dynamicEnabled: true,
+      decisionMode: "staging_public",
+      qualificationSecretEnabled: false
+    });
+    const flagsDisabled = await runtimeEnvironment({
+      dynamicEnabled: false,
+      decisionMode: "staging_public"
+    });
+
+    expect(await redirectPublicEpisodeToAdDecision(
+      runtimeMediaRequest(),
+      missingSecret.env,
+      "episode-fixture"
+    )).toBeNull();
+    expect(await redirectPublicEpisodeToAdDecision(
+      runtimeMediaRequest(),
+      flagsDisabled.env,
+      "episode-fixture"
+    )).toBeNull();
+    expect(missingSecret.batches).toHaveLength(0);
+    expect(flagsDisabled.batches).toHaveLength(0);
+  });
+
+  it("issues one runtime decision and qualifies only a fully delivered direct slot", async () => {
+    const fixture = await runtimeEnvironment({
+      dynamicEnabled: true,
+      decisionMode: "staging_public"
+    });
+    const redirect = await redirectPublicEpisodeToAdDecision(
+      runtimeMediaRequest({ download: true }),
+      fixture.env,
+      "episode-fixture"
+    );
+
+    expect(redirect?.status).toBe(307);
+    expect(redirect?.headers.get("cache-control")).toContain("no-store");
+    expect(redirect?.headers.get("vary")).toBe("user-agent");
+    const location = redirect?.headers.get("location");
+    expect(location).toMatch(
+      /^https:\/\/dust-wave-podcast-staging\.jogo\.workers\.dev\/v1\/ads\/decisions\//
+    );
+    expect(new URL(location as string).searchParams.get("download")).toBe("1");
+    expect(
+      fixture.batches[0].some(({ query }) =>
+        query.includes("INSERT INTO admin_audit_events")
+      )
+    ).toBe(false);
+    const decisionInsert = fixture.batches[0].find(({ query }) =>
+      query.includes("INSERT OR IGNORE INTO ad_decisions")
+    );
+    expect(decisionInsert?.values.at(-1)).toBe("runtime");
+    expect(decisionInsert?.values[7]).toBe("mobile");
+    expect(decisionInsert?.values[8]).toBe("apple_podcasts");
+    expect(JSON.stringify(fixture.batches[0])).not.toContain(
+      "Podcasts/1.0 iPhone"
+    );
+
+    const partial = await serveAdDecisionAudio(
+      new Request(location as string, {
+        headers: { range: "bytes=0-1" }
+      }),
+      fixture.env,
+      decisionIdFromLocation(location as string)
+    );
+    expect(await partial.text()).toBe("AD");
+    expect(fixture.qualifiedSlots()).toEqual([]);
+
+    const metadata = await serveAdDecisionAudio(
+      new Request(location as string, { method: "HEAD" }),
+      fixture.env,
+      decisionIdFromLocation(location as string)
+    );
+    expect(metadata.status).toBe(200);
+    expect(metadata.body).toBeNull();
+    expect(fixture.qualifiedSlots()).toEqual([]);
+
+    const complete = await serveAdDecisionAudio(
+      new Request(location as string, {
+        headers: { range: "bytes=0-3" }
+      }),
+      fixture.env,
+      decisionIdFromLocation(location as string)
+    );
+    expect(await complete.text()).toBe("AD12");
+    expect(complete.headers.get("content-disposition")).toBe(
+      'attachment; filename="episode-fixture.mp3"'
+    );
+    expect(fixture.qualifiedSlots()).toEqual([
+      expect.stringMatching(/^decision_[a-f0-9]{48}_pre$/)
+    ]);
+
+    const repeated = await serveAdDecisionAudio(
+      new Request(location as string, {
+        headers: { range: "bytes=0-3" }
+      }),
+      fixture.env,
+      decisionIdFromLocation(location as string)
+    );
+    expect(await repeated.text()).toBe("AD12");
+    expect(fixture.qualifiedSlots()).toHaveLength(1);
+  });
+
+  it("falls back before redirect when equal-length house coverage is absent", async () => {
+    const fixture = await runtimeEnvironment({
+      houseBytes: 3,
+      dynamicEnabled: true,
+      decisionMode: "staging_public"
+    });
+    const response = await redirectPublicEpisodeToAdDecision(
+      runtimeMediaRequest(),
+      fixture.env,
+      "episode-fixture"
+    );
+
+    expect(response).toBeNull();
+    expect(fixture.qualifiedSlots()).toEqual([]);
   });
 });
 
@@ -536,18 +702,52 @@ function issueRequest(): Request {
   );
 }
 
+function runtimeMediaRequest({
+  download = false
+}: {
+  download?: boolean;
+} = {}): Request {
+  return new Request(
+    "https://dust-wave-podcast-staging.jogo.workers.dev/episodes/episode-fixture/audio"
+    + (download ? "?download=1" : ""),
+    {
+      headers: {
+        "cf-connecting-ip": "192.0.2.20",
+        "user-agent": "Podcasts/1.0 iPhone"
+      }
+    }
+  );
+}
+
+function decisionIdFromLocation(location: string): string {
+  const match = new URL(location).pathname.match(
+    /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/
+  );
+  if (!match) throw new Error("Decision location is invalid.");
+  return match[1];
+}
+
 async function runtimeEnvironment({
-  houseBytes = 4
+  houseBytes = 4,
+  dynamicEnabled = false,
+  decisionMode = "staging_validate",
+  qualificationSecretEnabled = true
 }: {
   houseBytes?: number;
+  dynamicEnabled?: boolean;
+  decisionMode?: "staging_validate" | "staging_public";
+  qualificationSecretEnabled?: boolean;
 } = {}): Promise<{
   env: PodcastEnv;
   batches: Array<Array<{ query: string; values: unknown[] }>>;
   changeObjectEtag: (key: string, etag: string) => void;
   setDecisionStatus: (status: "selected" | "revoked") => void;
+  tamperDecisionManifest: () => Promise<void>;
+  qualifiedSlots: () => string[];
 }> {
   const csrfTokenHash = await sha256Hex(`${sessionSecret}:${csrfToken}`);
   const batches: Array<Array<{ query: string; values: unknown[] }>> = [];
+  const qualifications = new Map<string, string>();
   let decision: Record<string, unknown> | null = null;
   const statement = (query: string) => {
     let values: unknown[] = [];
@@ -573,13 +773,45 @@ async function runtimeEnvironment({
             show_id: "show-1",
             publication_revision: 1,
             status: "published",
+            access: "public",
+            public_at: "2026-01-01T00:00:00.000Z",
             media_status: "ready",
             audio_key: "podcasts/show-1/episode-fixture/delivery.mp3",
             audio_bytes: 11,
             audio_mime_type: "audio/mpeg",
             audio_etag: sourceEtag,
-            episode_dynamic_ads_enabled: 0,
-            show_dynamic_ads_enabled: 0
+            episode_dynamic_ads_enabled: dynamicEnabled ? 1 : 0,
+            show_dynamic_ads_enabled: dynamicEnabled ? 1 : 0
+          };
+        }
+        if (query.includes("FROM ad_decision_slots")) {
+          const slotId = String(values[0]);
+          const decisionId = String(values[1]);
+          const direct = slotId.endsWith("_pre");
+          return {
+            id: slotId,
+            decision_id: decisionId,
+            campaign_id: direct ? "campaign-direct" : "campaign-house",
+            creative_id: direct ? "creative-direct" : "creative-house",
+            creative_object_bytes: 4,
+            status: "selected",
+            qualification_expires_at:
+              new Date(Date.now() + 60_000).toISOString(),
+            impression_cap: direct ? 1_000 : null,
+            qualified_impressions: qualifications.size
+          };
+        }
+        if (query.includes("FROM ad_impression_qualifications")) {
+          const recorded = qualifications.get(String(values[0]));
+          return recorded ? { id: recorded } : null;
+        }
+        if (
+          query.includes("FROM ad_campaigns")
+          && query.includes("impression_cap")
+        ) {
+          return {
+            impression_cap: 1_000,
+            qualified_impressions: qualifications.size
           };
         }
         if (
@@ -743,6 +975,14 @@ async function runtimeEnvironment({
         return { results: [] };
       },
       async run() {
+        if (query.includes("INSERT OR IGNORE INTO ad_impression_qualifications")) {
+          const slotId = String(values[2]);
+          if (qualifications.has(slotId)) {
+            return { success: true, meta: { changes: 0 } };
+          }
+          qualifications.set(slotId, String(values[0]));
+          return { success: true, meta: { changes: 1 } };
+        }
         return { success: true, meta: { changes: 1 } };
       }
     };
@@ -764,7 +1004,9 @@ async function runtimeEnvironment({
       if (insert && !decision) {
         decision = {
           id: insert.values[0],
+          show_id: insert.values[1],
           episode_id: insert.values[2],
+          duration_seconds: 60,
           publication_revision: insert.values[3],
           request_key_hash: insert.values[4],
           status: "selected",
@@ -837,9 +1079,14 @@ async function runtimeEnvironment({
       DB: db,
       MEDIA_BUCKET: bucket,
       ENVIRONMENT: "staging",
-      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_MODE: decisionMode,
       AD_DECISION_SIGNING_SECRET: decisionSecret,
+      AD_QUALIFICATION_CALLBACK_SECRET: qualificationSecretEnabled
+        ? qualificationSecret
+        : undefined,
       MEDIA_KEY_PREFIX: "podcasts/",
+      MEDIA_ORIGIN:
+        "https://dust-wave-podcast-staging.jogo.workers.dev",
       ALLOWED_ORIGINS: "https://dustwave.xyz",
       SITE_ORIGIN: "https://dustwave.xyz",
       ADMIN_SESSION_SECRET: sessionSecret
@@ -853,6 +1100,13 @@ async function runtimeEnvironment({
     setDecisionStatus(status) {
       if (!decision) throw new Error("No fixture decision exists.");
       decision.status = status;
+    },
+    async tamperDecisionManifest() {
+      if (!decision) throw new Error("No fixture decision exists.");
+      decision.manifest_json = "{}";
+    },
+    qualifiedSlots() {
+      return [...qualifications.keys()].sort();
     }
   };
 }

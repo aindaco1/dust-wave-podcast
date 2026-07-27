@@ -7,6 +7,7 @@ import {
 import {
   buildAdRequestKey,
   normalizeAdTargetValue,
+  normalizePodcastClient,
   selectAdSlots,
   selectHouseFallbackSlots,
   type AdDeviceType,
@@ -14,6 +15,10 @@ import {
   type AdSlotDecision,
   type NormalizedPodcastClient
 } from "./ad-decision";
+import {
+  parseStoredAdDecisionManifest,
+  type StoredAdDecisionManifest
+} from "./ad-decision-manifest";
 import { loadActiveAdInventory } from "./ad-inventory";
 import {
   hasAdminRoleForShow,
@@ -23,14 +28,16 @@ import {
 import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { safeDownloadFilename } from "./media-range";
 import { DYNAMIC_AD_MP3_PROFILE } from "./mp3-profile";
+import { recordPodcastMediaDelivery } from "./podcast-analytics";
 import { readSignedJsonBody } from "./signed-callback";
 import {
   buildVirtualMediaLengthContract,
   compileVirtualMediaManifest,
   serveVirtualMedia,
   virtualMediaLengthContractMatches,
-  type VirtualMediaLengthContract,
+  type CompletedVirtualMediaDelivery,
   type VirtualMediaManifest,
   type VirtualMediaSegment
 } from "./virtual-media";
@@ -65,6 +72,8 @@ type RuntimeEpisodeRow = {
   show_id: string;
   publication_revision: number;
   status: string;
+  access: string;
+  public_at: string | null;
   media_status: string;
   audio_key: string | null;
   audio_bytes: number | null;
@@ -72,6 +81,13 @@ type RuntimeEpisodeRow = {
   audio_etag: string | null;
   episode_dynamic_ads_enabled: number;
   show_dynamic_ads_enabled: number;
+};
+
+type ReadyRuntimeEpisodeRow = RuntimeEpisodeRow & {
+  audio_key: string;
+  audio_bytes: number;
+  audio_mime_type: "audio/mpeg";
+  audio_etag: string;
 };
 
 type RuntimeMarkerRow = {
@@ -100,7 +116,9 @@ type RuntimeProgramSegmentRow = {
 
 type StoredDecisionRow = {
   id: string;
+  show_id: string;
   episode_id: string;
+  duration_seconds: number | null;
   publication_revision: number;
   request_key_hash: string;
   status: string;
@@ -114,10 +132,14 @@ type StoredDecisionRow = {
   delivery_committed_at: string | null;
 };
 
-type StoredAdDecisionManifest = VirtualMediaManifest & {
-  fallback: VirtualMediaManifest;
-  fallbackType: "house_fill" | "full_file";
-  deliveryLengthContract: VirtualMediaLengthContract;
+type IssuedAdDecision = {
+  decision: StoredDecisionRow;
+  idempotent: boolean;
+  manifest: StoredAdDecisionManifest;
+  flags: {
+    showEnabled: boolean;
+    episodeEnabled: boolean;
+  };
 };
 
 type QualificationSlotRow = {
@@ -168,8 +190,8 @@ export async function issueAdminStagingAdDecision(
     body.deviceType,
     "deviceType",
     32
-  ) as AdDeviceType;
-  if (!DEVICE_TYPES.includes(deviceType)) {
+  );
+  if (!isAdDeviceType(deviceType)) {
     throw new RequestValidationError("deviceType is invalid");
   }
   const appName = normalizeAdTargetValue(
@@ -210,15 +232,7 @@ export async function issueAdminStagingAdDecision(
       { status: 403 }
     );
   }
-  if (
-    episode.status !== "published"
-    || episode.media_status !== "ready"
-    || !episode.audio_key
-    || !episode.audio_bytes
-    || episode.audio_mime_type !== "audio/mpeg"
-    || !episode.audio_etag
-    || episode.publication_revision < 1
-  ) {
+  if (!runtimeEpisodeReady(episode)) {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -227,6 +241,44 @@ export async function issueAdminStagingAdDecision(
     );
   }
 
+  const issued = await issueAdDecision(
+    request,
+    env,
+    episode,
+    { deviceType, appName },
+    {
+      issuedBy: "staging_admin",
+      adminUserId: auth.authorization.identity.id
+    }
+  );
+  return presentIssuedDecision(
+    request,
+    env,
+    issued.decision,
+    issued.idempotent,
+    issued.flags
+  );
+}
+
+async function issueAdDecision(
+  request: Request,
+  env: PodcastEnv,
+  episode: ReadyRuntimeEpisodeRow,
+  client: NormalizedPodcastClient,
+  issuance: {
+    issuedBy: "runtime" | "staging_admin";
+    adminUserId?: string;
+  }
+): Promise<IssuedAdDecision> {
+  const signingSecret = env.AD_DECISION_SIGNING_SECRET;
+  if (!signingSecret) {
+    throw new RequestValidationError(
+      "Ad decision signing is unavailable",
+      "ad_decision_unavailable",
+      409
+    );
+  }
+  const streamProfile = DYNAMIC_AD_MP3_PROFILE;
   const [campaigns, markerResult, segmentResult] = await Promise.all([
     loadActiveAdInventory(env.DB),
     env.DB.prepare(
@@ -273,9 +325,8 @@ export async function issueAdminStagingAdDecision(
     }))
   }));
   const now = new Date();
-  const client: NormalizedPodcastClient = { deviceType, appName };
   const requestKey = await buildAdRequestKey({
-    secret: env.AD_DECISION_SIGNING_SECRET as string,
+    secret: signingSecret,
     episodeId: episode.id,
     publicationRevision: episode.publication_revision,
     inventoryFingerprint,
@@ -290,18 +341,28 @@ export async function issueAdminStagingAdDecision(
     requestKey.requestKeyHash
   );
   if (existing) {
-    return presentIssuedDecision(request, env, existing, true, {
-      showEnabled: episode.show_dynamic_ads_enabled === 1,
-      episodeEnabled: episode.episode_dynamic_ads_enabled === 1
-    });
+    const existingManifest = await verifiedStoredManifest(existing);
+    if (!existingManifest) {
+      throw new RequestValidationError(
+        "The stored ad decision manifest is invalid",
+        "ad_decision_manifest_mismatch",
+        409
+      );
+    }
+    return {
+      decision: existing,
+      idempotent: true,
+      manifest: existingManifest,
+      flags: runtimeFlags(episode)
+    };
   }
 
   const positions = markers.map((marker) => marker.position);
   const selectionContext = {
     showId: episode.show_id,
     episodeId: episode.id,
-    deviceType,
-    appName,
+    deviceType: client.deviceType,
+    appName: client.appName,
     streamProfile,
     now: now.toISOString()
   };
@@ -315,16 +376,10 @@ export async function issueAdminStagingAdDecision(
     .filter((slot) => !slot.selection)
     .map((slot) => slot.position);
   if (missingPositions.length > 0) {
-    return privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      {
-        error: "complete_ad_rendition_unavailable",
-        missingPositions,
-        persisted: false,
-        runtimeEnabled: false
-      },
-      { status: 409 }
+    throw new RequestValidationError(
+      `No complete ad rendition is available for: ${missingPositions.join(", ")}`,
+      "complete_ad_rendition_unavailable",
+      409
     );
   }
   validateSelectedCreativeSnapshots(slotDecisions, streamProfile);
@@ -378,7 +433,7 @@ export async function issueAdminStagingAdDecision(
          signature_version, qualification_expires_at, issued_by
        ) VALUES (
          ?, ?, ?, ?, ?, ?, ?, ?, ?, 'selected', ?, ?, ?, ?, ?, ?, ?, ?, ?,
-         'staging_admin'
+         ?
        )`
     ).bind(
       decisionId,
@@ -388,14 +443,14 @@ export async function issueAdminStagingAdDecision(
       requestKey.requestKeyHash,
       requestKey.privacyEpoch,
       requestKey.decisionEpoch,
-      deviceType,
-      appName,
+      client.deviceType,
+      client.appName,
       JSON.stringify({
         showId: episode.show_id,
         episodeId: episode.id,
         publicationRevision: episode.publication_revision,
-        deviceType,
-        appName,
+        deviceType: client.deviceType,
+        appName: client.appName,
         streamProfile,
         inventoryFingerprint
       }),
@@ -406,7 +461,8 @@ export async function issueAdminStagingAdDecision(
       inventoryFingerprint,
       manifestSha256,
       SIGNATURE_VERSION,
-      qualificationExpiresAt
+      qualificationExpiresAt,
+      issuance.issuedBy
     )
   ];
   for (const slot of slotDecisions) {
@@ -452,24 +508,26 @@ export async function issueAdminStagingAdDecision(
       fallbackSelection?.streamProfile ?? null
     ));
   }
-  statements.push(prepareAdminAudit(env.DB, {
-    adminUserId: auth.authorization.identity.id,
-    action: "ad_decision.staging_issued",
-    targetType: "ad_decision",
-    targetId: decisionId,
-    metadata: {
-      episodeId: episode.id,
-      showId: episode.show_id,
-      publicationRevision: episode.publication_revision,
-      slotCount: slotDecisions.length,
-      totalBytes: compiled.totalBytes,
-      fallbackType: manifest.fallbackType,
-      deliveryLengthContract: manifest.deliveryLengthContract,
-      deliveryLengthReady: manifest.deliveryLengthContract.equalByteLength,
-      manifestSha256,
-      runtimeEnabled: false
-    }
-  }));
+  if (issuance.adminUserId) {
+    statements.push(prepareAdminAudit(env.DB, {
+      adminUserId: issuance.adminUserId,
+      action: "ad_decision.staging_issued",
+      targetType: "ad_decision",
+      targetId: decisionId,
+      metadata: {
+        episodeId: episode.id,
+        showId: episode.show_id,
+        publicationRevision: episode.publication_revision,
+        slotCount: slotDecisions.length,
+        totalBytes: compiled.totalBytes,
+        fallbackType: manifest.fallbackType,
+        deliveryLengthContract: manifest.deliveryLengthContract,
+        deliveryLengthReady: manifest.deliveryLengthContract.equalByteLength,
+        manifestSha256,
+        runtimeEnabled: automaticDecisionRuntimeEnabled(env)
+      }
+    }));
+  }
   await env.DB.batch(statements);
 
   const stored = await loadDecision(env.DB, decisionId);
@@ -480,18 +538,86 @@ export async function issueAdminStagingAdDecision(
   ) {
     throw new Error("The immutable decision did not persist as issued.");
   }
-  return presentIssuedDecision(request, env, stored, false, {
-    showEnabled: episode.show_dynamic_ads_enabled === 1,
-    episodeEnabled: episode.episode_dynamic_ads_enabled === 1
-  });
+  return {
+    decision: stored,
+    idempotent: false,
+    manifest,
+    flags: runtimeFlags(episode)
+  };
 }
 
-export async function serveStagingAdDecisionAudio(
+export async function redirectPublicEpisodeToAdDecision(
   request: Request,
   env: PodcastEnv,
-  decisionIdValue: string
+  episodeIdValue: string
+): Promise<Response | null> {
+  if (!automaticDecisionRuntimeEnabled(env)) return null;
+  const episodeId = validIdentifier(episodeIdValue, "episodeId");
+  try {
+    const episode = await loadRuntimeEpisode(env.DB, episodeId);
+    if (
+      !episode
+      || !runtimeEpisodeReady(episode)
+      || !publicRuntimeEpisodeReady(episode)
+      || !runtimeFlagsReady(episode)
+    ) {
+      return null;
+    }
+    const issued = await issueAdDecision(
+      request,
+      env,
+      episode,
+      normalizePodcastClient(request.headers.get("user-agent")),
+      { issuedBy: "runtime" }
+    );
+    if (
+      issued.manifest.fallbackType !== "house_fill"
+      || !issued.manifest.deliveryLengthContract.equalByteLength
+      || !storedDeliveryContractValid(issued.manifest)
+    ) {
+      return null;
+    }
+    const signedUrl = await buildSignedDecisionUrl(
+      request,
+      env,
+      issued.decision
+    );
+    if (!signedUrl) return null;
+    if (new URL(request.url).searchParams.get("download") === "1") {
+      signedUrl.searchParams.set("download", "1");
+    }
+    return new Response(null, {
+      status: 307,
+      headers: {
+        location: signedUrl.href,
+        "cache-control": "private, no-store, max-age=0",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+        "x-robots-tag": "noindex, nofollow, noarchive",
+        vary: "user-agent"
+      }
+    });
+  } catch (error) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      event: "dynamic_ad_full_file_fallback",
+      episodeId,
+      errorCode: error instanceof RequestValidationError
+        ? error.code
+        : "runtime_error",
+      errorName: error instanceof Error ? error.name : "UnknownError"
+    }));
+    return null;
+  }
+}
+
+export async function serveAdDecisionAudio(
+  request: Request,
+  env: PodcastEnv,
+  decisionIdValue: string,
+  ctx?: ExecutionContext
 ): Promise<Response> {
-  if (!stagingDecisionRuntimeEnabled(env)) {
+  if (!signedDecisionRuntimeEnabled(env)) {
     return decisionError("not_found", 404);
   }
   const decisionId = validIdentifier(decisionIdValue, "decisionId");
@@ -536,12 +662,12 @@ export async function serveStagingAdDecisionAudio(
   ) {
     return decisionError("ad_decision_unavailable", 404);
   }
-  const manifest = parseStoredManifest(decision.manifest_json);
+  const manifest = await verifiedStoredManifest(decision);
   if (
-    manifest.decisionId !== decision.id
+    !manifest
+    || manifest.decisionId !== decision.id
     || manifest.episodeId !== decision.episode_id
     || manifest.etag !== decision.manifest_etag
-    || await sha256Hex(decision.manifest_json) !== decision.manifest_sha256
   ) {
     return decisionError("ad_decision_manifest_mismatch", 409);
   }
@@ -554,7 +680,120 @@ export async function serveStagingAdDecisionAudio(
   if (!deliveryManifest) {
     return decisionError("ad_decision_object_mismatch", 409);
   }
-  return serveVirtualMedia(request, env.MEDIA_BUCKET, deliveryManifest);
+  const primaryDelivery = deliveryManifest.id === manifest.id;
+  const response = await serveVirtualMedia(
+    request,
+    env.MEDIA_BUCKET,
+    deliveryManifest,
+    {
+      ...(primaryDelivery && automaticDecisionRuntimeEnabled(env)
+        ? {
+          async onComplete(delivery: CompletedVirtualMediaDelivery) {
+            const qualification = qualifyCompletedDirectSlots(
+              env,
+              decision,
+              delivery
+            );
+            if (ctx) {
+              ctx.waitUntil(qualification);
+              return;
+            }
+            await qualification;
+          }
+        }
+        : {})
+    }
+  );
+  if (
+    new URL(request.url).searchParams.get("download") === "1"
+    && (response.status === 200 || response.status === 206)
+  ) {
+    response.headers.set(
+      "content-disposition",
+      `attachment; filename="${
+        safeDownloadFilename(`${decision.episode_id}.mp3`)
+      }"`
+    );
+  }
+  if (
+    ctx
+    && automaticDecisionRuntimeEnabled(env)
+    && (response.status === 200 || response.status === 206)
+  ) {
+    const bytesServed = Number(response.headers.get("content-length"));
+    if (Number.isSafeInteger(bytesServed) && bytesServed > 0) {
+      ctx.waitUntil(
+        recordPodcastMediaDelivery(
+          request,
+          env,
+          {
+            id: decision.episode_id,
+            showId: decision.show_id,
+            durationSeconds: decision.duration_seconds,
+            audioBytes: decision.total_bytes ?? bytesServed
+          },
+          {
+            bytesServed,
+            status: response.status
+          }
+        ).catch((error: unknown) => {
+          console.error(JSON.stringify({
+            level: "error",
+            event: "podcast_analytics_record_failed",
+            episodeId: decision.episode_id,
+            deliveryType: "dynamic_ad",
+            errorName: error instanceof Error
+              ? error.name
+              : "UnknownError"
+          }));
+        })
+      );
+    }
+  }
+  return response;
+}
+
+async function qualifyCompletedDirectSlots(
+  env: PodcastEnv,
+  decision: StoredDecisionRow,
+  delivery: CompletedVirtualMediaDelivery
+): Promise<void> {
+  const secret = env.AD_QUALIFICATION_CALLBACK_SECRET;
+  if (!secret) return;
+  const positions: AdPosition[] = ["pre", "mid", "post"];
+  const completed = positions.flatMap((position) => {
+    const segment = delivery.manifest.segments.find((candidate) =>
+      candidate.id === `${decision.id}_primary_${position}_creative`
+      && candidate.kind === "direct_ad"
+    );
+    if (
+      !segment
+      || delivery.range.startsAt > segment.virtualStartsAt
+      || delivery.range.endsAt < segment.virtualEndsAt
+    ) {
+      return [];
+    }
+    return [{ position, bytes: segment.byteLength }];
+  });
+  if (completed.length === 0) return;
+  try {
+    await Promise.all(completed.map(({ position, bytes }) =>
+      recordTrustedDownloadQualification(env.DB, {
+        decisionId: decision.id,
+        decisionSlotId: `${decision.id}_${position}`,
+        bytesServed: bytes,
+        secret
+      })
+    ));
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      event: "dynamic_ad_qualification_failed",
+      decisionId: decision.id,
+      completedSlotCount: completed.length,
+      errorName: error instanceof Error ? error.name : "UnknownError"
+    }));
+  }
 }
 
 export async function recordTrustedDownloadQualification(
@@ -680,8 +919,9 @@ export async function recordTrustedAdQualificationCallback(
       { status: 404 }
     );
   }
+  const qualificationSecret = env.AD_QUALIFICATION_CALLBACK_SECRET;
   const signed = await readSignedJsonBody(request, {
-    secret: env.AD_QUALIFICATION_CALLBACK_SECRET,
+    secret: qualificationSecret,
     timestampHeader: "x-podcast-qualification-timestamp",
     signatureHeader: "x-podcast-qualification-signature",
     maximumBytes: QUALIFICATION_CALLBACK_MAXIMUM_BODY_BYTES,
@@ -698,6 +938,14 @@ export async function recordTrustedAdQualificationCallback(
           : "invalid_qualification_signature"
       },
       { status: signed.reason === "secret_missing" ? 404 : 401 }
+    );
+  }
+  if (!qualificationSecret) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "not_found" },
+      { status: 404 }
     );
   }
 
@@ -718,7 +966,7 @@ export async function recordTrustedAdQualificationCallback(
     decisionId,
     decisionSlotId,
     bytesServed: creativeBytesServed,
-    secret: env.AD_QUALIFICATION_CALLBACK_SECRET as string
+    secret: qualificationSecret
   });
   return privateJson(request, env.ALLOWED_ORIGINS, {
     accepted: true,
@@ -734,8 +982,9 @@ async function loadRuntimeEpisode(
 ): Promise<RuntimeEpisodeRow | null> {
   return db.prepare(
     `SELECT
-       e.id, e.show_id, e.publication_revision, e.status, e.media_status,
-       e.audio_key, e.audio_bytes, e.audio_mime_type, e.audio_etag,
+       e.id, e.show_id, e.publication_revision, e.status, e.access,
+       e.public_at, e.media_status, e.audio_key, e.audio_bytes,
+       e.audio_mime_type, e.audio_etag,
        e.dynamic_ads_enabled AS episode_dynamic_ads_enabled,
        s.dynamic_ads_enabled AS show_dynamic_ads_enabled
      FROM episodes e
@@ -752,14 +1001,17 @@ async function loadDecisionByRequestKey(
 ): Promise<StoredDecisionRow | null> {
   return db.prepare(
     `SELECT
-       id, episode_id, publication_revision, request_key_hash, status,
-       manifest_json, manifest_etag, manifest_sha256, total_bytes, expires_at,
-       qualification_expires_at, delivery_variant, delivery_committed_at
-     FROM ad_decisions
+       d.id, d.show_id, d.episode_id, e.duration_seconds,
+       d.publication_revision, d.request_key_hash, d.status,
+       d.manifest_json, d.manifest_etag, d.manifest_sha256, d.total_bytes,
+       d.expires_at, d.qualification_expires_at, d.delivery_variant,
+       d.delivery_committed_at
+     FROM ad_decisions d
+     JOIN episodes e ON e.id = d.episode_id
      WHERE
-       episode_id = ?
-       AND publication_revision = ?
-       AND request_key_hash = ?`
+       d.episode_id = ?
+       AND d.publication_revision = ?
+       AND d.request_key_hash = ?`
   ).bind(
     episodeId,
     publicationRevision,
@@ -773,11 +1025,14 @@ async function loadDecision(
 ): Promise<StoredDecisionRow | null> {
   return db.prepare(
     `SELECT
-       id, episode_id, publication_revision, request_key_hash, status,
-       manifest_json, manifest_etag, manifest_sha256, total_bytes, expires_at,
-       qualification_expires_at, delivery_variant, delivery_committed_at
-     FROM ad_decisions
-     WHERE id = ?`
+       d.id, d.show_id, d.episode_id, e.duration_seconds,
+       d.publication_revision, d.request_key_hash, d.status,
+       d.manifest_json, d.manifest_etag, d.manifest_sha256, d.total_bytes,
+       d.expires_at, d.qualification_expires_at, d.delivery_variant,
+       d.delivery_committed_at
+     FROM ad_decisions d
+     JOIN episodes e ON e.id = d.episode_id
+     WHERE d.id = ?`
   ).bind(decisionId).first<StoredDecisionRow>();
 }
 
@@ -899,14 +1154,14 @@ function validateSelectedCreativeSnapshots(
 
 async function verifyRuntimeObjects(
   bucket: R2Bucket,
-  episode: RuntimeEpisodeRow,
+  episode: ReadyRuntimeEpisodeRow,
   programSegments: RuntimeProgramSegmentRow[],
   ...slotGroups: AdSlotDecision[][]
 ): Promise<Map<string, string>> {
   const candidates = [
     {
-      objectKey: episode.audio_key as string,
-      objectBytes: episode.audio_bytes as number,
+      objectKey: episode.audio_key,
+      objectBytes: episode.audio_bytes,
       etag: episode.audio_etag
     },
     ...programSegments.map((segment) => ({
@@ -979,7 +1234,7 @@ async function verifyRuntimeObjects(
 }
 
 async function buildDecisionManifest(
-  episode: RuntimeEpisodeRow,
+  episode: ReadyRuntimeEpisodeRow,
   decisionId: string,
   streamProfile: string,
   validatedAt: string,
@@ -1029,11 +1284,11 @@ async function buildDecisionManifest(
     segments: [{
       id: `${decisionId}_fallback_program`,
       kind: "program",
-      objectKey: episode.audio_key as string,
-      objectEtag: objectEtags.get(episode.audio_key as string),
-      objectBytes: episode.audio_bytes as number,
+      objectKey: episode.audio_key,
+      objectEtag: objectEtags.get(episode.audio_key),
+      objectBytes: episode.audio_bytes,
       sourceOffset: 0,
-      byteLength: episode.audio_bytes as number,
+      byteLength: episode.audio_bytes,
       contentType: "audio/mpeg",
       streamProfile
     }]
@@ -1194,7 +1449,15 @@ async function presentIssuedDecision(
       { status: 409 }
     );
   }
-  const manifest = parseStoredManifest(decision.manifest_json);
+  const manifest = await verifiedStoredManifest(decision);
+  if (!manifest) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "ad_decision_manifest_mismatch" },
+      { status: 409 }
+    );
+  }
   if (!storedDeliveryContractValid(manifest)) {
     return privateJson(
       request,
@@ -1203,19 +1466,20 @@ async function presentIssuedDecision(
       { status: 409 }
     );
   }
-  const signature = await signDecision(
-    decision.id,
-    expires,
-    decision.manifest_sha256,
-    env.AD_DECISION_SIGNING_SECRET as string
-  );
-  const signedUrl = new URL(
-    `/v1/ads/decisions/${decision.id}/audio`,
-    new URL(request.url).origin
-  );
-  signedUrl.searchParams.set("expires", String(expires));
-  signedUrl.searchParams.set("manifest", decision.manifest_sha256);
-  signedUrl.searchParams.set("signature", signature);
+  const signedUrl = await buildSignedDecisionUrl(request, env, decision);
+  if (!signedUrl) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "ad_decision_unavailable" },
+      { status: 409 }
+    );
+  }
+  const runtimeEnabled = automaticDecisionRuntimeEnabled(env)
+    && flags.showEnabled
+    && flags.episodeEnabled
+    && manifest.fallbackType === "house_fill"
+    && manifest.deliveryLengthContract.equalByteLength;
   return privateJson(
     request,
     env.ALLOWED_ORIGINS,
@@ -1230,12 +1494,44 @@ async function presentIssuedDecision(
       fallbackType: manifest.fallbackType,
       deliveryLengthContract: manifest.deliveryLengthContract,
       deliveryLengthReady: manifest.deliveryLengthContract.equalByteLength,
-      runtimeEnabled: false,
-      publicEnclosureConnected: false,
+      runtimeEnabled,
+      publicEnclosureConnected: runtimeEnabled,
       flags
     },
     { status: idempotent ? 200 : 201 }
   );
+}
+
+async function buildSignedDecisionUrl(
+  request: Request,
+  env: PodcastEnv,
+  decision: StoredDecisionRow
+): Promise<URL | null> {
+  if (
+    !decision.manifest_sha256
+    || !Number.isFinite(Date.parse(decision.expires_at))
+    || !env.AD_DECISION_SIGNING_SECRET
+  ) {
+    return null;
+  }
+  const expires = Math.floor(Date.parse(decision.expires_at) / 1_000);
+  if (expires <= Math.floor(Date.now() / 1_000)) return null;
+  const signature = await signDecision(
+    decision.id,
+    expires,
+    decision.manifest_sha256,
+    env.AD_DECISION_SIGNING_SECRET
+  );
+  const origin = env.MEDIA_ORIGIN?.replace(/\/+$/, "")
+    || new URL(request.url).origin;
+  const signedUrl = new URL(
+    `/v1/ads/decisions/${decision.id}/audio`,
+    origin
+  );
+  signedUrl.searchParams.set("expires", String(expires));
+  signedUrl.searchParams.set("manifest", decision.manifest_sha256);
+  signedUrl.searchParams.set("signature", signature);
+  return signedUrl;
 }
 
 async function signDecision(
@@ -1257,17 +1553,82 @@ async function signDecision(
 }
 
 function stagingDecisionRuntimeEnabled(env: PodcastEnv): boolean {
-  return env.ENVIRONMENT === "staging"
-    && env.AD_DECISION_MODE === "staging_validate"
+  return String(env.ENVIRONMENT) === "staging"
+    && ["staging_validate", "staging_public"].includes(
+      String(env.AD_DECISION_MODE ?? "")
+    )
     && Boolean(env.AD_DECISION_SIGNING_SECRET);
 }
 
-function parseStoredManifest(value: string): StoredAdDecisionManifest {
-  const parsed = JSON.parse(value) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Stored ad decision manifest is invalid.");
+function signedDecisionRuntimeEnabled(env: PodcastEnv): boolean {
+  return stagingDecisionRuntimeEnabled(env)
+    || (
+      String(env.ENVIRONMENT) === "production"
+      && String(env.AD_DECISION_MODE) === "live"
+      && Boolean(env.AD_DECISION_SIGNING_SECRET)
+    );
+}
+
+function automaticDecisionRuntimeEnabled(env: PodcastEnv): boolean {
+  return signedDecisionRuntimeEnabled(env)
+    && (
+      String(env.AD_DECISION_MODE) === "staging_public"
+      || String(env.AD_DECISION_MODE) === "live"
+    )
+    && Boolean(env.AD_QUALIFICATION_CALLBACK_SECRET);
+}
+
+function runtimeEpisodeReady(
+  episode: RuntimeEpisodeRow
+): episode is ReadyRuntimeEpisodeRow {
+  return episode.status === "published"
+    && episode.media_status === "ready"
+    && Boolean(episode.audio_key)
+    && Boolean(episode.audio_bytes)
+    && episode.audio_mime_type === "audio/mpeg"
+    && Boolean(episode.audio_etag)
+    && episode.publication_revision >= 1;
+}
+
+function isAdDeviceType(value: string): value is AdDeviceType {
+  return DEVICE_TYPES.some((candidate) => candidate === value);
+}
+
+function publicRuntimeEpisodeReady(episode: RuntimeEpisodeRow): boolean {
+  const publicAt = episode.public_at;
+  return ["public", "early_access", "free_mini"].includes(episode.access)
+    && publicAt !== null
+    && Number.isFinite(Date.parse(publicAt))
+    && Date.parse(publicAt) <= Date.now();
+}
+
+function runtimeFlags(episode: RuntimeEpisodeRow): {
+  showEnabled: boolean;
+  episodeEnabled: boolean;
+} {
+  return {
+    showEnabled: episode.show_dynamic_ads_enabled === 1,
+    episodeEnabled: episode.episode_dynamic_ads_enabled === 1
+  };
+}
+
+function runtimeFlagsReady(episode: RuntimeEpisodeRow): boolean {
+  const flags = runtimeFlags(episode);
+  return flags.showEnabled && flags.episodeEnabled;
+}
+
+async function verifiedStoredManifest(
+  decision: StoredDecisionRow
+): Promise<StoredAdDecisionManifest | null> {
+  if (!decision.manifest_json || !decision.manifest_sha256) return null;
+  if (await sha256Hex(decision.manifest_json) !== decision.manifest_sha256) {
+    return null;
   }
-  return parsed as StoredAdDecisionManifest;
+  try {
+    return parseStoredAdDecisionManifest(decision.manifest_json);
+  } catch {
+    return null;
+  }
 }
 
 async function resolveDecisionDeliveryManifest(

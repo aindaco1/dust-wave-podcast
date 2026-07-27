@@ -29,6 +29,14 @@ Creative uploads use new versioned keys and processed program segments use
 content-addressed filenames, so a later replacement cannot silently alter an
 issued decision.
 
+The stable public enclosure now has a code-complete, fail-closed resolver. It
+remains inert in committed `staging_validate`/`disabled` modes. Only
+`staging_public` or `live`, both show/episode flags, both independent secrets,
+and an exact equal-byte house fallback may produce a no-store `307` to the
+signed URL. Every failure continues through the existing full-file response;
+premium private feeds bypass the resolver. A successful body stream qualifies
+only directly sponsored segments whose entire virtual byte window was emitted.
+
 This contract does not claim that arbitrary MP3 or M4A files can be
 concatenated. The media pipeline must produce frame-boundary program pieces and
 creative assets with the same recorded profile, validate the assembled

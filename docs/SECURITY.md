@@ -47,11 +47,14 @@
   and an HMAC over the exact body; source identity, output prefix, frame/size
   constraints, manifest digest, and current private R2 objects are rechecked
   before approval.
-- Signed ad decisions are available only when the staging-only mode and secret
-  are both present. The HMAC binds ID, expiry, and manifest digest and is
+- Signed ad decisions are available only in an explicit decision mode with a
+  signing secret. The HMAC binds ID, expiry, and manifest digest and is
   verified before D1; the stored manifest hash and every R2 size/ETag are
-  checked before headers. Production hard-codes the mode disabled and the
-  permanent enclosure does not call this route.
+  checked before headers. Automatic enclosure selection additionally requires
+  `staging_public` or `live`, the independent qualification secret, both
+  show/episode flags, and exact equal-length house coverage. Committed staging
+  remains `staging_validate`, production remains `disabled`, and private
+  premium media bypasses this path.
 - Decision-key rotation issues only with the current secret and may validate
   against one previous secret for the bounded two-hour overlap. Retire the
   previous secret after that window; never reuse the production key in staging.
@@ -59,6 +62,12 @@
   content-addressed R2 keys so an already issued decision cannot be changed by
   a later upload. Qualification dedupe and hard-cap increments are enforced
   inside SQLite, not by a race-prone application read/modify/write.
+- Runtime client classification persists only normalized app/device codes.
+  The full user agent and connecting address remain in request memory for
+  daily/hourly keyed hashes and are not stored in decision or audit rows.
+  A direct-ad qualification is attempted only after a complete creative byte
+  window has streamed successfully; metadata probes, partial/canceled streams,
+  and house/full-file fallbacks never count.
 
 ## Storage and delivery
 

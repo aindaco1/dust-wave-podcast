@@ -119,6 +119,11 @@ describe("virtual media assembly", () => {
       offset: number;
       length: number;
     }> = [];
+    const completions: Array<{
+      startsAt: number;
+      endsAt: number;
+      status: number;
+    }> = [];
     const bucket = {
       async get(key: string, options: R2GetOptions) {
         const range = options.range as { offset: number; length: number };
@@ -141,14 +146,29 @@ describe("virtual media assembly", () => {
         headers: { range: "bytes=6-14" }
       }),
       bucket,
-      createManifest()
+      createManifest(),
+      {
+        async onComplete(delivery) {
+          completions.push({
+            startsAt: delivery.range.startsAt,
+            endsAt: delivery.range.endsAt,
+            status: delivery.status
+          });
+        }
+      }
     );
 
     expect(response.status).toBe(206);
     expect(response.headers.get("content-range")).toBe("bytes 6-14/22");
     expect(response.headers.get("content-length")).toBe("9");
     expect(response.headers.get("etag")).toBe('"decision-revision-1"');
+    expect(completions).toEqual([]);
     expect(await response.text()).toBe("GH123456i");
+    expect(completions).toEqual([{
+      startsAt: 6,
+      endsAt: 14,
+      status: 206
+    }]);
     expect(reads).toEqual([
       { key: "program.mp3", offset: 6, length: 2 },
       { key: "ad.mp3", offset: 0, length: 6 },
@@ -194,18 +214,61 @@ describe("virtual media assembly", () => {
     expect(await response.text()).toBe("ABCDEFGH123456ijklmnop");
   });
 
+  it("does not report completion when the client cancels the stream", async () => {
+    let completionCalls = 0;
+    const bucket = {
+      async get() {
+        return {
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("ABCD"));
+            }
+          }),
+          size: 16,
+          httpEtag: '"program.mp3"',
+          range: { offset: 0, length: 8 },
+          writeHttpMetadata() {}
+        };
+      }
+    } as unknown as R2Bucket;
+    const response = await serveVirtualMedia(
+      new Request("https://media.dustwave.xyz/decision/example", {
+        headers: { range: "bytes=0-7" }
+      }),
+      bucket,
+      createManifest(),
+      {
+        async onComplete() {
+          completionCalls += 1;
+        }
+      }
+    );
+
+    const reader = response.body?.getReader();
+    expect((await reader?.read())?.value?.byteLength).toBe(4);
+    await reader?.cancel("client disconnected");
+    expect(completionCalls).toBe(0);
+  });
+
   it("returns a bodyless conditional response for a matching decision", async () => {
+    let completionCalls = 0;
     const response = await serveVirtualMedia(
       new Request("https://media.dustwave.xyz/decision/example", {
         headers: { "if-none-match": 'W/"decision-revision-1"' }
       }),
       {} as R2Bucket,
-      createManifest()
+      createManifest(),
+      {
+        async onComplete() {
+          completionCalls += 1;
+        }
+      }
     );
 
     expect(response.status).toBe(304);
     expect(response.headers.get("etag")).toBe('"decision-revision-1"');
     expect(response.headers.get("content-length")).toBeNull();
+    expect(completionCalls).toBe(0);
   });
 
   it("fails closed on unvalidated or incompatible media windows", async () => {
