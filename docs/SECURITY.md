@@ -187,6 +187,12 @@
   hard-pins Google origins, disables redirects, bounds provider JSON, streams
   the private R2 body, verifies returned channel/privacy, and fails closed if
   the mode is restored before consumption.
+- Saved marketing links accept only bounded text and the show's existing
+  credential-free HTTPS canonical URL. The Worker rebuilds every tagged URL
+  through the exact shared Pool/Store normalizer instead of trusting the
+  browser's derived value. Reads are keyset-bounded and private/no-store;
+  writes are show-scoped, CSRF-protected, optimistic, and audited without
+  returning admin-user IDs.
 - Resend receives the raw destination only at send time. Delivery failures are
   logged by internal admin/listener ID, a closed local failure code, and the
   numeric provider HTTP status when available—never by email address,

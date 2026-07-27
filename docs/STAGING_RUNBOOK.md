@@ -114,6 +114,19 @@ subscriber query runs. Inspect JSON and CSV for absence of email, address,
 feed-token, login-token, session-token, and raw entitlement credential fields;
 formula-shaped fixture text must be neutralized in CSV.
 
+For migration `0044`, verify the immutable announcement/outbox tables,
+delivery-due/provider indexes, suppression journal, webhook replay journal, and
+the nullable notification unsubscribe HMAC. Keep staging in `dry_run`; a
+review/approval exercise must complete without decrypting a destination or
+contacting Resend.
+
+For migration `0045`, verify show-local saved-link code uniqueness, the
+`podcast_marketing_links_show_recent` query plan, and clean foreign keys.
+Confirm Analyst can list but not mutate, Producer is confined to the assigned
+show, off-origin or missing-CSRF writes fail before D1 mutation, and a stale
+`expectedUpdatedAt` returns `marketing_link_changed` without a second audit
+event. The returned JSON must omit admin-user IDs.
+
 Use a Stripe sandbox test clock only after an accountant-approved staging Tax
 Rate exists. Exercise initial invoice, monthly and annual renewal, address
 change, same-rate replay, rate change, payment failure/recovery, cancellation,

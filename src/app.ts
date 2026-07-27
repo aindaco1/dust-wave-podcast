@@ -122,6 +122,11 @@ import {
   dryRunAdminMarketingAnnouncement
 } from "./marketing";
 import {
+  deleteAdminMarketingLink,
+  listAdminMarketingLinks,
+  saveAdminMarketingLink
+} from "./marketing-links";
+import {
   servePrivateEpisodeAudio,
   servePublicEpisodeAudio
 } from "./media";
@@ -228,6 +233,10 @@ const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements$/;
 const ADMIN_SHOW_MARKETING_APPROVE_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/approve$/;
+const ADMIN_SHOW_MARKETING_LINKS_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/links$/;
+const ADMIN_SHOW_MARKETING_LINK_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/links\/([A-Za-z0-9_-]+)$/;
 const ANNOUNCEMENT_UNSUBSCRIBE_PATH =
   /^\/v1\/notifications\/unsubscribe\/([A-Za-z0-9_-]{43})$/;
 const ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH =
@@ -703,6 +712,36 @@ async function routeRequest(request: Request, env: PodcastEnv): Promise<Response
       request,
       env,
       adminShowMarketingAnnouncementsMatch[1]
+    );
+  }
+  const adminShowMarketingLinksMatch = url.pathname.match(
+    ADMIN_SHOW_MARKETING_LINKS_PATH
+  );
+  if (adminShowMarketingLinksMatch) {
+    if (method === "GET") {
+      return listAdminMarketingLinks(
+        request,
+        env,
+        adminShowMarketingLinksMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return saveAdminMarketingLink(
+        request,
+        env,
+        adminShowMarketingLinksMatch[1]
+      );
+    }
+  }
+  const adminShowMarketingLinkMatch = url.pathname.match(
+    ADMIN_SHOW_MARKETING_LINK_PATH
+  );
+  if (adminShowMarketingLinkMatch && method === "DELETE") {
+    return deleteAdminMarketingLink(
+      request,
+      env,
+      adminShowMarketingLinkMatch[1],
+      adminShowMarketingLinkMatch[2]
     );
   }
   const adminShowDistributionDestinationMatch = url.pathname.match(

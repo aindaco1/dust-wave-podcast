@@ -161,8 +161,9 @@ iHeartRadio, and Deezer.
   dashboard URL, public listing, and bounded notes. Never store provider
   passwords or verification codes.
 - Reuse the versioned Pool/Store Marketing boundary for policy-injected tagged
-  URLs and accessible PNG/SVG QR generation. The first Dust Wave share kit is
-  browser-only and does not persist campaign state.
+  URLs and accessible PNG/SVG QR generation. The Dust Wave adapter now saves
+  show-scoped tagged links in audited D1 state with optimistic updates and
+  bounded keyset reads while retaining the shared normalizer and QR engine.
 - Keep announcements consent-safe: the implemented WYSIWYG review counts only
   explicitly opted-in, currently entitled listeners and returns pseudonymous
   revision hashes without recipient identities. The durable outbox now freezes
@@ -172,9 +173,9 @@ iHeartRadio, and Deezer.
   retains only count-level admin evidence. Staging is dry-run and production is
   disabled. A signed-webhook exercise plus a tightly controlled staging live
   send remain promotion gates before enabling the Resend sender.
-- Add saved tagged links, portable embeds, share-card previews, and scheduling
-  only after their storage, accessibility, privacy, and cache contracts are
-  characterized.
+- Keep the implemented portable embeds and build-time share-card previews
+  read-only. Add scheduling only after its storage, accessibility, privacy,
+  cancellation, and cache contracts are characterized.
 - Reuse Pool/Store reporting patterns for public and premium delivery, player
   engagement, sponsors, subscriptions, YouTube, and publication health.
 - Keep raw delivery data privacy-minimized, methodology-versioned, deduplicated,

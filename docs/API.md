@@ -237,6 +237,9 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/approve` | recent admin+ | Freeze an unchanged review into the audited durable outbox |
 | `GET` | `/v1/admin/shows/{id}/marketing/announcements` | analyst+ | Count-only delivery history; never recipient identities or destinations |
+| `GET` | `/v1/admin/shows/{id}/marketing/links` | analyst+ | Bounded keyset page of saved, show-scoped tagged links |
+| `POST` | `/v1/admin/shows/{id}/marketing/links` | producer+ | Create or optimistically update a tagged link using the shared Pool/Store URL policy |
+| `DELETE` | `/v1/admin/shows/{id}/marketing/links/{link-id}` | producer+ | Delete one show-scoped saved link with audit evidence |
 | `GET` | `/v1/admin/shows/{id}/episodes` | analyst+ | Draft, scheduled, and published episode workbench rows |
 | `GET` | `/v1/admin/shows/{id}/clips` | analyst+ | Bounded, filterable cross-episode private clip library |
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
