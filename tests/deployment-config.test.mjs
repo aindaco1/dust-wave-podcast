@@ -83,4 +83,27 @@ describe("deployment configuration", () => {
     expect(workerEntrypoint).toContain("attempt: message.attempts");
     expect(workerEntrypoint).toContain("errorName:");
   });
+
+  it("keeps staging billing test-only and fail-closed behind required secrets", () => {
+    const requiredSecrets = new Set(
+      config.env.staging.secrets.required
+    );
+    expect(Array.from(requiredSecrets)).toEqual(expect.arrayContaining([
+      "LISTENER_EMAIL_LOOKUP_PEPPER",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "TAX_QUOTE_HASH_SECRET",
+      "TURNSTILE_SECRET_KEY"
+    ]));
+    expect(config.env.staging.vars.STRIPE_MODE).toBe("test");
+    expect(config.env.staging.vars.SUBSCRIPTION_CHECKOUT_ENABLED).toBe(
+      "false"
+    );
+    expect(config.env.staging.vars.CHECKOUT_TURNSTILE_REQUIRED).toBe(
+      "true"
+    );
+    expect(config.env.production.vars.SUBSCRIPTION_CHECKOUT_ENABLED).toBe(
+      "false"
+    );
+  });
 });

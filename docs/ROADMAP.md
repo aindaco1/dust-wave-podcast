@@ -164,7 +164,12 @@ iHeartRadio, and Deezer.
 - Keep Checkout behind an explicit kill switch. Use idempotent Stripe
   Customer/Checkout calls, webhook-projected source entitlements, and a scoped
   Customer Portal; retain only email/destination HMACs and immutable tax
-  evidence in Podcast D1.
+  evidence in Podcast D1. The staging provider preflight now confirms the
+  exact inactive test Product, $5 monthly and $50 annual Prices, hardened
+  Portal profile, required signed-webhook event set, installed test API
+  credential, and two processed provider-signed expiration events with no
+  failed journal entry. Checkout and every provider object remain inactive
+  pending the accountant-approved manual tax matrix and controlled purchase.
 - Preserve independent Stripe, Pool, and manual entitlement sources beneath
   one access projection so cancellation/revocation of one source cannot remove
   access granted by another.

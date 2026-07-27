@@ -14,8 +14,9 @@ They do gate the indicated production action.
 | Resend sender and staging API key | Staging magic-link delivery | Existing infrastructure is operational; use or rotate a least-privilege key without committing it |
 | Resend signed webhook endpoint and secret | First controlled live announcement test | Staging has a dedicated, rotated Podcast webhook for delivered, bounced, complained, failed, and suppressed events. Unsigned rejection plus signed unmatched-event/replay deduplication passed; keep announcement mode dry-run until one consented live delivery and its matched status/suppression exercise pass |
 | Turnstile staging key pair | Staging admin login | Existing infrastructure is operational; configure the secret in the Worker and the site key in the admin shell |
+| Dedicated restricted Stripe test API key | First controlled Podcast Checkout | Read-only staging preflight passed with the authenticated CLI key and it is installed behind the disabled Checkout switch. Replace the expiring CLI credential with a Podcast-scoped restricted test key before the controlled purchase |
 | Accountant-approved registrations, taxability, rates, evidence, and effective dates | Purchasable Stripe prices | Awaiting professional approval |
-| Podcast-only Stripe Customer Portal profile with address/rate-changing controls disabled | First controlled Portal session | Staging configured; production profile remains a promotion-time action |
+| Podcast-only Stripe Customer Portal profile with address/rate-changing controls disabled | First controlled Portal session | Staging profile verified active: address, subscription update, and pause are disabled; cancellation is at period end with no proration. Production profile remains a promotion-time action |
 | Pool benefit product/tier mapping and entitlement duration for each podcast | First controlled Pool-code grant | Awaiting selection; the bridge and Dust Wave redemption flow remain mapping-independent |
 | Sponsor contract/disclosure/creative for the first direct campaign | Direct campaign activation | Not yet required |
 

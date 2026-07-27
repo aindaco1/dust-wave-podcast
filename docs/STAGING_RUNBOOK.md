@@ -615,6 +615,31 @@ Before the first controlled Checkout:
 9. Disable the kill switch again and remove all customer/subscription fixtures
    after exporting redacted evidence.
 
+The read-only Stripe provider preflight passed on 2026-07-27 without creating
+a Customer, Checkout Session, Subscription, charge, or tax object:
+
+- staging D1 and Stripe agree on the inactive Ópera en la Selva test Product,
+  exclusive $5 monthly Price, exclusive $50 annual Price, USD currency,
+  intervals, lookup keys, and show metadata;
+- the active test webhook targets only the Podcast staging route, pins the
+  Worker API version, and includes Checkout completion/expiration plus the
+  subscription lifecycle events consumed by the projection;
+- two provider-signed test Checkout expiration events are processed with zero
+  failed journal entries;
+- the Podcast-only test Portal configuration is active, permits payment-method
+  updates and at-period-end cancellation without proration, and disables
+  address updates, plan changes, and pause;
+- the staging Worker has a test-mode API credential and independently scoped
+  webhook secret, while `SUBSCRIPTION_CHECKOUT_ENABLED` remains `false`;
+- the Product and both Prices remain inactive, and no approved tax version is
+  assigned.
+
+The authenticated Stripe CLI credential used for this read-only preflight
+expires on 2026-10-12. It is acceptable only while Checkout is disabled.
+Replace it with a dedicated restricted Podcast test key before step 2, then
+repeat the preflight. Never reuse the Pool/Store webhook signing secret or a
+live API key.
+
 Required for the isolated ad-plan processor:
 
 - Worker secret `MEDIA_PROCESSOR_CALLBACK_SECRET`

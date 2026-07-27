@@ -29,7 +29,10 @@
           "LISTENER_SESSION_SECRET",
           "MEDIA_PROCESSOR_CALLBACK_SECRET",
           "RESEND_WEBHOOK_SECRET",
-          "TAX_QUOTE_HASH_SECRET"
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET",
+          "TAX_QUOTE_HASH_SECRET",
+          "TURNSTILE_SECRET_KEY"
         ]
       },
       "vars": {
