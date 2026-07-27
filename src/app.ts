@@ -230,6 +230,7 @@ import {
   saveAdminEpisodeTranscript,
   servePublicEpisodeTranscripts
 } from "./transcripts";
+import { previewAdminRssImport } from "./rss-import-preview";
 import {
   abortMultipartUpload,
   completeMultipartUpload,
@@ -274,6 +275,8 @@ const ADMIN_SHOW_CLIPS_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/clips$/;
 const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
+const ADMIN_SHOW_RSS_IMPORT_PREVIEW_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/preview$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
 const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
@@ -831,6 +834,16 @@ async function routeRequest(
   const adminShowClipsMatch = url.pathname.match(ADMIN_SHOW_CLIPS_PATH);
   if (adminShowClipsMatch && method === "GET") {
     return listAdminShowClips(request, env, adminShowClipsMatch[1]);
+  }
+  const adminShowRssImportPreviewMatch = url.pathname.match(
+    ADMIN_SHOW_RSS_IMPORT_PREVIEW_PATH
+  );
+  if (adminShowRssImportPreviewMatch && method === "POST") {
+    return previewAdminRssImport(
+      request,
+      env,
+      adminShowRssImportPreviewMatch[1]
+    );
   }
   const adminShowMarketingDryRunMatch = url.pathname.match(
     ADMIN_SHOW_MARKETING_DRY_RUN_PATH

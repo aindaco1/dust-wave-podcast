@@ -274,6 +274,7 @@ including under concurrent requests.
 |---|---|---|---|
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
+| `POST` | `/v1/admin/shows/{id}/rss-import/preview` | recently authenticated super-admin | Fetch and sanitize one explicitly authorized public HTTPS RSS feed without importing episodes or media |
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
@@ -343,6 +344,18 @@ including under concurrent requests.
 | `GET` | `/v1/admin/billing/readiness` | super-admin | Non-secret provider/tax readiness |
 | `GET` | `/v1/admin/billing/tax-evidence` | super-admin | Bounded non-PII invoice/tax reconciliation evidence as JSON or CSV |
 | `POST` | `/v1/admin/ads/preview` | analyst+ | Read-only sponsor decision preview |
+
+The RSS import preview accepts exactly `feedUrl` and
+`ownershipConfirmed: true`. It allows only public HTTPS hostnames, follows at
+most two independently revalidated manual redirects, times out, and reads at
+most 5 MiB/500 RSS items. XML entity/doctype declarations, invalid UTF-8,
+unsupported content types, unsafe episode/enclosure URLs, and malformed
+catalogs fail closed. The private response returns sanitized plain-text
+metadata, content digests, counts, and at most 25 item summaries. It reports
+only whether an owner email exists; it never returns the address. The route
+does not create or update a show, episode, media object, redirect, directory,
+or provider object. The ordinary authenticated-session heartbeat may still
+advance.
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |
 | `PATCH` | `/v1/admin/ads/campaigns/{id}` | admin+ | Edit metadata and reset approval |

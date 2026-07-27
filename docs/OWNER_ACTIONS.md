@@ -10,6 +10,7 @@ They do gate the indicated production action.
 | Final Spanish or bilingual canonical show description | Public metadata/feed promotion | Confirmed: Spanish primary with English translation |
 | `Ópera en la Selva` early-access default | First premium episode schedule | Confirmed: seven days before public release with per-episode override |
 | Optional free mini-episode | First-show offer activation | Confirmed: enabled, maximum one |
+| First rights-cleared source audio plus final episode title/summary/release intent | First real staging episode, QC, transcript, clip, and YouTube pipeline | Awaiting source; the authorized Substack feed currently exposes article/image items rather than podcast audio |
 | At least one additional super-admin identity | Production admin authentication | Confirmed privately; raw address remains outside the public repository |
 | Resend sender and staging API key | Staging magic-link delivery | Existing infrastructure is operational; use or rotate a least-privilege key without committing it |
 | Resend signed webhook endpoint and secret | First controlled live announcement test | Staging has a dedicated, rotated Podcast webhook for delivered, bounced, complained, failed, and suppressed events. Unsigned rejection plus signed unmatched-event/replay deduplication passed; keep announcement mode dry-run until one consented live delivery and its matched status/suppression exercise pass |

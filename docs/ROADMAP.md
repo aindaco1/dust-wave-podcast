@@ -63,6 +63,14 @@ iHeartRadio, and Deezer.
 
 - Build the common admin shell at `/admin/podcasts/` with Shows, Episodes,
   Distribution, Marketing, Analytics, Sponsors, Subscribers, and Settings.
+- Add a migration path comparable to established podcast hosts. The first
+  boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
+  bounded public-HTTPS fetches and safe XML reduction report which source
+  items are real migratable audio without exposing the owner email. A later
+  reviewed boundary will copy immutable audio into private R2, create draft
+  episode revisions with stable source identities, reconcile counts/digests,
+  and only then provide the old-host redirect checklist. Never activate a 301
+  redirect during preview or before owner reconciliation.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed

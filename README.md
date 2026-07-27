@@ -38,6 +38,14 @@ modes remain non-automatic until the real-client, load, fallback, and
 sponsor-reconciliation gates pass. Public clip distribution and
 production-live YouTube/GitHub publishing remain roadmap work.
 
+An existing-show RSS migration preview is also implemented without a copy
+boundary. A recently authenticated super-admin must confirm import rights; the
+Worker then performs a bounded, redirect-controlled public-HTTPS fetch,
+sanitizes RSS metadata, hides the owner address, and reports which items have
+valid audio enclosures and stable import identity. It writes no episode or
+media state and never configures a redirect. Media copying, draft creation,
+reconciliation, and the old-host 301 checklist remain separately gated work.
+
 The delivery boundary now derives one fixed-profile MP3 and bounded player
 waveform from the exact approved working master through a staging-only,
 credential-minimized workflow. Full decode, complete-frame validation,

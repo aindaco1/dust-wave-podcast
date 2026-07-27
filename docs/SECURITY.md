@@ -331,6 +331,27 @@ chunk boundaries. It never fabricates words, speaker identity, or word timing.
 The final transcript still requires review, and the separate English/Spanish
 word-alignment quality gate remains locked.
 
+## RSS migration preview boundary
+
+Only a recently authenticated super-admin with same-origin CSRF may preview an
+existing show's source feed, and the request must explicitly confirm import
+rights. The Worker accepts only public HTTPS hostnames without credentials,
+fragments, IP literals, single-label hosts, or reserved/private suffixes. It
+disables automatic redirects, independently validates at most two redirect
+targets, forwards no authorization, uses a ten-second timeout, allows only XML
+feed content types, and streams at most 5 MiB.
+
+The parser rejects DTD/entity declarations, control bytes, invalid UTF-8, more
+than 500 items, and malformed RSS structure. It reduces remote titles and
+summaries to bounded plain text, revalidates every returned URL, hashes the
+exact feed and each GUID/enclosure identity, previews at most 25 items, and
+returns only an owner-email presence boolean. External HTML, an owner address,
+raw GUID, cookies, response headers, and provider bodies never enter the
+response, D1, audit metadata, or logs. The boundary performs no import-domain,
+R2, directory, redirect, or provider mutation; the normal admin-session
+last-seen heartbeat remains unchanged. Copying media, creating drafts, and
+activating a feed redirect are separate future approval gates.
+
 ## Before production
 
 - Re-run the private-feed threat model and rotation drill alongside real-time

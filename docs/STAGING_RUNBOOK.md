@@ -577,7 +577,31 @@ Required for the Pool supporter-benefit bridge:
 - `POOL_REDEMPTION_ENABLED=false` until the controlled bridge test.
 
 Do not reuse a Stripe webhook secret, listener/admin session secret, or an
-existing Pool/Store signing key. Before enabling the bridge, create a
+existing Pool/Store signing key.
+
+Before any existing-feed migration:
+
+1. Sign in to the isolated staging admin as a recently authenticated
+   super-admin and select the intended existing show.
+2. In Overview, enter the exact current public HTTPS RSS URL and confirm that
+   Dust Wave owns or has permission to import it.
+3. Run Preview. Confirm the response is private/no-store,
+   `importMutationPerformed` is `false`, the owner address is not displayed,
+   and every non-audio/image item is explicitly non-migratable.
+4. Record only the feed digest, redirect count, total/audio/migratable counts,
+   and blocker categories. Do not copy remote HTML, owner email, raw GUIDs, or
+   enclosure URLs into public evidence.
+5. Compare episode/media-table counts and the staging R2 prefix before and
+   after; only the ordinary admin-session last-seen heartbeat may change.
+6. Do not configure a new-feed tag or old-host 301 redirect. Those actions
+   remain unavailable until a later immutable copy/reconciliation boundary and
+   owner approval.
+
+The authorized Ópera en la Selva Substack URL is useful as a negative preview
+fixture while it contains newsletter article/image enclosures; it must not be
+represented as source podcast audio. Re-evaluate the live feed on every run.
+
+Before enabling the bridge, create a
 non-production Pool benefit mapping with an explicit show and duration, then:
 
 1. Send one signed grant to the staging bridge and retry the exact event;
