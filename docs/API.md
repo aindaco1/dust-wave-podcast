@@ -278,6 +278,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent snapshot-aware publish/schedule; blocker override requires recently authenticated admin+ |
 | `POST` | `/v1/admin/episodes/{id}/youtube` | producer+ | Staging-only immutable full-episode YouTube draft for the exact current publication revision and completed MP4 |
 | `POST` | `/v1/admin/episode-youtube-publications/{id}/approve` | recently authenticated super-admin | Record the default dry run or queue one explicitly enabled unlisted full-episode controlled test |
+| `POST` | `/v1/admin/episode-youtube-publications/{id}/reconcile` | recently authenticated super-admin | Verify and commit an uncertain unlisted provider ID, or explicitly attest that no channel video remains |
 | `GET` | `/v1/admin/episodes/{id}/readiness` | analyst+ | Stable exact-evidence snapshot plus the environment's `legacy`, `shadow`, or `enforce` gate projection |
 | `GET` | `/v1/admin/episodes/{id}/audio-qc` | analyst+ | Current source/policy, up to 20 private QC summaries, and the latest bounded full report |
 | `POST` | `/v1/admin/episodes/{id}/audio-qc` | producer+ | Staging-only queue of one exact source/policy manifest; does not modify or publish audio |
@@ -773,7 +774,13 @@ and current episode. A committed provider ID makes a root-job retry
 provider-free. An upload timeout, incomplete response, verification failure,
 state-commit uncertainty, or Worker interruption moves the record to
 `reconciliation_required`; neither cron recovery nor the generic retry route
-may replay that upload. Production and `live` mode remain disabled.
+may replay that upload. A recently authenticated super-admin may reconcile it
+with one of two exact confirmations. `uploaded` requires a bounded provider
+video ID and live OAuth verification of the configured channel plus unlisted
+privacy before D1 records provider evidence. `not_uploaded` requires the
+literal `CONFIRM_NO_CHANNEL_VIDEO_REMAINS`, records an audit event, and moves
+the immutable attempt to a safe failed state that may be approved again.
+Production and `live` mode remain disabled.
 
 The staging processor surface is private and purpose-bound:
 

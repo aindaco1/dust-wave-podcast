@@ -1,5 +1,8 @@
+import { sha256Hex } from "@dustwave/worker-core/crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
+import { handleRequest } from "../src/app";
 import { processEpisodeYouTubePublication } from "../src/episode-youtube";
 import type { PodcastEnv } from "../src/env";
 import type { PodcastJob } from "../src/types";
@@ -125,7 +128,175 @@ describe("controlled full-episode YouTube publication", () => {
     expect(env.MEDIA_BUCKET.head).not.toHaveBeenCalled();
     expect(providerFetch).not.toHaveBeenCalled();
   });
+
+  it("requires an exact recent-super-admin no-video reconciliation", async () => {
+    const fixture = await reconciliationFixture();
+    const response = await handleRequest(
+      adminPost(
+        "/v1/admin/episode-youtube-publications/"
+          + "episode_youtube_fixture/reconcile",
+        {
+          outcome: "not_uploaded",
+          confirmation: "CONFIRM_NO_CHANNEL_VIDEO_REMAINS"
+        }
+      ),
+      fixture.env
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      reconciled: true,
+      publication: {
+        status: "failed",
+        failureCode: "youtube_reconciled_no_video"
+      }
+    });
+    expect(fixture.auditActions).toContain(
+      "episode.youtube_reconciled_no_video"
+    );
+  });
+
+  it("verifies a reconciled provider ID before committing it", async () => {
+    const fixture = await reconciliationFixture({
+      providerConfigured: true
+    });
+    const providerFetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: "access_token_fixture",
+        token_type: "Bearer"
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        items: [{
+          snippet: { channelId: "channel_fixture" },
+          status: { privacyStatus: "unlisted" }
+        }]
+      }));
+    vi.stubGlobal("fetch", providerFetch);
+    const response = await handleRequest(
+      adminPost(
+        "/v1/admin/episode-youtube-publications/"
+          + "episode_youtube_fixture/reconcile",
+        {
+          outcome: "uploaded",
+          providerVideoId: "video_12345",
+          confirmation: "CONFIRM_VERIFIED_UNLISTED_VIDEO"
+        }
+      ),
+      fixture.env
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      publication: {
+        status: "uploaded",
+        providerVideoId: "video_12345",
+        failureCode: null
+      }
+    });
+    expect(providerFetch).toHaveBeenCalledTimes(2);
+    expect(fixture.auditActions).toContain(
+      "episode.youtube_reconciled_uploaded"
+    );
+  });
 });
+
+async function reconciliationFixture({
+  providerConfigured = false
+}: {
+  providerConfigured?: boolean;
+} = {}) {
+  let publication: Record<string, any> = publicationRow({
+    status: "reconciliation_required",
+    failure_code: "youtube_worker_interrupted"
+  });
+  const auditActions: string[] = [];
+  const csrfTokenHash = await sha256Hex(
+    "admin_session_secret_fixture:csrf_fixture"
+  );
+  const db = {
+    async batch(statements: Array<{ run(): Promise<unknown> }>) {
+      return Promise.all(statements.map((statement) => statement.run()));
+    },
+    prepare(query: string) {
+      let values: unknown[] = [];
+      return {
+        bind(...bound: unknown[]) {
+          values = bound;
+          return this;
+        },
+        async first() {
+          if (query.includes("FROM admin_sessions s")) {
+            return {
+              admin_user_id: "admin_fixture",
+              csrf_token_hash: csrfTokenHash
+            };
+          }
+          if (query.includes("SELECT 1 AS recent")) return { recent: 1 };
+          if (query.includes("FROM episode_youtube_publications p")) {
+            return publication;
+          }
+          return null;
+        },
+        async all() {
+          if (query.includes("FROM admin_user_roles")) {
+            return {
+              results: [{ role: "super_admin", show_id: null }]
+            };
+          }
+          return { results: [] };
+        },
+        async run() {
+          if (
+            query.includes("UPDATE episode_youtube_publications")
+            && query.includes("status = 'uploaded'")
+          ) {
+            publication = {
+              ...publication,
+              status: "uploaded",
+              provider_video_id: values[0],
+              failure_code: null
+            };
+            return { success: true, meta: { changes: 1 } };
+          }
+          if (
+            query.includes("UPDATE episode_youtube_publications")
+            && query.includes("status = 'failed'")
+          ) {
+            publication = {
+              ...publication,
+              status: "failed",
+              failure_code: "youtube_reconciled_no_video"
+            };
+            return { success: true, meta: { changes: 1 } };
+          }
+          if (query.includes("INSERT INTO admin_audit_events")) {
+            auditActions.push(String(values[2]));
+          }
+          return { success: true, meta: { changes: 1 } };
+        }
+      };
+    }
+  } as unknown as D1Database;
+  const env = {
+    ENVIRONMENT: "staging",
+    SITE_ORIGIN: "https://dustwave.xyz",
+    FEED_ORIGIN: "https://feeds.dustwave.xyz",
+    ALLOWED_ORIGINS: "https://dustwave.xyz",
+    ADMIN_SESSION_SECRET: "admin_session_secret_fixture",
+    YOUTUBE_CHANNEL_URL: "https://youtube.com/@dustwavecollective",
+    YOUTUBE_PUBLISH_MODE: "dry_run",
+    ...(providerConfigured
+      ? {
+          YOUTUBE_CLIENT_ID: "client_fixture",
+          YOUTUBE_CLIENT_SECRET: "secret_fixture",
+          YOUTUBE_REFRESH_TOKEN: "refresh_fixture",
+          YOUTUBE_CHANNEL_ID: "channel_fixture"
+        }
+      : {}),
+    DB: db
+  } as unknown as PodcastEnv;
+  return { env, auditActions };
+}
 
 function processorEnv({
   publication,
@@ -247,6 +418,22 @@ function youtubeJob(): PodcastJob {
     publicationRevision: 3,
     requestedAt: "2026-07-27T00:00:00.000Z"
   };
+}
+
+function adminPost(
+  path: string,
+  body: Record<string, unknown>
+): Request {
+  return new Request(`https://feeds.dustwave.xyz${path}`, {
+    method: "POST",
+    headers: {
+      cookie: `${ADMIN_SESSION_COOKIE}=session_fixture`,
+      "content-type": "application/json",
+      origin: "https://dustwave.xyz",
+      "x-podcast-csrf": "csrf_fixture"
+    },
+    body: JSON.stringify(body)
+  });
 }
 
 function providerFetchFixture(

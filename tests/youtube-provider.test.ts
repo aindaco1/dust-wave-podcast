@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PodcastEnv } from "../src/env";
 import {
   uploadUnlistedYouTubeVideo,
+  verifyYouTubeVideo,
   YouTubeProviderError
 } from "../src/youtube-provider";
 
@@ -161,6 +162,30 @@ describe("YouTube provider adapter", () => {
       code: "youtube_oauth_failed"
     } satisfies Partial<YouTubeProviderError>);
     expect(providerFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("verifies a known provider ID without initiating another upload", async () => {
+    const providerFetch = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: "access_token_fixture",
+        token_type: "Bearer"
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        items: [{
+          snippet: { channelId: "channel_fixture" },
+          status: { privacyStatus: "unlisted" }
+        }]
+      }));
+    vi.stubGlobal("fetch", providerFetch);
+
+    await expect(verifyYouTubeVideo(configuredEnv(), {
+      videoId: "video_12345",
+      privacyStatus: "unlisted"
+    })).resolves.toEqual({ videoId: "video_12345" });
+    expect(providerFetch).toHaveBeenCalledTimes(2);
+    expect(String(providerFetch.mock.calls[1][0])).toContain(
+      "id=video_12345"
+    );
   });
 });
 

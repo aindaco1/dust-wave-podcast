@@ -839,8 +839,13 @@ For the full-episode YouTube test, use a separate fixture publication:
    the returned channel and unlisted privacy, records one provider video ID on
    the publication/current episode/root job, and emits the upload audit.
 5. Restore staging to `dry_run` before cleanup. If state becomes
-   `reconciliation_required`, do not use the generic retry action: inspect the
-   launch channel and reconcile or remove the uncertain item first. Production
+   `reconciliation_required`, do not use the generic retry action. Inspect the
+   launch channel first. If an unlisted video exists, keep the temporary OAuth
+   secrets long enough to submit `uploaded`, its provider ID, and
+   `CONFIRM_VERIFIED_UNLISTED_VIDEO`; the Worker verifies channel/privacy before
+   committing it. If no item remains (including after intentional deletion),
+   submit `not_uploaded` and `CONFIRM_NO_CHANNEL_VIDEO_REMAINS`. Both paths
+   require recent Super-admin authentication and audit the outcome. Production
    configuration and data remain untouched.
 
 ## 7. Rollback

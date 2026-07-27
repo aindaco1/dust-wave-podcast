@@ -18,6 +18,7 @@ import {
 } from "./validation";
 import {
   uploadUnlistedYouTubeVideo,
+  verifyYouTubeVideo,
   youtubeProviderConfigured,
   youtubeProviderDescription,
   YouTubeProviderError,
@@ -473,6 +474,232 @@ export async function approveAdminEpisodeYouTubePublication(
     },
     { status: 202 }
   );
+}
+
+export async function reconcileAdminEpisodeYouTubePublication(
+  request: Request,
+  env: PodcastEnv,
+  publicationIdValue: string
+): Promise<Response> {
+  if (env.ENVIRONMENT !== "staging") {
+    return episodeYoutubeNotFound(request, env);
+  }
+  const publicationId = validIdentifier(
+    publicationIdValue,
+    "publicationId"
+  );
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: ["super_admin"],
+    requireCsrf: true
+  });
+  if (!auth.ok) return auth.response;
+  const recentError = await requireRecentAdminAuthentication(
+    request,
+    env,
+    auth.authorization.identity.id
+  );
+  if (recentError) return recentError;
+  const publication = await loadEpisodeYouTubePublicationById(
+    env.DB,
+    publicationId
+  );
+  if (
+    !publication
+    || !hasAdminRoleForShow(
+      auth.authorization.identity,
+      ["super_admin"],
+      publication.show_id
+    )
+  ) {
+    return episodeYoutubeNotFound(request, env);
+  }
+  if (publication.status !== "reconciliation_required") {
+    return episodeYoutubeConflict(
+      request,
+      env,
+      "episode_youtube_reconciliation_not_required"
+    );
+  }
+  const body = await readJsonObject(request, 10_000);
+  const outcome = requiredText(body.outcome, "outcome", 32);
+  if (outcome !== "uploaded" && outcome !== "not_uploaded") {
+    throw new RequestValidationError(
+      "outcome must be uploaded or not_uploaded"
+    );
+  }
+  const confirmation = requiredText(
+    body.confirmation,
+    "confirmation",
+    80
+  );
+  if (outcome === "uploaded") {
+    if (confirmation !== "CONFIRM_VERIFIED_UNLISTED_VIDEO") {
+      throw new RequestValidationError(
+        "confirmation must acknowledge the verified unlisted video"
+      );
+    }
+    if (
+      !youtubeProviderConfigured(env)
+      || publication.channel_id !== env.YOUTUBE_CHANNEL_ID
+      || publication.channel_url !== env.YOUTUBE_CHANNEL_URL
+      || publication.privacy_status !== "unlisted"
+    ) {
+      return privateJson(
+        request,
+        env.ALLOWED_ORIGINS,
+        { error: "youtube_reconciliation_not_configured" },
+        { status: 503 }
+      );
+    }
+    const providerVideoId = requiredText(
+      body.providerVideoId,
+      "providerVideoId",
+      64
+    );
+    try {
+      await verifyYouTubeVideo(env, {
+        videoId: providerVideoId,
+        privacyStatus: "unlisted"
+      });
+    } catch (error) {
+      const code = error instanceof YouTubeProviderError
+        ? error.code
+        : "youtube_verification_failed";
+      return episodeYoutubeConflict(request, env, code);
+    }
+    const [updatedPublication, updatedJob] = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE episode_youtube_publications
+         SET
+           status = 'uploaded',
+           provider_video_id = ?,
+           failure_code = NULL,
+           completed_at = datetime('now'),
+           updated_at = datetime('now')
+         WHERE id = ? AND status = 'reconciliation_required'`
+      ).bind(providerVideoId, publicationId),
+      env.DB.prepare(
+        `UPDATE distribution_jobs
+         SET
+           status = CASE WHEN status = 'canceled' THEN status ELSE 'succeeded' END,
+           provider_id = ?,
+           last_error = NULL,
+           completed_at = datetime('now')
+         WHERE id = ?
+           AND episode_id = ?
+           AND publication_revision = ?
+           AND destination = 'youtube'`
+      ).bind(
+        providerVideoId,
+        publication.distribution_job_id,
+        publication.episode_id,
+        publication.publication_revision
+      ),
+      env.DB.prepare(
+        `UPDATE episodes
+         SET youtube_video_id = ?, updated_at = datetime('now')
+         WHERE id = ?
+           AND publication_revision = ?
+           AND video_source_key = ?`
+      ).bind(
+        providerVideoId,
+        publication.episode_id,
+        publication.publication_revision,
+        publication.video_object_key
+      ),
+      prepareAdminAudit(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "episode.youtube_reconciled_uploaded",
+        targetType: "episode_youtube_publication",
+        targetId: publicationId,
+        metadata: {
+          showId: publication.show_id,
+          episodeId: publication.episode_id,
+          publicationRevision: publication.publication_revision,
+          providerVideoId
+        }
+      })
+    ]);
+    if (
+      Number(updatedPublication.meta.changes ?? 0) !== 1
+      || Number(updatedJob.meta.changes ?? 0) !== 1
+    ) {
+      return episodeYoutubeConflict(
+        request,
+        env,
+        "episode_youtube_reconciliation_conflict"
+      );
+    }
+  } else {
+    if (confirmation !== "CONFIRM_NO_CHANNEL_VIDEO_REMAINS") {
+      throw new RequestValidationError(
+        "confirmation must acknowledge that no channel video remains"
+      );
+    }
+    const [updatedPublication, updatedJob] = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE episode_youtube_publications
+         SET
+           status = 'failed',
+           failure_code = 'youtube_reconciled_no_video',
+           completed_at = datetime('now'),
+           updated_at = datetime('now')
+         WHERE id = ? AND status = 'reconciliation_required'`
+      ).bind(publicationId),
+      env.DB.prepare(
+        `UPDATE distribution_jobs
+         SET
+           status = CASE WHEN status = 'canceled' THEN status ELSE 'failed' END,
+           provider_id = NULL,
+           last_error = 'youtube_reconciled_no_video',
+           completed_at = datetime('now')
+         WHERE id = ?
+           AND episode_id = ?
+           AND publication_revision = ?
+           AND destination = 'youtube'`
+      ).bind(
+        publication.distribution_job_id,
+        publication.episode_id,
+        publication.publication_revision
+      ),
+      prepareAdminAudit(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "episode.youtube_reconciled_no_video",
+        targetType: "episode_youtube_publication",
+        targetId: publicationId,
+        metadata: {
+          showId: publication.show_id,
+          episodeId: publication.episode_id,
+          publicationRevision: publication.publication_revision
+        }
+      })
+    ]);
+    if (
+      Number(updatedPublication.meta.changes ?? 0) !== 1
+      || Number(updatedJob.meta.changes ?? 0) !== 1
+    ) {
+      return episodeYoutubeConflict(
+        request,
+        env,
+        "episode_youtube_reconciliation_conflict"
+      );
+    }
+  }
+  const reconciled = await loadEpisodeYouTubePublicationById(
+    env.DB,
+    publicationId
+  );
+  if (!reconciled) {
+    return episodeYoutubeConflict(
+      request,
+      env,
+      "episode_youtube_reconciliation_conflict"
+    );
+  }
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    publication: presentEpisodeYouTubePublication(reconciled),
+    reconciled: true
+  });
 }
 
 export async function processEpisodeYouTubePublication(

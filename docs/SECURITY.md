@@ -547,5 +547,10 @@ explicitly excludes running YouTube jobs. A Worker interruption or ambiguous
 provider result is quarantined as `reconciliation_required`; approval and
 generic retry cannot replay it. A committed provider ID is reused without R2
 or Google access if the surrounding root-job state later needs repair.
+Reconciliation requires recent Super-admin authentication and an exact
+confirmation. Recording an upload calls Google again and accepts the provider
+ID only if channel and unlisted privacy match; recording no remaining video
+requires an explicit owner attestation and creates an audit event before the
+attempt can be approved again.
 Episode uploads are capped at 2 GiB and 13 minutes for this initial controlled
 gate, while production and `live` publishing remain disabled.

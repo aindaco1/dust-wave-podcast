@@ -102,7 +102,8 @@ import {
 } from "./clip-youtube";
 import {
   approveAdminEpisodeYouTubePublication,
-  createAdminEpisodeYouTubeDraft
+  createAdminEpisodeYouTubeDraft,
+  reconcileAdminEpisodeYouTubePublication
 } from "./episode-youtube";
 import {
   issueStagingVirtualAudioCapability,
@@ -315,6 +316,8 @@ const ADMIN_CLIP_YOUTUBE_APPROVE_PATH =
   /^\/v1\/admin\/clip-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_EPISODE_YOUTUBE_APPROVE_PATH =
   /^\/v1\/admin\/episode-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
+const ADMIN_EPISODE_YOUTUBE_RECONCILE_PATH =
+  /^\/v1\/admin\/episode-youtube-publications\/([A-Za-z0-9_-]+)\/reconcile$/;
 const ADMIN_EPISODE_AD_PLAN_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
 const ADMIN_UPLOAD_PART_PATH =
@@ -1007,6 +1010,16 @@ async function routeRequest(
       request,
       env,
       adminEpisodeYouTubeApproveMatch[1]
+    );
+  }
+  const adminEpisodeYouTubeReconcileMatch = url.pathname.match(
+    ADMIN_EPISODE_YOUTUBE_RECONCILE_PATH
+  );
+  if (adminEpisodeYouTubeReconcileMatch && method === "POST") {
+    return reconcileAdminEpisodeYouTubePublication(
+      request,
+      env,
+      adminEpisodeYouTubeReconcileMatch[1]
     );
   }
   const adminEpisodeTranscriptApproveMatch = url.pathname.match(

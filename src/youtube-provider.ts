@@ -153,6 +153,31 @@ export function youtubeProviderDescription(value: unknown): string {
   return description;
 }
 
+export async function verifyYouTubeVideo(
+  env: PodcastEnv,
+  {
+    videoId,
+    privacyStatus
+  }: {
+    videoId: string;
+    privacyStatus: "private" | "unlisted";
+  }
+): Promise<{ videoId: string }> {
+  const config = youtubeProviderConfig(env);
+  if (!config) {
+    throw new YouTubeProviderError("youtube_not_configured");
+  }
+  const validId = validVideoId(videoId);
+  const accessToken = await refreshAccessToken(config);
+  await verifyUploadedVideo(
+    accessToken,
+    validId,
+    config.channelId,
+    privacyStatus
+  );
+  return { videoId: validId };
+}
+
 function youtubeProviderConfig(
   env: PodcastEnv
 ): YouTubeProviderConfig | null {
