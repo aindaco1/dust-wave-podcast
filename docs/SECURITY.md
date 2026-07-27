@@ -231,6 +231,11 @@
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.
+- Local and CI checks scan tracked text for high-confidence Stripe, Resend,
+  GitHub, Google, and private-key credential forms without echoing matched
+  values, and fail on high-severity dependency advisories. Processor workflows
+  receive only the protected environment secret they reference; reusable jobs
+  do not inherit the full caller secret set.
 - The Worker records bounded structured application events while automatic
   invocation URL logs and automatic traces stay disabled. Private-feed bearer
   values are path-scoped, so URL-bearing telemetry must not be enabled until a

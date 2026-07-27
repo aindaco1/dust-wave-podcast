@@ -66,4 +66,3 @@ jobs:
     uses: ./.github/workflows/process-audio-qc.yml
     with:
       run_id: ${{ needs.render.outputs.qc_run_id }}
-    secrets: inherit
