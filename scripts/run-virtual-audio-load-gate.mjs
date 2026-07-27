@@ -4,6 +4,10 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import contract from "../config/virtual-audio-synthetic-fixture.json"
+  with { type: "json" };
+
+process.umask(0o077);
 const options = parseOptions(process.argv.slice(2));
 const token = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN;
 if (!token || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
@@ -35,7 +39,13 @@ const urls = {
   virtual: new URL(`${fixtureRoot}/virtual`, origin),
   baseline: new URL(`${fixtureRoot}/baseline`, origin)
 };
-const TOTAL_BYTES = 193_932;
+const TOTAL_BYTES = contract.assemblies.virtual.bytes;
+const SEGMENT_BOUNDARIES = contract.sources
+  .slice(0, -1)
+  .reduce((boundaries, source) => {
+    boundaries.push((boundaries.at(-1) ?? 0) + source.bytes);
+    return boundaries;
+  }, []);
 const MAX_RECORDED_ERRORS = 20;
 const WARMUP_PAIRS = Math.min(20, pairCount);
 const metrics = {
@@ -128,7 +138,8 @@ const evidence = {
 };
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, {
-  mode: 0o600
+  mode: 0o600,
+  flag: "wx"
 });
 process.stdout.write(
   `Paired load gate ${passed ? "passed" : "failed"}: `
@@ -260,11 +271,11 @@ function requestPattern(index) {
     case 0:
       return boundedPattern("first-4k", 0, 4_095);
     case 1:
-      return boundedPattern("middle-4k", 65_536, 69_631);
+      return centeredPattern("middle-4k", Math.floor(TOTAL_BYTES / 2), 4_096);
     case 2:
-      return boundedPattern("first-boundary", 80_600, 80_731);
+      return centeredPattern("first-boundary", SEGMENT_BOUNDARIES[0], 132);
     case 3:
-      return boundedPattern("second-boundary", 113_200, 113_331);
+      return centeredPattern("second-boundary", SEGMENT_BOUNDARIES[1], 132);
     default:
       return {
         name: "suffix-8k",
@@ -273,6 +284,14 @@ function requestPattern(index) {
         endsAt: TOTAL_BYTES - 1
       };
   }
+}
+
+function centeredPattern(name, center, length) {
+  const startsAt = Math.max(
+    0,
+    Math.min(TOTAL_BYTES - length, center - Math.floor(length / 2))
+  );
+  return boundedPattern(name, startsAt, startsAt + length - 1);
 }
 
 function boundedPattern(name, startsAt, endsAt) {

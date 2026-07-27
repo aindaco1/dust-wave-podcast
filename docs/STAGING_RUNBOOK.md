@@ -597,6 +597,22 @@ paired cases produce 10,000 measured requests across identical virtual and
 preassembled bytes. Remove all four objects and the diagnostic secret
 immediately after saving the redacted evidence.
 
+Prefer the atomic staging-only wrapper for routine evidence runs:
+
+```sh
+npm run gate:virtual-audio:staging -- \
+  --output /absolute/private/evidence/empty-directory \
+  --pairs 5000 --concurrency 12
+```
+
+The wrapper refuses the production origin, an existing diagnostic secret, a
+nonempty evidence directory, or any non-matching pre-existing fixture object.
+It preserves matching pre-existing objects, removes only objects uploaded by
+the current run, waits for secret removal to propagate, and fails if cleanup
+cannot be confirmed. After an uncatchable force kill, list staging secret names
+and inspect the four exact `fixtures/virtual-audio/` keys before doing anything
+else; never use a prefix-wide delete.
+
 Use least-privilege staging credentials. Cloudflare does not expose existing
 secret values, so rotate or enter them rather than attempting to copy them from
 Pool or Store.

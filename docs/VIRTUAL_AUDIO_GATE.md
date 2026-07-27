@@ -46,9 +46,13 @@ npm run fixtures:virtual-audio -- /absolute/private/evidence/directory
 
 The generator refuses an implicit destination, emits checksums and probe
 metadata, verifies that program-only and mid-roll byte assemblies fully decode,
-and writes a manifest that can be projected into the Worker contract. The tone
-fixture proves framing and byte behavior only; listening-client acceptance
-still requires the matrix below.
+and writes a manifest that can be projected into the Worker contract. Its
+versioned contract lives in
+`config/virtual-audio-synthetic-fixture.json`; the generator, Worker diagnostic,
+load boundary patterns, and tests all consume that one source of byte counts,
+hashes, filenames, and segment boundaries. The tone fixture proves framing and
+byte behavior only; listening-client acceptance still requires the matrix
+below.
 
 The staging Worker exposes this exact fixture only at an opaque, manually
 rotatable path under `/v1/diagnostics/virtual-audio/`. The path token is a
@@ -92,6 +96,25 @@ patterns including both object boundaries, and compares 5,000 pairs (10,000
 measured requests). It fails at a 0.1% or higher request error rate, any
 content mismatch, or more than 250 ms of added virtual p95 latency. Evidence
 redacts the token path and stores only bounded aggregate/error data.
+
+For the complete synthetic staging gate, prefer the fail-closed orchestration
+command:
+
+```sh
+npm run gate:virtual-audio:staging -- \
+  --output /absolute/private/evidence/empty-directory \
+  --pairs 5000 --concurrency 12
+```
+
+It is hard-bound to the Dust Wave staging origin and bucket, refuses any
+existing diagnostic secret or non-matching R2 object, generates and verifies
+the fixture contract, uploads only missing objects, installs a new
+cryptographically random temporary token through stdin, runs both matrices,
+and removes the token and only the objects it uploaded. Signal handling also
+attempts the same cleanup. The command fails unless cleanup is confirmed and
+writes a redacted `staging-gate.json`; production cannot be selected by an
+argument. A force-killed process still requires the manual secret/object audit
+in the staging runbook.
 
 ## Required fixture set
 

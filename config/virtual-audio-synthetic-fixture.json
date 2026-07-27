@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "dust-wave-virtual-audio-fixture-v1",
+  "profile": "mp3-44100-stereo-cbr128-raw-frames-v1",
+  "contentType": "audio/mpeg",
+  "validatedAt": "2026-07-23T20:39:00.158Z",
+  "manifest": {
+    "id": "synthetic-midroll-fixture",
+    "baselineId": "synthetic-preassembled-baseline",
+    "episodeId": "synthetic-episode",
+    "decisionId": "synthetic-direct-ad-decision"
+  },
+  "sources": [
+    {
+      "id": "program-pre",
+      "kind": "program",
+      "filename": "program-pre.mp3",
+      "objectKey": "fixtures/virtual-audio/program-pre.mp3",
+      "frequencyHz": 440,
+      "durationSeconds": 5,
+      "bytes": 80666,
+      "sha256": "9b79d40d063bc6f3e4b86737e95ee7e2f9ba8b1639512f8c6017238f357142f3"
+    },
+    {
+      "id": "direct-ad",
+      "kind": "direct_ad",
+      "filename": "direct-ad.mp3",
+      "objectKey": "fixtures/virtual-audio/direct-ad.mp3",
+      "frequencyHz": 880,
+      "durationSeconds": 2,
+      "bytes": 32600,
+      "sha256": "636ac232c639af13adda4c3513cf5e93362547d62221dd1e28c12f161c3f1f9a"
+    },
+    {
+      "id": "program-post",
+      "kind": "program",
+      "filename": "program-post.mp3",
+      "objectKey": "fixtures/virtual-audio/program-post.mp3",
+      "frequencyHz": 554,
+      "durationSeconds": 5,
+      "bytes": 80666,
+      "sha256": "b18e9f3a1c457b78621762eba1f4fba936e51f4e31c8dcdbc351f5aabc314cb6"
+    }
+  ],
+  "assemblies": {
+    "programOnly": {
+      "filename": "program-only.mp3",
+      "sourceIds": ["program-pre", "program-post"],
+      "bytes": 161332,
+      "sha256": "d7911b8003d5e4634cbdc2d9e2bdd0e3a85639baff279d18ab8c69b7ad884603"
+    },
+    "virtual": {
+      "filename": "virtual-midroll.mp3",
+      "objectKey": "fixtures/virtual-audio/virtual-midroll.mp3",
+      "sourceIds": ["program-pre", "direct-ad", "program-post"],
+      "bytes": 193932,
+      "sha256": "fe3fd3084f9720103f1a548162f5d707321d991565a54809c29297c784c5c249"
+    }
+  }
+}

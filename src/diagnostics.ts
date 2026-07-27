@@ -1,71 +1,18 @@
 import { timingSafeEqual } from "@dustwave/worker-core/crypto";
 
+import syntheticFixture from "../config/virtual-audio-synthetic-fixture.json";
 import type { PodcastEnv } from "./env";
-import { serveVirtualMedia, type VirtualMediaManifest } from "./virtual-media";
+import {
+  compileVirtualMediaManifest,
+  serveVirtualMedia,
+  type VirtualMediaManifest,
+  type VirtualMediaSegmentKind
+} from "./virtual-media";
 
-const SYNTHETIC_MIDROLL_MANIFEST: VirtualMediaManifest = {
-  schemaVersion: "1",
-  id: "synthetic-midroll-fixture",
-  episodeId: "synthetic-episode",
-  decisionId: "synthetic-direct-ad-decision",
-  etag: '"fe3fd3084f9720103f1a548162f5d707321d991565a54809c29297c784c5c249"',
-  contentType: "audio/mpeg",
-  streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1",
-  validatedAt: "2026-07-23T20:39:00.158Z",
-  segments: [
-    {
-      id: "program-pre",
-      kind: "program",
-      objectKey: "fixtures/virtual-audio/program-pre.mp3",
-      objectBytes: 80_666,
-      sourceOffset: 0,
-      byteLength: 80_666,
-      contentType: "audio/mpeg",
-      streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1"
-    },
-    {
-      id: "direct-ad",
-      kind: "direct_ad",
-      objectKey: "fixtures/virtual-audio/direct-ad.mp3",
-      objectBytes: 32_600,
-      sourceOffset: 0,
-      byteLength: 32_600,
-      contentType: "audio/mpeg",
-      streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1"
-    },
-    {
-      id: "program-post",
-      kind: "program",
-      objectKey: "fixtures/virtual-audio/program-post.mp3",
-      objectBytes: 80_666,
-      sourceOffset: 0,
-      byteLength: 80_666,
-      contentType: "audio/mpeg",
-      streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1"
-    }
-  ]
-};
-
-const SYNTHETIC_BASELINE_MANIFEST: VirtualMediaManifest = {
-  schemaVersion: "1",
-  id: "synthetic-preassembled-baseline",
-  episodeId: "synthetic-episode",
-  decisionId: "synthetic-direct-ad-decision",
-  etag: '"fe3fd3084f9720103f1a548162f5d707321d991565a54809c29297c784c5c249"',
-  contentType: "audio/mpeg",
-  streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1",
-  validatedAt: "2026-07-23T20:39:00.158Z",
-  segments: [{
-    id: "preassembled-full-file",
-    kind: "program",
-    objectKey: "fixtures/virtual-audio/virtual-midroll.mp3",
-    objectBytes: 193_932,
-    sourceOffset: 0,
-    byteLength: 193_932,
-    contentType: "audio/mpeg",
-    streamProfile: "mp3-44100-stereo-cbr128-raw-frames-v1"
-  }]
-};
+const {
+  virtual: SYNTHETIC_MIDROLL_MANIFEST,
+  baseline: SYNTHETIC_BASELINE_MANIFEST
+} = syntheticFixtureManifests();
 
 export async function serveStagingVirtualAudioDiagnostic(
   request: Request,
@@ -195,4 +142,61 @@ function diagnosticNotFound(): Response {
       "x-content-type-options": "nosniff"
     }
   });
+}
+
+function syntheticFixtureManifests(): {
+  virtual: VirtualMediaManifest;
+  baseline: VirtualMediaManifest;
+} {
+  if (
+    syntheticFixture.schemaVersion !== "dust-wave-virtual-audio-fixture-v1"
+    || syntheticFixture.contentType !== "audio/mpeg"
+  ) {
+    throw new Error("Unsupported virtual-audio synthetic fixture contract.");
+  }
+  const shared = {
+    schemaVersion: "1" as const,
+    episodeId: syntheticFixture.manifest.episodeId,
+    decisionId: syntheticFixture.manifest.decisionId,
+    etag: `"${syntheticFixture.assemblies.virtual.sha256}"`,
+    contentType: "audio/mpeg" as const,
+    streamProfile: syntheticFixture.profile,
+    validatedAt: syntheticFixture.validatedAt
+  };
+  const virtual: VirtualMediaManifest = {
+    ...shared,
+    id: syntheticFixture.manifest.id,
+    segments: syntheticFixture.sources.map((source) => ({
+      id: source.id,
+      kind: syntheticSegmentKind(source.kind),
+      objectKey: source.objectKey,
+      objectBytes: source.bytes,
+      sourceOffset: 0,
+      byteLength: source.bytes,
+      contentType: "audio/mpeg",
+      streamProfile: syntheticFixture.profile
+    }))
+  };
+  const baseline: VirtualMediaManifest = {
+    ...shared,
+    id: syntheticFixture.manifest.baselineId,
+    segments: [{
+      id: "preassembled-full-file",
+      kind: "program",
+      objectKey: syntheticFixture.assemblies.virtual.objectKey,
+      objectBytes: syntheticFixture.assemblies.virtual.bytes,
+      sourceOffset: 0,
+      byteLength: syntheticFixture.assemblies.virtual.bytes,
+      contentType: "audio/mpeg",
+      streamProfile: syntheticFixture.profile
+    }]
+  };
+  compileVirtualMediaManifest(virtual);
+  compileVirtualMediaManifest(baseline);
+  return { virtual, baseline };
+}
+
+function syntheticSegmentKind(value: string): VirtualMediaSegmentKind {
+  if (value === "program" || value === "direct_ad") return value;
+  throw new Error("Unsupported synthetic virtual-audio segment kind.");
 }

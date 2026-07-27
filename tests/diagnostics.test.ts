@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import syntheticFixture from "../config/virtual-audio-synthetic-fixture.json";
 import type { PodcastEnv } from "../src/env";
 import {
   serveStagingVirtualAudioDiagnostic,
@@ -47,12 +48,16 @@ describe("staging virtual-audio diagnostic", () => {
   });
 
   it("streams only when a constant-time staging token matches", async () => {
-    const bytesByKey: Record<string, Uint8Array> = {
-      "fixtures/virtual-audio/program-pre.mp3": new Uint8Array(80_666),
-      "fixtures/virtual-audio/direct-ad.mp3": new Uint8Array(32_600),
-      "fixtures/virtual-audio/program-post.mp3": new Uint8Array(80_666),
-      "fixtures/virtual-audio/virtual-midroll.mp3": new Uint8Array(193_932)
-    };
+    const bytesByKey: Record<string, Uint8Array> = Object.fromEntries([
+      ...syntheticFixture.sources.map((source) => [
+        source.objectKey,
+        new Uint8Array(source.bytes)
+      ]),
+      [
+        syntheticFixture.assemblies.virtual.objectKey,
+        new Uint8Array(syntheticFixture.assemblies.virtual.bytes)
+      ]
+    ]);
     const reads: Array<{ key: string; offset: number; length: number }> = [];
     const bucket = {
       async get(key: string, options: R2GetOptions) {
@@ -93,7 +98,7 @@ describe("staging virtual-audio diagnostic", () => {
     );
     expect(response.status).toBe(206);
     expect(response.headers.get("content-range")).toBe(
-      "bytes 80664-80668/193932"
+      `bytes 80664-80668/${syntheticFixture.assemblies.virtual.bytes}`
     );
     expect((await response.arrayBuffer()).byteLength).toBe(5);
 
@@ -107,10 +112,10 @@ describe("staging virtual-audio diagnostic", () => {
     );
     expect(baseline.status).toBe(206);
     expect(baseline.headers.get("content-range")).toBe(
-      "bytes 80664-80668/193932"
+      `bytes 80664-80668/${syntheticFixture.assemblies.virtual.bytes}`
     );
     expect(reads.at(-1)).toEqual({
-      key: "fixtures/virtual-audio/virtual-midroll.mp3",
+      key: syntheticFixture.assemblies.virtual.objectKey,
       offset: 80_664,
       length: 5
     });

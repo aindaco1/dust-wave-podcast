@@ -1,12 +1,17 @@
 import { createHash } from "node:crypto";
 import {
   mkdir,
+  readdir,
   readFile,
   writeFile
 } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
+import contract from "../config/virtual-audio-synthetic-fixture.json"
+  with { type: "json" };
+
+process.umask(0o077);
 const requestedDirectory = process.argv[2];
 if (!requestedDirectory) {
   throw new Error(
@@ -15,13 +20,12 @@ if (!requestedDirectory) {
 }
 const outputDirectory = resolve(requestedDirectory);
 await mkdir(outputDirectory, { recursive: true });
+if ((await readdir(outputDirectory)).length !== 0) {
+  throw new Error("The fixture output directory must be empty.");
+}
 
-const profile = "mp3-44100-stereo-cbr128-raw-frames-v1";
-const sources = [
-  { filename: "program-pre.mp3", frequency: 440, duration: 5 },
-  { filename: "direct-ad.mp3", frequency: 880, duration: 2 },
-  { filename: "program-post.mp3", frequency: 554, duration: 5 }
-];
+assertContract();
+const { profile, sources } = contract;
 
 for (const source of sources) {
   run("ffmpeg", [
@@ -32,7 +36,7 @@ for (const source of sources) {
     "-f",
     "lavfi",
     "-i",
-    `sine=frequency=${source.frequency}:sample_rate=44100:duration=${source.duration}`,
+    `sine=frequency=${source.frequencyHz}:sample_rate=44100:duration=${source.durationSeconds}`,
     "-map_metadata",
     "-1",
     "-ac",
@@ -57,19 +61,24 @@ const fileBytes = Object.fromEntries(
     ])
   )
 );
-const programOnly = Buffer.concat([
-  fileBytes["program-pre.mp3"],
-  fileBytes["program-post.mp3"]
-]);
-const virtualMidroll = Buffer.concat([
-  fileBytes["program-pre.mp3"],
-  fileBytes["direct-ad.mp3"],
-  fileBytes["program-post.mp3"]
-]);
-await writeFile(resolve(outputDirectory, "program-only.mp3"), programOnly);
-await writeFile(resolve(outputDirectory, "virtual-midroll.mp3"), virtualMidroll);
+const sourceById = Object.fromEntries(
+  sources.map((source) => [source.id, source])
+);
+for (const assembly of Object.values(contract.assemblies)) {
+  const bytes = Buffer.concat(
+    assembly.sourceIds.map((sourceId) => {
+      const source = sourceById[sourceId];
+      if (!source) throw new Error(`Unknown fixture source: ${sourceId}`);
+      return fileBytes[source.filename];
+    })
+  );
+  await writeFile(resolve(outputDirectory, assembly.filename), bytes);
+  fileBytes[assembly.filename] = bytes;
+}
 
-for (const filename of ["program-only.mp3", "virtual-midroll.mp3"]) {
+for (const filename of Object.values(contract.assemblies).map(
+  ({ filename }) => filename
+)) {
   run("ffmpeg", [
     "-hide_banner",
     "-loglevel",
@@ -82,45 +91,56 @@ for (const filename of ["program-only.mp3", "virtual-midroll.mp3"]) {
   ]);
 }
 
+const declaredArtifacts = [
+  ...sources,
+  ...Object.values(contract.assemblies)
+];
 const artifacts = await Promise.all(
-  [
-    ...sources.map(({ filename }) => filename),
-    "program-only.mp3",
-    "virtual-midroll.mp3"
-  ].map(async (filename) => {
+  declaredArtifacts.map(async ({ filename, bytes: expectedBytes, sha256 }) => {
     const path = resolve(outputDirectory, filename);
     const bytes = await readFile(path);
-    return {
+    const artifact = {
       filename,
       bytes: bytes.byteLength,
       sha256: createHash("sha256").update(bytes).digest("hex"),
       probe: probe(path)
     };
+    if (
+      artifact.bytes !== expectedBytes
+      || artifact.sha256 !== sha256
+    ) {
+      throw new Error(
+        `Generated fixture ${filename} does not match the versioned contract.`
+      );
+    }
+    return artifact;
   })
 );
 const byFilename = Object.fromEntries(
   artifacts.map((artifact) => [artifact.filename, artifact])
 );
 const manifest = {
-  schemaVersion: "1",
+  schemaVersion: contract.schemaVersion,
   generatedAt: new Date().toISOString(),
   generator: basename(import.meta.filename),
   profile,
+  contract: {
+    contentType: contract.contentType,
+    validatedAt: contract.validatedAt
+  },
   artifacts,
   virtualManifest: {
     schemaVersion: "1",
-    id: "synthetic-midroll-fixture",
-    episodeId: "synthetic-episode",
-    decisionId: "synthetic-direct-ad-decision",
-    etag: `"${byFilename["virtual-midroll.mp3"].sha256}"`,
-    contentType: "audio/mpeg",
+    id: contract.manifest.id,
+    episodeId: contract.manifest.episodeId,
+    decisionId: contract.manifest.decisionId,
+    etag: `"${contract.assemblies.virtual.sha256}"`,
+    contentType: contract.contentType,
     streamProfile: profile,
-    validatedAt: new Date().toISOString(),
-    segments: [
-      segment("program-pre", "program", byFilename["program-pre.mp3"]),
-      segment("direct-ad", "direct_ad", byFilename["direct-ad.mp3"]),
-      segment("program-post", "program", byFilename["program-post.mp3"])
-    ]
+    validatedAt: contract.validatedAt,
+    segments: sources.map((source) =>
+      segment(source, byFilename[source.filename])
+    )
   }
 };
 await writeFile(
@@ -132,22 +152,33 @@ process.stdout.write(
   `${JSON.stringify({
     outputDirectory,
     profile,
-    virtualBytes: byFilename["virtual-midroll.mp3"].bytes,
+    virtualBytes: contract.assemblies.virtual.bytes,
     evidence: resolve(outputDirectory, "evidence.json")
   })}\n`
 );
 
-function segment(id, kind, artifact) {
+function segment(source, artifact) {
   return {
-    id,
-    kind,
-    objectKey: `fixtures/virtual-audio/${artifact.filename}`,
+    id: source.id,
+    kind: source.kind,
+    objectKey: source.objectKey,
     objectBytes: artifact.bytes,
     sourceOffset: 0,
     byteLength: artifact.bytes,
     contentType: "audio/mpeg",
     streamProfile: profile
   };
+}
+
+function assertContract() {
+  if (
+    contract.schemaVersion !== "dust-wave-virtual-audio-fixture-v1"
+    || contract.contentType !== "audio/mpeg"
+    || !Array.isArray(contract.sources)
+    || contract.sources.length !== 3
+  ) {
+    throw new Error("Unsupported virtual-audio synthetic fixture contract.");
+  }
 }
 
 function probe(path) {

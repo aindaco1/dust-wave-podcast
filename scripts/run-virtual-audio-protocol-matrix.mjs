@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+process.umask(0o077);
 const options = parseOptions(process.argv.slice(2));
 const token = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN;
 if (!token || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
@@ -188,7 +189,8 @@ const evidence = {
 };
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, {
-  mode: 0o600
+  mode: 0o600,
+  flag: "wx"
 });
 process.stdout.write(
   `Protocol matrix passed: ${results.length} probes; evidence=${outputPath}\n`
