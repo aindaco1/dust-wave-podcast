@@ -283,6 +283,152 @@ export async function queueAdminAudioEnhancementDerivative(
       idempotent: true
     });
   }
+  const failedSelection = await env.DB.prepare(
+    `SELECT id
+     FROM audio_enhancement_derivatives
+     WHERE episode_id = ?
+       AND selected_preview_id = ?
+       AND source_master_id = ?
+       AND recipe_sha256 = ?
+       AND status = 'failed'
+     ORDER BY requested_at DESC, id DESC
+     LIMIT 1`
+  ).bind(
+    source.episode_id,
+    source.selected_preview_id,
+    source.current_master_id,
+    recipeSha256
+  ).first<{ id: string }>();
+  if (failedSelection) {
+    const failed = await loadDerivative(env.DB, failedSelection.id);
+    const retryManifest = failed
+      ? await rebuildDerivativeManifest(env, failed)
+      : null;
+    if (
+      !failed
+      || failed.status !== "failed"
+      || !derivativeCurrent(failed)
+      || !retryManifest
+      || retryManifest.manifestSha256
+        !== failed.processor_manifest_sha256
+    ) {
+      return derivativeConflict(
+        request,
+        env,
+        "audio_enhancement_derivative_conflict"
+      );
+    }
+    const multipart = await env.MEDIA_BUCKET.createMultipartUpload(
+      failed.output_object_key,
+      {
+        httpMetadata: {
+          contentType: "audio/mpeg",
+          contentDisposition: "attachment"
+        },
+        customMetadata: {
+          "processor-manifest-sha256": retryManifest.manifestSha256
+        }
+      }
+    );
+    const retryGuardId =
+      `derivative_retry_guard_${crypto.randomUUID().replace(/-/g, "")}`;
+    try {
+      await env.MEDIA_BUCKET.delete(failed.output_object_key);
+      await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE audio_enhancement_derivatives
+           SET
+             r2_upload_id = ?,
+             status = 'queued',
+             failure_code = NULL,
+             completed_at = NULL,
+             updated_at = datetime('now')
+           WHERE id = ?
+             AND status = 'failed'
+             AND source_master_id = ?
+             AND processor_manifest_sha256 = ?`
+        ).bind(
+          multipart.uploadId,
+          failed.id,
+          source.current_master_id,
+          retryManifest.manifestSha256
+        ),
+        env.DB.prepare(
+          `INSERT INTO publication_batch_guards (id, update_succeeded)
+           VALUES (?, changes())`
+        ).bind(retryGuardId),
+        env.DB.prepare(
+          `INSERT INTO admin_audit_events (
+             id, admin_user_id, action, target_type, target_id,
+             metadata_json
+           )
+           SELECT ?, ?, 'audio_enhancement_derivative.retried',
+             'audio_enhancement_derivative', id, ?
+           FROM audio_enhancement_derivatives
+           WHERE id = ?
+             AND status = 'queued'
+             AND r2_upload_id = ?`
+        ).bind(
+          `audit_${crypto.randomUUID().replace(/-/g, "")}`,
+          access.authorization.identity.id,
+          JSON.stringify({
+            episodeId: source.episode_id,
+            selectedPreviewId: source.selected_preview_id,
+            sourceMasterId: source.current_master_id,
+            processorManifestSha256: retryManifest.manifestSha256,
+            priorFailureCode: failed.failure_code
+          }),
+          failed.id,
+          multipart.uploadId
+        ),
+        env.DB.prepare(
+          `DELETE FROM audio_enhancement_derivative_parts
+           WHERE derivative_id = ?`
+        ).bind(failed.id),
+        env.DB.prepare(
+          `DELETE FROM publication_batch_guards WHERE id = ?`
+        ).bind(retryGuardId)
+      ]);
+    } catch (error) {
+      await multipart.abort().catch(() => {});
+      const message = String(error);
+      if (
+        message.includes("publication_batch_guards")
+        || message.includes("update_succeeded")
+      ) {
+        return derivativeConflict(
+          request,
+          env,
+          "audio_enhancement_derivative_conflict"
+        );
+      }
+      throw error;
+    }
+    const retried = await loadDerivative(env.DB, failed.id);
+    if (
+      !retried
+      || retried.status !== "queued"
+      || retried.r2_upload_id !== multipart.uploadId
+    ) {
+      await multipart.abort().catch(() => {});
+      return derivativeConflict(
+        request,
+        env,
+        "audio_enhancement_derivative_conflict"
+      );
+    }
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      {
+        derivative: presentDerivative(env, retried),
+        processor: derivativeDispatch(retryManifest),
+        idempotent: false,
+        retried: true
+      },
+      { status: 202 }
+    );
+  }
   const active = await env.DB.prepare(
     `SELECT id
      FROM audio_enhancement_derivatives
