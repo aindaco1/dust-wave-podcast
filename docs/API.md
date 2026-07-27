@@ -389,8 +389,11 @@ A destination is certified only when it is enabled and has verified or
 not-required owner setup, a valid current feed, an observed ingestion event,
 and the failed-to-observed recovery sequence. The publication-readiness
 “10+ listening platforms” node remains a warning until at least ten
-destinations are certified. This does not submit a show, store credentials, or
-claim that a directory ingests instantly.
+destinations are certified. Distribution and readiness consume the same typed
+query and enabled-destination aggregate; disabled historical observations
+remain visible on their directory but never increase summary or claim counts.
+This does not submit a show, store credentials, or claim that a directory
+ingests instantly.
 
 ### Isolated-staging transcription chunk processor
 

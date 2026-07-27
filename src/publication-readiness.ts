@@ -2,6 +2,11 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import { hasAdminRoleForShow } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import {
+  LAUNCH_CLAIM_REQUIRED_DESTINATIONS,
+  loadDistributionLaunchCertification,
+  type DistributionCertificationSummary
+} from "./distribution-certification";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
@@ -115,16 +120,6 @@ type AdPlanReadinessRow = {
   ready_segment_count: number;
 };
 
-type DirectoryReadinessAggregate = {
-  total: number;
-  enabled: number;
-  setup_complete: number;
-  feed_validated: number;
-  ingestion_observed: number;
-  failure_recovery_verified: number;
-  certified: number;
-};
-
 type ReleaseJobRow = {
   destination: string;
   status: string;
@@ -159,7 +154,7 @@ export type PublicationReadinessInput = {
   chapters: ChapterReadinessRow | null;
   clips: ClipReadinessAggregate;
   adPlan: AdPlanReadinessRow | null;
-  directories: DirectoryReadinessAggregate;
+  directories: DistributionCertificationSummary;
   jobs: ReleaseJobRow[];
   reviews: ProductionReviewReadiness;
   githubPublishMode: string;
@@ -442,113 +437,8 @@ async function loadEpisodePublicationReadiness(
        ORDER BY plan.revision DESC
        LIMIT 1`
     ).bind(episodeId).first<AdPlanReadinessRow>(),
-    env.DB.prepare(
-      `SELECT
-         COUNT(*) AS total,
-         COALESCE(SUM(
-           CASE WHEN COALESCE(setup.enabled, destination.enabled) = 1
-             THEN 1 ELSE 0 END
-         ), 0) AS enabled,
-         COALESCE(SUM(
-           CASE
-             WHEN COALESCE(setup.enabled, destination.enabled) = 1
-               AND COALESCE(
-                 setup.owner_setup_status,
-                 destination.owner_setup_status
-               ) IN ('verified', 'not_required')
-             THEN 1 ELSE 0
-           END
-         ), 0) AS setup_complete,
-         EXISTS (
-           SELECT 1
-           FROM show_feed_validations feed
-           WHERE feed.show_id = ?
-             AND feed.status = 'valid'
-         ) AS feed_validated,
-         COALESCE(SUM(
-           CASE
-             WHEN COALESCE(setup.enabled, destination.enabled) = 1
-               AND EXISTS (
-                 SELECT 1
-                 FROM distribution_observation_events observed
-                 WHERE observed.show_id = ?
-                   AND observed.destination_id = destination.id
-                   AND observed.status = 'observed'
-               )
-             THEN 1 ELSE 0
-           END
-         ), 0) AS ingestion_observed,
-         COALESCE(SUM(
-           CASE
-             WHEN COALESCE(setup.enabled, destination.enabled) = 1
-               AND EXISTS (
-                 SELECT 1
-                 FROM distribution_observation_events failed
-                 WHERE failed.show_id = ?
-                   AND failed.destination_id = destination.id
-                   AND failed.status = 'failed'
-                   AND EXISTS (
-                     SELECT 1
-                     FROM distribution_observation_events recovered
-                     WHERE recovered.show_id = failed.show_id
-                       AND recovered.destination_id = failed.destination_id
-                       AND recovered.status = 'observed'
-                       AND recovered.sequence > failed.sequence
-                   )
-               )
-             THEN 1 ELSE 0
-           END
-         ), 0) AS failure_recovery_verified,
-         COALESCE(SUM(
-           CASE
-             WHEN COALESCE(setup.enabled, destination.enabled) = 1
-               AND COALESCE(
-                 setup.owner_setup_status,
-                 destination.owner_setup_status
-               ) IN ('verified', 'not_required')
-               AND EXISTS (
-                 SELECT 1
-                 FROM show_feed_validations feed
-                 WHERE feed.show_id = ?
-                   AND feed.status = 'valid'
-               )
-               AND EXISTS (
-                 SELECT 1
-                 FROM distribution_observation_events observed
-                 WHERE observed.show_id = ?
-                   AND observed.destination_id = destination.id
-                   AND observed.status = 'observed'
-               )
-               AND EXISTS (
-                 SELECT 1
-                 FROM distribution_observation_events failed
-                 WHERE failed.show_id = ?
-                   AND failed.destination_id = destination.id
-                   AND failed.status = 'failed'
-                   AND EXISTS (
-                     SELECT 1
-                     FROM distribution_observation_events recovered
-                     WHERE recovered.show_id = failed.show_id
-                       AND recovered.destination_id = failed.destination_id
-                       AND recovered.status = 'observed'
-                       AND recovered.sequence > failed.sequence
-                   )
-               )
-             THEN 1 ELSE 0
-           END
-         ), 0) AS certified
-       FROM distribution_destinations destination
-       LEFT JOIN show_distribution_destinations setup
-         ON setup.destination_id = destination.id AND setup.show_id = ?`
-    ).bind(
-      episode.show_id,
-      episode.show_id,
-      episode.show_id,
-      episode.show_id,
-      episode.show_id,
-      episode.show_id,
-      episode.show_id
-    ).first<DirectoryReadinessAggregate>(),
+    loadDistributionLaunchCertification(env.DB, episode.show_id)
+      .then(({ summary }) => summary),
     env.DB.prepare(
       `SELECT
          job.destination, job.status, job.publication_revision,
@@ -576,15 +466,7 @@ async function loadEpisodePublicationReadiness(
     chapters: chapters ?? null,
     clips: clips ?? { total: 0, current_count: 0, ready_render_count: 0 },
     adPlan: adPlan ?? null,
-    directories: directories ?? {
-      total: 0,
-      enabled: 0,
-      setup_complete: 0,
-      feed_validated: 0,
-      ingestion_observed: 0,
-      failure_recovery_verified: 0,
-      certified: 0
-    },
+    directories,
     jobs: jobs.results,
     reviews,
     githubPublishMode: String(env.GITHUB_PUBLISH_MODE || "dry_run"),
@@ -1245,17 +1127,17 @@ function youtubeNode(
 }
 
 function directoryNode(
-  directories: DirectoryReadinessAggregate
+  directories: DistributionCertificationSummary
 ): PublicationReadinessNode {
   const enabled = Number(directories.enabled);
-  const setupComplete = Number(directories.setup_complete);
-  const feedValidated = Number(directories.feed_validated) === 1;
-  const ingestionObserved = Number(directories.ingestion_observed);
+  const setupComplete = Number(directories.setupComplete);
+  const feedValidated = Boolean(directories.feedValidated);
+  const ingestionObserved = Number(directories.ingestionObserved);
   const failureRecoveryVerified = Number(
-    directories.failure_recovery_verified
+    directories.failureRecoveryVerified
   );
   const certified = Number(directories.certified);
-  const ready = certified >= 10;
+  const ready = certified >= LAUNCH_CLAIM_REQUIRED_DESTINATIONS;
   return node({
     id: "distribution.directories",
     group: "distribution",
@@ -1274,8 +1156,11 @@ function directoryNode(
       ingestionObserved,
       failureRecoveryVerified,
       certified,
-      required: 10,
-      remaining: Math.max(0, 10 - certified)
+      required: LAUNCH_CLAIM_REQUIRED_DESTINATIONS,
+      remaining: Math.max(
+        0,
+        LAUNCH_CLAIM_REQUIRED_DESTINATIONS - certified
+      )
     }
   });
 }

@@ -128,7 +128,7 @@ describe("publication readiness graph", () => {
   it("requires ten fully certified directories for the platform claim", () => {
     const belowGate = readyInput();
     belowGate.directories.certified = 9;
-    belowGate.directories.failure_recovery_verified = 9;
+    belowGate.directories.failureRecoveryVerified = 9;
     const pending = evaluatePublicationReadiness(belowGate);
     expect(pending.nodes).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -143,7 +143,7 @@ describe("publication readiness graph", () => {
     ]));
 
     belowGate.directories.certified = 10;
-    belowGate.directories.failure_recovery_verified = 10;
+    belowGate.directories.failureRecoveryVerified = 10;
     const ready = evaluatePublicationReadiness(belowGate);
     expect(ready.nodes).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -320,10 +320,11 @@ function readyInput(): ReadinessInput {
     directories: {
       total: 11,
       enabled: 11,
-      setup_complete: 11,
-      feed_validated: 1,
-      ingestion_observed: 11,
-      failure_recovery_verified: 11,
+      setupComplete: 11,
+      setupRequired: 0,
+      feedValidated: true,
+      ingestionObserved: 11,
+      failureRecoveryVerified: 11,
       certified: 11
     },
     jobs: [],

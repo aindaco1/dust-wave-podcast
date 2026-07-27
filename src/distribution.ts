@@ -4,6 +4,10 @@ import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
+  loadDistributionLaunchCertification,
+  type DestinationLaunchCertification
+} from "./distribution-certification";
+import {
   publicationJobType,
   type PublicationDestination
 } from "./jobs";
@@ -24,7 +28,6 @@ const PUBLICATION_DESTINATIONS = new Set<PublicationDestination>([
   "youtube",
   "email"
 ]);
-const LAUNCH_CLAIM_REQUIRED_DESTINATIONS = 10;
 const CREDENTIAL_SHAPED_CHECKLIST_VALUE =
   /(?:password|passcode|verification\s+code|otp|contraseña|c[oó]digo\s+de\s+verificaci[oó]n)\s*[:=]\s*\S+/iu;
 
@@ -72,8 +75,8 @@ export async function listDistributionDestinations(
       { status: 404 }
     );
   }
-  const result = episodeId
-    ? await env.DB.prepare(
+  const destinationResultPromise = episodeId
+    ? env.DB.prepare(
       `SELECT
          d.id,
          d.name,
@@ -110,7 +113,7 @@ export async function listDistributionDestinations(
          )
        ORDER BY d.display_order`
     ).bind(showId, episodeId, episodeId).all<DistributionDestinationRow>()
-    : await env.DB.prepare(
+    : env.DB.prepare(
       `SELECT
          d.id,
          d.name,
@@ -138,51 +141,14 @@ export async function listDistributionDestinations(
          ON sd.destination_id = d.id AND sd.show_id = ?
        ORDER BY d.display_order`
     ).bind(showId).all<DistributionDestinationRow>();
-  const [feedValidation, launchEvidenceResult] = await Promise.all([
-    env.DB.prepare(
-      `SELECT
-         status, feed_url, validator_version, feed_sha256, item_count,
-         failure_code, checked_at, validated_at
-       FROM show_feed_validations
-       WHERE show_id = ?`
-    ).bind(showId).first<ShowFeedValidationRow>(),
-    env.DB.prepare(
-      `SELECT
-         destination.id AS destination_id,
-         EXISTS (
-           SELECT 1
-           FROM distribution_observation_events observed
-           WHERE observed.show_id = ?
-             AND observed.destination_id = destination.id
-             AND observed.status = 'observed'
-         ) AS ingestion_observed,
-         EXISTS (
-           SELECT 1
-           FROM distribution_observation_events failed
-           WHERE failed.show_id = ?
-             AND failed.destination_id = destination.id
-             AND failed.status = 'failed'
-             AND EXISTS (
-               SELECT 1
-               FROM distribution_observation_events recovered
-               WHERE recovered.show_id = failed.show_id
-                 AND recovered.destination_id = failed.destination_id
-                 AND recovered.status = 'observed'
-                 AND recovered.sequence > failed.sequence
-             )
-         ) AS failure_recovery_verified
-       FROM distribution_destinations destination
-       ORDER BY destination.display_order`
-    ).bind(showId, showId).all<DestinationLaunchEvidenceRow>()
+  const [result, launchCertification] = await Promise.all([
+    destinationResultPromise,
+    loadDistributionLaunchCertification(env.DB, showId)
   ]);
-  const launchEvidenceByDestination = new Map(
-    launchEvidenceResult.results.map((row) => [row.destination_id, row])
-  );
   const destinations = result.results.map((row) =>
     presentDistributionDestination(
       row,
-      feedValidation,
-      launchEvidenceByDestination.get(row.id)
+      launchCertification.byDestinationId.get(row.id)
     )
   );
   const channelResult = episodeId
@@ -245,11 +211,6 @@ export async function listDistributionDestinations(
     (maximum, channel) => Math.max(maximum, channel.publicationRevision),
     0
   );
-  const certifiedDestinations = destinations.filter(
-    ({ certification }) => certification.certified
-  ).length;
-  const launchClaimReady =
-    certifiedDestinations >= LAUNCH_CLAIM_REQUIRED_DESTINATIONS;
   return privateJson(request, env.ALLOWED_ORIGINS, {
     showId,
     showTitle: show.title,
@@ -258,39 +219,17 @@ export async function listDistributionDestinations(
       `${env.FEED_ORIGIN.replace(/\/$/, "")}/${show.rss_slug}/rss.xml`,
     semantics: "rss-follow-after-one-time-owner-setup",
     summary: {
-      total: destinations.length,
-      enabled: destinations.filter(({ enabled }) => enabled).length,
-      setupComplete: destinations.filter(
-        ({ enabled, ownerSetupStatus }) =>
-          enabled && ["verified", "not_required"].includes(ownerSetupStatus)
-      ).length,
-      setupRequired: destinations.filter(
-        ({ enabled, ownerSetupStatus }) =>
-          enabled && !["verified", "not_required"].includes(ownerSetupStatus)
-      ).length,
+      ...launchCertification.summary,
       observed: destinations.filter(
         ({ publicationStatus }) => publicationStatus === "observed"
       ).length,
       failed: destinations.filter(
         ({ publicationStatus }) => publicationStatus === "failed"
-      ).length,
-      ingestionObserved: destinations.filter(
-        ({ certification }) => certification.ingestionObserved
-      ).length,
-      failureRecoveryVerified: destinations.filter(
-        ({ certification }) => certification.failureRecoveryVerified
-      ).length,
-      certified: certifiedDestinations
+      ).length
     },
     launchClaim: {
-      ready: launchClaimReady,
-      requiredDestinations: LAUNCH_CLAIM_REQUIRED_DESTINATIONS,
-      certifiedDestinations,
-      remainingDestinations: Math.max(
-        0,
-        LAUNCH_CLAIM_REQUIRED_DESTINATIONS - certifiedDestinations
-      ),
-      feedValidation: presentFeedValidation(feedValidation)
+      ...launchCertification.launchClaim,
+      feedValidation: launchCertification.feedValidation
     },
     destinations,
     release: episodeId
@@ -1047,23 +986,6 @@ type DistributionDestinationRow = {
   publication_revision: number | null;
 };
 
-type ShowFeedValidationRow = {
-  status: "valid" | "failed";
-  feed_url: string;
-  validator_version: string;
-  feed_sha256: string | null;
-  item_count: number | null;
-  failure_code: string | null;
-  checked_at: string;
-  validated_at: string | null;
-};
-
-type DestinationLaunchEvidenceRow = {
-  destination_id: string;
-  ingestion_observed: number;
-  failure_recovery_verified: number;
-};
-
 type ReleaseChannelRow = {
   destination: string;
   status: string;
@@ -1093,8 +1015,7 @@ type ReleaseChannelRow = {
 
 function presentDistributionDestination(
   row: DistributionDestinationRow,
-  feedValidation: ShowFeedValidationRow | null,
-  launchEvidence?: DestinationLaunchEvidenceRow
+  certification?: DestinationLaunchCertification
 ): {
   id: string;
   name: string;
@@ -1124,13 +1045,6 @@ function presentDistributionDestination(
     certified: boolean;
   };
 } {
-  const ownerVerified = ["verified", "not_required"].includes(
-    row.owner_setup_status
-  );
-  const feedValidated = feedValidation?.status === "valid";
-  const ingestionObserved = launchEvidence?.ingestion_observed === 1;
-  const failureRecoveryVerified =
-    launchEvidence?.failure_recovery_verified === 1;
   return {
     id: row.id,
     name: row.name,
@@ -1155,55 +1069,14 @@ function presentDistributionDestination(
     publicationError: row.publication_error,
     evidenceUrl: boundedEvidence(row.evidence_url, 2_048),
     evidenceSource: boundedEvidence(row.evidence_source, 32),
-    certification: {
-      ownerVerified,
-      feedValidated,
-      ingestionObserved,
-      failureRecoveryVerified,
-      certified: row.enabled === 1
-        && ownerVerified
-        && feedValidated
-        && ingestionObserved
-        && failureRecoveryVerified
+    certification: certification ?? {
+      ownerVerified: false,
+      feedValidated: false,
+      ingestionObserved: false,
+      failureRecoveryVerified: false,
+      certified: false
     }
   };
-}
-
-function presentFeedValidation(
-  row: ShowFeedValidationRow | null
-): {
-  status: "valid" | "failed" | "not_checked";
-  feedUrl: string | null;
-  validatorVersion: string | null;
-  feedSha256: string | null;
-  itemCount: number | null;
-  failureCode: string | null;
-  checkedAt: string | null;
-  validatedAt: string | null;
-} {
-  return row
-    ? {
-        status: row.status,
-        feedUrl: boundedEvidence(row.feed_url, 2_048),
-        validatorVersion: boundedEvidence(row.validator_version, 64),
-        feedSha256: boundedEvidence(row.feed_sha256, 64),
-        itemCount: row.item_count === null
-          ? null
-          : Math.max(0, Number(row.item_count) || 0),
-        failureCode: boundedEvidence(row.failure_code, 160),
-        checkedAt: row.checked_at,
-        validatedAt: row.validated_at
-      }
-    : {
-        status: "not_checked",
-        feedUrl: null,
-        validatorVersion: null,
-        feedSha256: null,
-        itemCount: null,
-        failureCode: null,
-        checkedAt: null,
-        validatedAt: null
-      };
 }
 
 function presentReleaseChannel(row: ReleaseChannelRow): {

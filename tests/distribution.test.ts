@@ -682,11 +682,15 @@ async function distributionFixture({
               results: [
                 {
                   destination_id: "spotify",
+                  enabled: 1,
+                  owner_setup_status: "verified",
                   ingestion_observed: 1,
                   failure_recovery_verified: 1
                 },
                 {
                   destination_id: "apple_podcasts",
+                  enabled: 1,
+                  owner_setup_status: "not_started",
                   ingestion_observed: 0,
                   failure_recovery_verified: 0
                 }

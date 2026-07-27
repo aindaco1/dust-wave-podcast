@@ -130,7 +130,10 @@ review target, clip/ad freshness, News, RSS, YouTube applicability, and the
 10+ directory certification. The directory node is ready only after at least
 ten enabled destinations have owner setup, a validated exact canonical feed,
 an evidence-backed ingestion observation, and a recorded failed-to-observed
-recovery sequence. Its digest is stable for the same evidence. A
+recovery sequence. One typed read-only certification primitive now supplies
+both the Distribution response and publication-readiness node, so disabled
+historical evidence and proof counters cannot diverge between screens. Its
+digest is stable for the same evidence. A
 three-mode publication gate now keeps production on legacy checks, compares
 the exact snapshot without blocking in staging shadow mode, and can later
 enforce it through a configuration-only rollback switch. Enforcement supports
