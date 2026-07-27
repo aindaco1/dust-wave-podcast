@@ -180,13 +180,16 @@
   Checkout persists Stripe's current `integration_identifier` and continues
   to omit both `automatic_tax` and `payment_method_types`.
 - GitHub and YouTube writes are dry-run by default. The only implemented
-  YouTube exception is a staging-only controlled clip test: Producer+ may
-  prepare immutable evidence, but only a recently authenticated super-admin
-  may approve; private/unlisted are the only accepted states and production
-  routes return `404`. The consumer requires launch-channel OAuth secrets,
-  hard-pins Google origins, disables redirects, bounds provider JSON, streams
-  the private R2 body, verifies returned channel/privacy, and fails closed if
-  the mode is restored before consumption.
+  YouTube exceptions are staging-only controlled clip and full-episode tests:
+  Producer+ may prepare immutable evidence, but only a recently authenticated
+  super-admin may approve; clips accept private/unlisted, episodes accept only
+  unlisted in controlled mode, and production routes return `404`. The episode
+  record additionally snapshots the exact publication revision, root job,
+  completed MP4 upload ID, R2 key/bytes/ETag, and channel. The consumer requires
+  launch-channel OAuth secrets, hard-pins Google origins, disables redirects,
+  bounds provider JSON, streams the conditionally read private R2 body,
+  verifies returned channel/privacy, and fails closed if the mode is restored
+  before consumption.
 - Saved marketing links accept only bounded text and the show's existing
   credential-free HTTPS canonical URL. The Worker rebuilds every tagged URL
   through the exact shared Pool/Store normalizer instead of trusting the
@@ -537,3 +540,12 @@ duplicating a video. A provider success followed by verification or D1/audit
 failure requires manual channel reconciliation before any new attempt; secrets,
 OAuth tokens, upload-session URLs, object keys, and provider bodies are never
 logged or returned.
+
+The full-episode test stores one publication per episode revision and pins the
+matching root job plus completed MP4 upload evidence. Normal cron recovery
+explicitly excludes running YouTube jobs. A Worker interruption or ambiguous
+provider result is quarantined as `reconciliation_required`; approval and
+generic retry cannot replay it. A committed provider ID is reused without R2
+or Google access if the surrounding root-job state later needs repair.
+Episode uploads are capped at 2 GiB and 13 minutes for this initial controlled
+gate, while production and `live` publishing remain disabled.

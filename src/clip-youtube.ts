@@ -18,8 +18,10 @@ import {
 } from "./validation";
 import {
   uploadUnlistedYouTubeVideo,
+  youtubeProviderDescription,
   YouTubeProviderError,
-  youtubeProviderConfigured
+  youtubeProviderConfigured,
+  youtubeProviderTitle
 } from "./youtube-provider";
 
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
@@ -642,20 +644,22 @@ function validPrivacyStatus(value: unknown): "private" | "unlisted" {
 
 function providerTitle(value: unknown): string {
   const title = requiredText(value, "title", 100);
-  if (/[\u0000-\u001f\u007f]/.test(title)) {
+  try {
+    return youtubeProviderTitle(title);
+  } catch {
     throw new RequestValidationError("title contains control characters");
   }
-  return title;
 }
 
 function providerDescription(value: unknown): string {
   const description = optionalText(value, "description", 5_000);
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)) {
+  try {
+    return youtubeProviderDescription(description);
+  } catch {
     throw new RequestValidationError(
       "description contains control characters"
     );
   }
-  return description;
 }
 
 function presentClipYouTubePublication(

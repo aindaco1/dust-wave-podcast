@@ -101,6 +101,10 @@ import {
   createAdminClipYouTubeDraft
 } from "./clip-youtube";
 import {
+  approveAdminEpisodeYouTubePublication,
+  createAdminEpisodeYouTubeDraft
+} from "./episode-youtube";
+import {
   issueStagingVirtualAudioCapability,
   manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
@@ -257,6 +261,8 @@ const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_READINESS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/readiness$/;
+const ADMIN_EPISODE_YOUTUBE_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/youtube$/;
 const ADMIN_EPISODE_AUDIO_QC_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-qc$/;
 const ADMIN_EPISODE_AUDIO_MASTER_PATH =
@@ -307,6 +313,8 @@ const ADMIN_CLIP_RENDER_YOUTUBE_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/youtube$/;
 const ADMIN_CLIP_YOUTUBE_APPROVE_PATH =
   /^\/v1\/admin\/clip-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
+const ADMIN_EPISODE_YOUTUBE_APPROVE_PATH =
+  /^\/v1\/admin\/episode-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_EPISODE_AD_PLAN_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
 const ADMIN_UPLOAD_PART_PATH =
@@ -979,6 +987,26 @@ async function routeRequest(
       env,
       adminEpisodeDistributionDestinationMatch[1],
       adminEpisodeDistributionDestinationMatch[2]
+    );
+  }
+  const adminEpisodeYouTubeMatch = url.pathname.match(
+    ADMIN_EPISODE_YOUTUBE_PATH
+  );
+  if (adminEpisodeYouTubeMatch && method === "POST") {
+    return createAdminEpisodeYouTubeDraft(
+      request,
+      env,
+      adminEpisodeYouTubeMatch[1]
+    );
+  }
+  const adminEpisodeYouTubeApproveMatch = url.pathname.match(
+    ADMIN_EPISODE_YOUTUBE_APPROVE_PATH
+  );
+  if (adminEpisodeYouTubeApproveMatch && method === "POST") {
+    return approveAdminEpisodeYouTubePublication(
+      request,
+      env,
+      adminEpisodeYouTubeApproveMatch[1]
     );
   }
   const adminEpisodeTranscriptApproveMatch = url.pathname.match(

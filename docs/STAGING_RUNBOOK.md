@@ -819,6 +819,30 @@ not retry automatically. Reconcile the channel manually and record cleanup
 before authorizing a new render. Production Worker configuration, routes, D1,
 R2, Queue, and DNS remain untouched throughout this test.
 
+For the full-episode YouTube test, use a separate fixture publication:
+
+1. Complete one bounded `video_source` multipart upload as `video/mp4`, publish
+   or schedule the non-premium-bonus fixture, and confirm its immutable release
+   graph contains one YouTube root job for the same revision.
+2. With `YOUTUBE_PUBLISH_MODE=dry_run`, create
+   `POST /v1/admin/episodes/{episodeId}/youtube` using a new publication ID,
+   the exact publication revision, `unlisted`, bounded title/description, and
+   the exact configured channel URL. A recently authenticated super-admin then
+   approves that publication. Confirm `dry_run`, audit evidence, and zero Queue,
+   R2 body reads, OAuth, and provider calls.
+3. Install the same four temporary launch-channel secrets, switch only staging
+   to `controlled_test`, dry-run/deploy the reviewed commit, and approve the
+   same immutable record. If public release is due, confirm `202` and one root
+   Queue message; if it is future-dated, confirm no immediate send and let cron
+   enqueue it only at public release.
+4. Confirm the consumer conditionally reads the snapshotted R2 ETag, verifies
+   the returned channel and unlisted privacy, records one provider video ID on
+   the publication/current episode/root job, and emits the upload audit.
+5. Restore staging to `dry_run` before cleanup. If state becomes
+   `reconciliation_required`, do not use the generic retry action: inspect the
+   launch channel and reconcile or remove the uncertain item first. Production
+   configuration and data remain untouched.
+
 ## 7. Rollback
 
 - Restore dry-run provider variables first.

@@ -116,7 +116,14 @@ iHeartRadio, and Deezer.
   identity across retries.
 - Publish audio-only or native-video episodes to the configurable YouTube
   channel at the public release time. Early-access episodes wait for public
-  release; premium-only bonuses never publish to YouTube.
+  release; premium-only bonuses never publish to YouTube. The first
+  full-episode boundary is now implemented as a staging-only, unlisted
+  controlled test: its recent-super-admin approval pins the publication
+  revision, distribution job, completed MP4 upload, R2 key/bytes/ETag, and
+  launch channel before Queue consumption. Ordinary Publish remains a
+  provider-free dry run, production mode remains inert, and any interrupted
+  or provider-ambiguous upload is quarantined for reconciliation instead of
+  replayed.
 
 ### H1 premium and revenue
 

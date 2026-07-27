@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "dust-wave-podcast",
   "main": "src/index.ts",
-  "compatibility_date": "2026-07-23",
+  "compatibility_date": "2026-07-27",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,

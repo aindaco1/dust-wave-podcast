@@ -17,7 +17,8 @@ The current vertical slice implements the public show API, public RSS,
 entitlement-gated private RSS and R2-backed range delivery, passwordless admin
 and listener authentication, one-time private-feed creation and rotation, show
 and episode editing APIs, multipart uploads, one-click idempotent publication
-orchestration, a dry-run GitHub News publisher, a dry-run YouTube adapter, and
+orchestration, a dry-run GitHub News publisher, a dry-run YouTube adapter plus
+staging-only immutable clip/full-episode controlled tests, and
 the fail-closed manual-tax quote and Stripe Checkout/Customer Portal boundaries,
 webhook-projected multi-source entitlements, and the signed Stripe
 webhook/readiness boundary. Draft/approval/kill sponsor
@@ -32,7 +33,8 @@ an immutable working-master snapshot, Queue recovery, private R2 evidence, and
 versioned transcript review. A real rights-cleared transcription run plus the
 alignment adapter's human-reviewed benchmark evidence remain gated. Checkout remains disabled pending
 accountant-approved tax/provider evidence; dynamic audio assembly, public clip
-distribution, and live YouTube/GitHub publishing remain roadmap work.
+distribution, and production-live YouTube/GitHub publishing remain roadmap
+work.
 
 Audience reporting now combines provisional qualified downloads, daily
 60-second engaged Dust Wave web-player listens, app/device/country breakdowns,
@@ -143,6 +145,14 @@ requires a recently authenticated super-admin. The committed mode records only
 a dry run; an actual upload additionally requires explicit `controlled_test`
 mode and launch-channel OAuth secrets, and public visibility is structurally
 rejected. No public clip route or production Shorts upload is enabled.
+
+Full-episode video now has a parallel staging-only boundary. Its draft pins the
+current publication revision, YouTube root job, completed MP4 upload, private
+R2 bytes/ETag, and exact launch channel. A recent super-admin approval records
+a provider-free dry run or, only under explicit `controlled_test`, queues one
+unlisted upload at public release. Committed provider evidence is replay-safe;
+interrupted or ambiguous uploads are quarantined for manual reconciliation.
+Production and public visibility remain disabled.
 
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member

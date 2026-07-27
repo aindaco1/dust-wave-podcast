@@ -276,6 +276,8 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/episodes` | producer+ | Create a draft episode |
 | `PATCH` | `/v1/admin/episodes/{id}` | producer+ | Edit episode metadata |
 | `POST` | `/v1/admin/episodes/{id}/publish` | producer+ | Idempotent snapshot-aware publish/schedule; blocker override requires recently authenticated admin+ |
+| `POST` | `/v1/admin/episodes/{id}/youtube` | producer+ | Staging-only immutable full-episode YouTube draft for the exact current publication revision and completed MP4 |
+| `POST` | `/v1/admin/episode-youtube-publications/{id}/approve` | recently authenticated super-admin | Record the default dry run or queue one explicitly enabled unlisted full-episode controlled test |
 | `GET` | `/v1/admin/episodes/{id}/readiness` | analyst+ | Stable exact-evidence snapshot plus the environment's `legacy`, `shadow`, or `enforce` gate projection |
 | `GET` | `/v1/admin/episodes/{id}/audio-qc` | analyst+ | Current source/policy, up to 20 private QC summaries, and the latest bounded full report |
 | `POST` | `/v1/admin/episodes/{id}/audio-qc` | producer+ | Staging-only queue of one exact source/policy manifest; does not modify or publish audio |
@@ -743,6 +745,36 @@ uploads. If Google accepts a video but verification or the D1 commit fails,
 operators must reconcile the unlisted/private item manually; automatic retry
 is intentionally disabled at that boundary.
 
+### Controlled full-episode YouTube test
+
+The full-episode routes use the same staging-only, recent-super-admin provider
+boundary without sharing mutable publication state with clips. Draft creation
+requires a current scheduled/published, non-premium-bonus episode whose
+immutable publication plan contains a YouTube job. The selected
+`video_source_key` must resolve to the exact completed `video_source`
+multipart-upload record and a private R2 `video/mp4` object no larger than
+2 GiB. The draft snapshots the publication revision, root distribution job,
+upload ID, object key/bytes/ETag/MIME type, show/runtime channel URL, title,
+description, and private/unlisted visibility.
+
+In committed `dry_run` mode, approval re-heads that object and records audited
+evidence without D1 job mutation, Queue delivery, OAuth, or provider access. A
+later `controlled_test` approval accepts only `unlisted`, requires the four
+launch-channel OAuth settings, resets only the matching failed/queued or
+provider-free dry-run root job, and sends it immediately only when its public
+release time is due. Future early-access releases stay queued until their
+public time.
+
+The consumer rechecks the current episode revision, completed upload record,
+show/runtime channel, R2 size/ETag/MIME type, and conditional object read before
+streaming the body to Google's resumable endpoint. It verifies returned
+channel/privacy, then records the provider ID both on the immutable publication
+and current episode. A committed provider ID makes a root-job retry
+provider-free. An upload timeout, incomplete response, verification failure,
+state-commit uncertainty, or Worker interruption moves the record to
+`reconciliation_required`; neither cron recovery nor the generic retry route
+may replay that upload. Production and `live` mode remain disabled.
+
 The staging processor surface is private and purpose-bound:
 
 | Method | Path | Purpose |
@@ -983,8 +1015,9 @@ created-time pagination, and campaign qualification history.
 `GITHUB_PUBLISH_MODE` and `YOUTUBE_PUBLISH_MODE` default to `dry_run`. A dry-run
 publication exercises state transitions without an external write. The only
 implemented non-dry YouTube mode is the staging-only, recent-super-admin
-`controlled_test` for an immutable private/unlisted ready clip described
-above; `public` is not accepted and production routes remain unavailable.
+`controlled_test` for either an immutable private/unlisted ready clip or an
+immutable unlisted full-episode MP4 described above; `public` is not accepted
+and production routes remain unavailable.
 Podcast Checkout remains inert until the explicit global gate,
 accountant-approved manual tax configuration, isolated Stripe bindings, and
 request-time security checks all pass.

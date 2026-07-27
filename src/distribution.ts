@@ -152,14 +152,30 @@ export async function listDistributionDestinations(
            j.last_error,
            j.publication_revision,
            sp.status AS site_status,
-           sp.github_commit_sha,
-           sp.github_run_id,
-           sp.last_error AS site_error
-         FROM distribution_jobs j
+         sp.github_commit_sha,
+         sp.github_run_id,
+         sp.last_error AS site_error,
+         yp.id AS youtube_publication_id,
+         yp.status AS youtube_publication_status,
+         yp.privacy_status AS youtube_privacy_status,
+         yp.provider_video_id AS youtube_provider_video_id,
+         yp.failure_code AS youtube_failure_code,
+         yp.channel_url AS youtube_channel_url,
+         yp.title AS youtube_title,
+         yp.description AS youtube_description,
+         yp.video_object_bytes AS youtube_video_object_bytes,
+         yp.requested_at AS youtube_requested_at,
+         yp.approved_at AS youtube_approved_at
+       FROM distribution_jobs j
          LEFT JOIN site_publications sp
            ON j.destination = 'news'
            AND sp.episode_id = j.episode_id
            AND sp.publication_revision = j.publication_revision
+         LEFT JOIN episode_youtube_publications yp
+           ON j.destination = 'youtube'
+           AND yp.distribution_job_id = j.id
+           AND yp.episode_id = j.episode_id
+           AND yp.publication_revision = j.publication_revision
          WHERE j.episode_id = ?
            AND j.publication_revision = (
              SELECT MAX(latest.publication_revision)
@@ -946,6 +962,17 @@ type ReleaseChannelRow = {
   github_commit_sha: string | null;
   github_run_id: string | null;
   site_error: string | null;
+  youtube_publication_id: string | null;
+  youtube_publication_status: string | null;
+  youtube_privacy_status: string | null;
+  youtube_provider_video_id: string | null;
+  youtube_failure_code: string | null;
+  youtube_channel_url: string | null;
+  youtube_title: string | null;
+  youtube_description: string | null;
+  youtube_video_object_bytes: number | null;
+  youtube_requested_at: string | null;
+  youtube_approved_at: string | null;
 };
 
 function presentDistributionDestination(
@@ -1013,6 +1040,19 @@ function presentReleaseChannel(row: ReleaseChannelRow): {
   siteStatus: string | null;
   siteCommitSha: string | null;
   siteRunId: string | null;
+  youtubePublication: {
+    id: string;
+    status: string;
+    privacyStatus: string;
+    providerVideoId: string | null;
+    failureCode: string | null;
+    channelUrl: string;
+    title: string;
+    description: string;
+    videoObjectBytes: number;
+    requestedAt: string | null;
+    approvedAt: string | null;
+  } | null;
   retryable: boolean;
 } {
   const labels: Record<string, string> = {
@@ -1036,7 +1076,30 @@ function presentReleaseChannel(row: ReleaseChannelRow): {
     siteStatus: row.site_status,
     siteCommitSha: boundedEvidence(row.github_commit_sha, 64),
     siteRunId: boundedEvidence(row.github_run_id, 100),
-    retryable: row.status === "failed"
+    youtubePublication:
+      row.destination === "youtube" && row.youtube_publication_id
+        ? {
+            id: row.youtube_publication_id,
+            status: row.youtube_publication_status || "draft",
+            privacyStatus: row.youtube_privacy_status || "unlisted",
+            providerVideoId: boundedEvidence(
+              row.youtube_provider_video_id,
+              64
+            ),
+            failureCode: boundedEvidence(row.youtube_failure_code, 160),
+            channelUrl: boundedEvidence(row.youtube_channel_url, 2_000) || "",
+            title: boundedEvidence(row.youtube_title, 100) || "",
+            description:
+              boundedEvidence(row.youtube_description, 5_000) || "",
+            videoObjectBytes: Math.max(
+              0,
+              Number(row.youtube_video_object_bytes) || 0
+            ),
+            requestedAt: row.youtube_requested_at,
+            approvedAt: row.youtube_approved_at
+          }
+        : null,
+    retryable: row.status === "failed" && row.destination !== "youtube"
   };
 }
 

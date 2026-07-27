@@ -6,6 +6,7 @@ import {
 import type { PodcastJob } from "./types";
 import { processClipYouTubePublication } from "./clip-youtube";
 import { processAnnouncementDelivery } from "./announcement-delivery";
+import { processEpisodeYouTubePublication } from "./episode-youtube";
 
 export type PublicationDestination = "rss" | "youtube" | "news" | "email";
 
@@ -30,6 +31,30 @@ type DurablePublicationJob = {
 export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
   await env.DB
     .prepare(
+      `UPDATE episode_youtube_publications
+       SET
+         status = 'reconciliation_required',
+         failure_code = 'youtube_worker_interrupted',
+         completed_at = datetime('now'),
+         updated_at = datetime('now')
+       WHERE status = 'uploading'
+         AND started_at <= datetime('now', '-15 minutes')`
+    )
+    .run();
+  await env.DB
+    .prepare(
+      `UPDATE distribution_jobs
+       SET
+         status = 'failed',
+         completed_at = datetime('now'),
+         last_error = 'youtube_upload_state_requires_reconciliation'
+       WHERE status = 'running'
+         AND destination = 'youtube'
+         AND started_at <= datetime('now', '-15 minutes')`
+    )
+    .run();
+  await env.DB
+    .prepare(
       `UPDATE distribution_jobs
        SET
          status = 'queued',
@@ -37,6 +62,7 @@ export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
          completed_at = NULL,
          last_error = 'Previous attempt did not finish; queued for safe recovery.'
        WHERE status = 'running'
+         AND destination != 'youtube'
          AND started_at <= datetime('now', '-15 minutes')`
     )
     .run();
@@ -203,10 +229,7 @@ export async function processPodcastJob(
           .run();
       }
     } else if (job.type === "publish-youtube") {
-      if (String(env.YOUTUBE_PUBLISH_MODE) === "live") {
-        throw new Error("Live YouTube publishing adapter is not enabled");
-      }
-      providerId = "dry-run";
+      providerId = await processEpisodeYouTubePublication(env, job);
     } else if (job.type === "publish-rss") {
       providerId = "dynamic-feed";
     } else {

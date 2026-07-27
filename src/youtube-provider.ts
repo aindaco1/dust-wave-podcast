@@ -10,6 +10,7 @@ const MAXIMUM_PROVIDER_RESPONSE_BYTES = 64_000;
 const TOKEN_TIMEOUT_MS = 10_000;
 const METADATA_TIMEOUT_MS = 15_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
+const MAXIMUM_UPLOAD_TIMEOUT_MS = 13 * 60_000;
 
 type YouTubeProviderConfig = {
   channelId: string;
@@ -41,15 +42,24 @@ export async function uploadUnlistedYouTubeVideo(
     description,
     privacyStatus,
     contentLength,
-    body
+    body,
+    uploadTimeoutMs = UPLOAD_TIMEOUT_MS
   }: {
     title: string;
     description: string;
     privacyStatus: "private" | "unlisted";
     contentLength: number;
     body: ReadableStream;
+    uploadTimeoutMs?: number;
   }
 ): Promise<{ videoId: string }> {
+  if (
+    !Number.isSafeInteger(uploadTimeoutMs)
+    || uploadTimeoutMs < UPLOAD_TIMEOUT_MS
+    || uploadTimeoutMs > MAXIMUM_UPLOAD_TIMEOUT_MS
+  ) {
+    throw new YouTubeProviderError("youtube_upload_timeout_invalid");
+  }
   const config = youtubeProviderConfig(env);
   if (!config) {
     throw new YouTubeProviderError("youtube_not_configured");
@@ -93,7 +103,7 @@ export async function uploadUnlistedYouTubeVideo(
     },
     body,
     redirect: "error"
-  }, UPLOAD_TIMEOUT_MS).catch(() => {
+  }, uploadTimeoutMs).catch(() => {
     throw new YouTubeProviderError("youtube_upload_failed");
   });
   if (!upload.ok) {
@@ -112,6 +122,35 @@ export async function uploadUnlistedYouTubeVideo(
     privacyStatus
   );
   return { videoId };
+}
+
+export function youtubeProviderTitle(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TypeError("title must be a string");
+  }
+  const title = value.trim();
+  if (
+    title.length < 1
+    || title.length > 100
+    || /[\u0000-\u001f\u007f]/.test(title)
+  ) {
+    throw new TypeError("title is not valid YouTube metadata");
+  }
+  return title;
+}
+
+export function youtubeProviderDescription(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TypeError("description must be a string");
+  }
+  const description = value.trim();
+  if (
+    description.length > 5_000
+    || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(description)
+  ) {
+    throw new TypeError("description is not valid YouTube metadata");
+  }
+  return description;
 }
 
 function youtubeProviderConfig(

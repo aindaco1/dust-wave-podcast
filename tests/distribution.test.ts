@@ -142,8 +142,14 @@ describe("streamlined publishing directory registry", () => {
         id: "youtube",
         name: "YouTube",
         status: "failed",
-        retryable: true,
-        error: "controlled test is not configured"
+        retryable: false,
+        error: "controlled test is not configured",
+        youtubePublication: expect.objectContaining({
+          id: "episode_youtube_fixture",
+          status: "reconciliation_required",
+          privacyStatus: "unlisted",
+          failureCode: "youtube_worker_interrupted"
+        })
       })
     ]);
     expect(
@@ -650,7 +656,18 @@ async function distributionFixture({
                   destination: "youtube",
                   status: "failed",
                   provider_id: null,
-                  last_error: "controlled test is not configured"
+                  last_error: "controlled test is not configured",
+                  youtube_publication_id: "episode_youtube_fixture",
+                  youtube_publication_status: "reconciliation_required",
+                  youtube_privacy_status: "unlisted",
+                  youtube_failure_code: "youtube_worker_interrupted",
+                  youtube_channel_url:
+                    "https://youtube.com/@dustwavecollective",
+                  youtube_title: "Episode fixture",
+                  youtube_description: "Description fixture",
+                  youtube_video_object_bytes: 4,
+                  youtube_requested_at: "2026-07-25 00:00:00",
+                  youtube_approved_at: "2026-07-25 00:00:01"
                 })
               ]
             };
@@ -754,6 +771,17 @@ function releaseChannelRow(
     github_commit_sha: null,
     github_run_id: null,
     site_error: null,
+    youtube_publication_id: null,
+    youtube_publication_status: null,
+    youtube_privacy_status: null,
+    youtube_provider_video_id: null,
+    youtube_failure_code: null,
+    youtube_channel_url: null,
+    youtube_title: null,
+    youtube_description: null,
+    youtube_video_object_bytes: null,
+    youtube_requested_at: null,
+    youtube_approved_at: null,
     ...overrides
   };
 }
