@@ -7,6 +7,12 @@ on:
         description: Queued source-audio QC run ID from isolated staging
         required: true
         type: string
+  workflow_call:
+    inputs:
+      run_id:
+        description: Queued audio QC run ID
+        required: true
+        type: string
 
 permissions:
   contents: read
