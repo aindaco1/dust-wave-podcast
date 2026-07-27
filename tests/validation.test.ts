@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  readBoundedBytes,
   readBoundedText,
   readJsonObject
 } from "../src/validation";
@@ -31,6 +32,18 @@ describe("bounded JSON input", () => {
       code: "invalid_request",
       status: 400
     });
+  });
+
+  it("returns exact bounded binary bytes without text conversion", async () => {
+    const expected = new Uint8Array([0, 255, 1, 128]);
+    const request = new Request("https://feeds.dustwave.xyz/v1/test", {
+      method: "PUT",
+      body: expected
+    });
+
+    expect(await readBoundedBytes(request, expected.byteLength)).toEqual(
+      expected
+    );
   });
 
   it("cancels a chunked body as soon as it crosses the byte limit", async () => {

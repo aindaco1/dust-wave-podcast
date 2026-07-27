@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import syntheticFixture from "../config/virtual-audio-synthetic-fixture.json";
 import type { PodcastEnv } from "../src/env";
 import {
+  manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "../src/diagnostics";
@@ -119,5 +120,94 @@ describe("staging virtual-audio diagnostic", () => {
       offset: 80_664,
       length: 5
     });
+  });
+
+  it("bounds exact fixture-object setup and keeps it staging-token-only", async () => {
+    const fixture = syntheticFixture.sources[0];
+    const objects = new Map<string, Uint8Array>([
+      [fixture.objectKey, new Uint8Array(fixture.bytes)]
+    ]);
+    let puts = 0;
+    const bucket = {
+      async get(key: string) {
+        const bytes = objects.get(key);
+        if (!bytes) return null;
+        return {
+          size: bytes.byteLength,
+          async arrayBuffer() {
+            return bytes.buffer.slice(
+              bytes.byteOffset,
+              bytes.byteOffset + bytes.byteLength
+            );
+          }
+        };
+      },
+      async put() {
+        puts += 1;
+        throw new Error("Mismatched bytes must not be stored.");
+      },
+      async delete(key: string) {
+        objects.delete(key);
+      }
+    } as unknown as R2Bucket;
+    const env = {
+      ENVIRONMENT: "staging",
+      VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: "b".repeat(32),
+      MEDIA_BUCKET: bucket
+    } as PodcastEnv;
+    const objectUrl =
+      `https://example.test/v1/diagnostics/virtual-audio/${"b".repeat(32)}`
+      + `/objects/${fixture.filename}`;
+
+    const hidden = await manageStagingVirtualAudioFixtureObject(
+      new Request(objectUrl),
+      env,
+      "a".repeat(32),
+      fixture.filename
+    );
+    expect(hidden.status).toBe(404);
+
+    const mismatched = await manageStagingVirtualAudioFixtureObject(
+      new Request(objectUrl, {
+        method: "GET"
+      }),
+      env,
+      "b".repeat(32),
+      fixture.filename
+    );
+    expect(mismatched.status).toBe(200);
+    expect(await mismatched.json()).toMatchObject({
+      filename: fixture.filename,
+      bytes: fixture.bytes,
+      matches: false
+    });
+
+    const rejected = await manageStagingVirtualAudioFixtureObject(
+      new Request(objectUrl, {
+        method: "PUT",
+        headers: {
+          "content-length": String(fixture.bytes),
+          "content-type": "audio/mpeg"
+        },
+        body: new Uint8Array(fixture.bytes)
+      }),
+      env,
+      "b".repeat(32),
+      fixture.filename
+    );
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toEqual({
+      error: "fixture_contract_mismatch"
+    });
+    expect(puts).toBe(0);
+
+    const deleted = await manageStagingVirtualAudioFixtureObject(
+      new Request(objectUrl, { method: "DELETE" }),
+      env,
+      "b".repeat(32),
+      fixture.filename
+    );
+    expect(deleted.status).toBe(204);
+    expect(objects.has(fixture.objectKey)).toBe(false);
   });
 });

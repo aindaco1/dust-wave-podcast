@@ -108,13 +108,14 @@ npm run gate:virtual-audio:staging -- \
 
 It is hard-bound to the Dust Wave staging origin and bucket, refuses any
 existing diagnostic secret or non-matching R2 object, generates and verifies
-the fixture contract, uploads only missing objects, installs a new
-cryptographically random temporary token through stdin, runs both matrices,
-and removes the token and only the objects it uploaded. Signal handling also
-attempts the same cleanup. The command fails unless cleanup is confirmed and
-writes a redacted `staging-gate.json`; production cannot be selected by an
-argument. A force-killed process still requires the manual secret/object audit
-in the staging runbook.
+the fixture contract, and installs a new cryptographically random temporary
+token through stdin. It then uploads only missing objects through an
+exact-name, hash-verifying, staging-only R2-binding endpoint, runs both
+matrices, and removes the token and only the objects it uploaded. Signal
+handling also attempts the same cleanup. The command fails unless cleanup is
+confirmed and writes a redacted `staging-gate.json`; production cannot be
+selected by an argument. A force-killed process still requires the manual
+secret/object audit in the staging runbook.
 
 ## Required fixture set
 

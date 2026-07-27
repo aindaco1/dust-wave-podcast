@@ -8,11 +8,35 @@ import {
   type VirtualMediaManifest,
   type VirtualMediaSegmentKind
 } from "./virtual-media";
+import {
+  readBoundedBytes,
+  RequestValidationError
+} from "./validation";
 
 const {
   virtual: SYNTHETIC_MIDROLL_MANIFEST,
   baseline: SYNTHETIC_BASELINE_MANIFEST
 } = syntheticFixtureManifests();
+const SYNTHETIC_FIXTURE_OBJECTS = new Map([
+  ...syntheticFixture.sources.map((source) => [
+    source.filename,
+    {
+      filename: source.filename,
+      objectKey: source.objectKey,
+      bytes: source.bytes,
+      sha256: source.sha256
+    }
+  ] as const),
+  [
+    syntheticFixture.assemblies.virtual.filename,
+    {
+      filename: syntheticFixture.assemblies.virtual.filename,
+      objectKey: syntheticFixture.assemblies.virtual.objectKey,
+      bytes: syntheticFixture.assemblies.virtual.bytes,
+      sha256: syntheticFixture.assemblies.virtual.sha256
+    }
+  ] as const
+]);
 
 export async function serveStagingVirtualAudioDiagnostic(
   request: Request,
@@ -20,11 +44,7 @@ export async function serveStagingVirtualAudioDiagnostic(
   suppliedToken: string,
   variant: "virtual" | "baseline" = "virtual"
 ): Promise<Response> {
-  if (
-    env.ENVIRONMENT !== "staging"
-    || !env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN
-    || !timingSafeEqual(suppliedToken, env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN)
-  ) {
+  if (!stagingDiagnosticTokenMatches(env, suppliedToken)) {
     return diagnosticNotFound();
   }
   return serveVirtualMedia(
@@ -34,6 +54,105 @@ export async function serveStagingVirtualAudioDiagnostic(
       ? SYNTHETIC_BASELINE_MANIFEST
       : SYNTHETIC_MIDROLL_MANIFEST
   );
+}
+
+export async function manageStagingVirtualAudioFixtureObject(
+  request: Request,
+  env: PodcastEnv,
+  suppliedToken: string,
+  filename: string
+): Promise<Response> {
+  if (!stagingDiagnosticTokenMatches(env, suppliedToken)) {
+    return diagnosticNotFound();
+  }
+  const fixture = SYNTHETIC_FIXTURE_OBJECTS.get(filename);
+  if (!fixture) return diagnosticNotFound();
+
+  if (request.method === "DELETE") {
+    await env.MEDIA_BUCKET.delete(fixture.objectKey);
+    return new Response(null, {
+      status: 204,
+      headers: diagnosticHeaders()
+    });
+  }
+
+  if (request.method === "PUT") {
+    const declaredLength = Number(request.headers.get("content-length"));
+    const contentType = request.headers.get("content-type")
+      ?.split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    if (
+      !Number.isSafeInteger(declaredLength)
+      || declaredLength !== fixture.bytes
+      || contentType !== syntheticFixture.contentType
+    ) {
+      return diagnosticJson({ error: "invalid_fixture_upload" }, 400);
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = await readBoundedBytes(
+        request,
+        fixture.bytes,
+        "Synthetic fixture"
+      );
+    } catch (error) {
+      return diagnosticJson(
+        { error: "invalid_fixture_upload" },
+        error instanceof RequestValidationError ? error.status : 400
+      );
+    }
+    if (
+      bytes.byteLength !== fixture.bytes
+      || await sha256Bytes(bytes) !== fixture.sha256
+    ) {
+      return diagnosticJson({ error: "fixture_contract_mismatch" }, 400);
+    }
+    const stored = await env.MEDIA_BUCKET.put(fixture.objectKey, bytes, {
+      httpMetadata: {
+        contentType: syntheticFixture.contentType,
+        cacheControl: "private, no-store"
+      }
+    });
+    if (stored.size !== fixture.bytes) {
+      return diagnosticJson({ error: "fixture_storage_failed" }, 503);
+    }
+    return diagnosticJson({
+      filename: fixture.filename,
+      bytes: stored.size,
+      sha256: fixture.sha256,
+      matches: true
+    }, 201);
+  }
+
+  const object = await env.MEDIA_BUCKET.get(fixture.objectKey);
+  if (!object) return diagnosticNotFound();
+  if (request.method === "HEAD") {
+    return new Response(null, {
+      status: 200,
+      headers: diagnosticHeaders({
+        "content-length": String(object.size)
+      })
+    });
+  }
+  if (object.size > fixture.bytes) {
+    return diagnosticJson({
+      filename: fixture.filename,
+      bytes: object.size,
+      sha256: null,
+      matches: false
+    });
+  }
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  const digest = await sha256Bytes(bytes);
+  return diagnosticJson({
+    filename: fixture.filename,
+    bytes: bytes.byteLength,
+    sha256: digest,
+    matches:
+      bytes.byteLength === fixture.bytes
+      && digest === fixture.sha256
+  });
 }
 
 export function serveStagingVirtualAudioPlayer(
@@ -134,14 +253,7 @@ export function serveStagingVirtualAudioPlayer(
 }
 
 function diagnosticNotFound(): Response {
-  return new Response(JSON.stringify({ error: "not_found" }), {
-    status: 404,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff"
-    }
-  });
+  return diagnosticJson({ error: "not_found" }, 404);
 }
 
 function syntheticFixtureManifests(): {
@@ -199,4 +311,46 @@ function syntheticFixtureManifests(): {
 function syntheticSegmentKind(value: string): VirtualMediaSegmentKind {
   if (value === "program" || value === "direct_ad") return value;
   throw new Error("Unsupported synthetic virtual-audio segment kind.");
+}
+
+function stagingDiagnosticTokenMatches(
+  env: PodcastEnv,
+  suppliedToken: string
+): boolean {
+  return env.ENVIRONMENT === "staging"
+    && Boolean(env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN)
+    && timingSafeEqual(
+      suppliedToken,
+      env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN
+    );
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function diagnosticJson(
+  payload: Record<string, unknown>,
+  status = 200
+): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: diagnosticHeaders({
+      "content-type": "application/json; charset=utf-8"
+    })
+  });
+}
+
+function diagnosticHeaders(
+  additions: Record<string, string> = {}
+): Headers {
+  return new Headers({
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-robots-tag": "noindex, nofollow",
+    ...additions
+  });
 }

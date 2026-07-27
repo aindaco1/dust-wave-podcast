@@ -101,6 +101,7 @@ import {
   createAdminClipYouTubeDraft
 } from "./clip-youtube";
 import {
+  manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "./diagnostics";
@@ -370,6 +371,8 @@ const AD_DECISION_AUDIO_PATH =
   /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
 const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
   /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})(?:\/(virtual|baseline))?$/;
+const VIRTUAL_AUDIO_FIXTURE_OBJECT_PATH =
+  /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_-]{32,128})\/objects\/([A-Za-z0-9.-]{1,100})$/;
 const ADMIN_USER_PATH =
   /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)$/;
 const ADMIN_USER_ROLES_PATH =
@@ -555,6 +558,20 @@ async function routeRequest(
     && (method === "GET" || method === "HEAD")
   ) {
     return serveStagingVirtualAudioPlayer(env);
+  }
+  const virtualAudioFixtureObjectMatch = url.pathname.match(
+    VIRTUAL_AUDIO_FIXTURE_OBJECT_PATH
+  );
+  if (
+    virtualAudioFixtureObjectMatch
+    && ["GET", "HEAD", "PUT", "DELETE"].includes(method)
+  ) {
+    return manageStagingVirtualAudioFixtureObject(
+      request,
+      env,
+      virtualAudioFixtureObjectMatch[1],
+      virtualAudioFixtureObjectMatch[2]
+    );
   }
   const virtualAudioDiagnosticMatch = url.pathname.match(
     VIRTUAL_AUDIO_DIAGNOSTIC_PATH

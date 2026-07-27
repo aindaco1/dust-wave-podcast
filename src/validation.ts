@@ -15,6 +15,16 @@ export async function readBoundedText(
   maximumBytes: number,
   bodyName = "Request body"
 ): Promise<string> {
+  return new TextDecoder().decode(
+    await readBoundedBytes(request, maximumBytes, bodyName)
+  );
+}
+
+export async function readBoundedBytes(
+  request: Request,
+  maximumBytes: number,
+  bodyName = "Request body"
+): Promise<Uint8Array> {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0) {
     throw new TypeError("maximumBytes must be a non-negative integer");
   }
@@ -35,7 +45,7 @@ export async function readBoundedText(
     }
   }
 
-  if (!request.body) return "";
+  if (!request.body) return new Uint8Array();
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -70,7 +80,7 @@ export async function readBoundedText(
     bodyBytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(bodyBytes);
+  return bodyBytes;
 }
 
 export async function readJsonObject(

@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   chmod,
   mkdir,
-  mkdtemp,
   readdir,
   readFile,
-  rm,
   writeFile
 } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -57,12 +54,11 @@ const concurrency = boundedInteger(
 );
 const outputDirectory = path.resolve(options.output);
 const fixtureDirectory = path.resolve(outputDirectory, "fixtures");
-const temporaryDirectory = await mkdtemp(
-  path.join(os.tmpdir(), "dust-wave-virtual-audio-gate-")
-);
 const token = randomBytes(48).toString("base64url");
-const uploadedKeys = [];
+const uploadedObjects = [];
 let diagnosticSecretInstalled = false;
+let diagnosticSecretCleanupComplete = true;
+let uploadedObjectCleanupComplete = true;
 let cleanupPromise = null;
 let cleanupComplete = false;
 let completed = false;
@@ -96,9 +92,9 @@ try {
   );
   verifyFixtureEvidence(fixtureEvidence);
   ensureDiagnosticSecretIsAbsent();
-  await preflightAndUploadObjects(fixtureDirectory);
   installDiagnosticSecret();
   await waitForDiagnostic(origin, 200);
+  await preflightAndUploadObjects(fixtureDirectory);
 
   const childEnvironment = {
     ...process.env,
@@ -128,7 +124,6 @@ try {
 } finally {
   await cleanup();
   if (evidenceDirectoryReady) await writeGateEvidence();
-  await rm(temporaryDirectory, { recursive: true, force: true });
 }
 
 if (!completed || !cleanupComplete) {
@@ -158,24 +153,19 @@ async function preflightAndUploadObjects(sourceDirectory) {
     }
   ];
   for (const object of objects) {
-    const existing = path.resolve(
-      temporaryDirectory,
-      `existing-${path.basename(object.filename)}`
-    );
-    const retrieval = runResult(wrangler, [
-      "r2",
-      "object",
-      "get",
-      `${STAGING_BUCKET}/${object.objectKey}`,
-      "--file",
-      existing,
-      "--remote"
-    ]);
-    if (retrieval.status === 0) {
-      const existingBytes = await readFile(existing);
+    const evidenceUrl = diagnosticObjectUrl(object.filename);
+    const retrieval = await fetch(evidenceUrl, {
+      redirect: "error",
+      cache: "no-store"
+    });
+    if (retrieval.status === 200) {
+      const evidence = await retrieval.json();
       if (
-        existingBytes.byteLength !== object.bytes
-        || sha256(existingBytes) !== object.sha256
+        !evidence
+        || typeof evidence !== "object"
+        || evidence.matches !== true
+        || evidence.bytes !== object.bytes
+        || evidence.sha256 !== object.sha256
       ) {
         throw new Error(
           `Refusing to overwrite non-matching staging object ${object.objectKey}.`
@@ -183,45 +173,32 @@ async function preflightAndUploadObjects(sourceDirectory) {
       }
       continue;
     }
-    if (!stripAnsi(retrieval.stderr).includes(
-      "The specified key does not exist."
-    )) {
+    if (retrieval.status !== 404) {
       throw new Error(
         `Could not preflight staging object ${object.objectKey}.`
       );
     }
-    run(wrangler, [
-      "r2",
-      "object",
-      "put",
-      `${STAGING_BUCKET}/${object.objectKey}`,
-      "--file",
-      path.resolve(sourceDirectory, object.filename),
-      "--content-type",
-      contract.contentType,
-      "--remote"
-    ]);
-    uploadedKeys.push(object.objectKey);
-  }
-
-  for (const object of objects) {
-    const downloaded = path.resolve(
-      temporaryDirectory,
-      `verified-${path.basename(object.filename)}`
+    const bytes = await readFile(
+      path.resolve(sourceDirectory, object.filename)
     );
-    run(wrangler, [
-      "r2",
-      "object",
-      "get",
-      `${STAGING_BUCKET}/${object.objectKey}`,
-      "--file",
-      downloaded,
-      "--remote"
-    ]);
-    const bytes = await readFile(downloaded);
+    uploadedObjects.push(object);
+    const upload = await fetch(evidenceUrl, {
+      method: "PUT",
+      redirect: "error",
+      headers: {
+        "content-length": String(bytes.byteLength),
+        "content-type": contract.contentType
+      },
+      body: bytes
+    });
+    const evidence = await upload.json().catch(() => null);
     if (
-      bytes.byteLength !== object.bytes
-      || sha256(bytes) !== object.sha256
+      upload.status !== 201
+      || !evidence
+      || typeof evidence !== "object"
+      || evidence.matches !== true
+      || evidence.bytes !== object.bytes
+      || evidence.sha256 !== object.sha256
     ) {
       throw new Error(
         `Uploaded staging object failed verification: ${object.objectKey}.`
@@ -247,6 +224,7 @@ function installDiagnosticSecret() {
     "staging"
   ], { input: `${token}\n` });
   diagnosticSecretInstalled = true;
+  diagnosticSecretCleanupComplete = false;
 }
 
 async function waitForDiagnostic(targetOrigin, expectedStatus) {
@@ -278,7 +256,37 @@ async function cleanup() {
 }
 
 async function performCleanup() {
-  let cleanupFailed = false;
+  for (const object of [...uploadedObjects].reverse()) {
+    try {
+      const deletion = await fetch(diagnosticObjectUrl(object.filename), {
+        method: "DELETE",
+        redirect: "error",
+        cache: "no-store"
+      });
+      if (deletion.status !== 204) {
+        uploadedObjectCleanupComplete = false;
+        process.stderr.write(
+          `Cleanup warning: could not delete staging object ${object.objectKey}.\n`
+        );
+        continue;
+      }
+      const verification = await fetch(
+        diagnosticObjectUrl(object.filename),
+        { redirect: "error", cache: "no-store" }
+      );
+      if (verification.status !== 404) {
+        uploadedObjectCleanupComplete = false;
+        process.stderr.write(
+          `Cleanup warning: staging object remains ${object.objectKey}.\n`
+        );
+      }
+    } catch {
+      uploadedObjectCleanupComplete = false;
+      process.stderr.write(
+        `Cleanup warning: could not verify staging object ${object.objectKey}.\n`
+      );
+    }
+  }
   if (diagnosticSecretInstalled) {
     const deletion = runResult(wrangler, [
       "secret",
@@ -288,7 +296,6 @@ async function performCleanup() {
       "staging"
     ], { input: "y\n" });
     if (deletion.status !== 0) {
-      cleanupFailed = true;
       process.stderr.write(
         `Cleanup warning: could not delete ${DIAGNOSTIC_SECRET}.\n`
       );
@@ -299,56 +306,17 @@ async function performCleanup() {
         if (diagnosticSecretNamePresent()) {
           throw new Error("Diagnostic secret name is still present.");
         }
+        diagnosticSecretCleanupComplete = true;
       } catch {
-        cleanupFailed = true;
         process.stderr.write(
           "Cleanup warning: diagnostic secret removal did not propagate.\n"
         );
       }
     }
   }
-  for (const objectKey of [...uploadedKeys].reverse()) {
-    const deletion = runResult(wrangler, [
-      "r2",
-      "object",
-      "delete",
-      `${STAGING_BUCKET}/${objectKey}`,
-      "--remote",
-      "--force"
-    ]);
-    if (deletion.status !== 0) {
-      cleanupFailed = true;
-      process.stderr.write(
-        `Cleanup warning: could not delete staging object ${objectKey}.\n`
-      );
-    }
-  }
-  for (const objectKey of uploadedKeys) {
-    const verification = runResult(wrangler, [
-      "r2",
-      "object",
-      "get",
-      `${STAGING_BUCKET}/${objectKey}`,
-      "--file",
-      path.resolve(
-        temporaryDirectory,
-        `cleanup-${path.basename(objectKey)}`
-      ),
-      "--remote"
-    ]);
-    if (
-      verification.status === 0
-      || !stripAnsi(verification.stderr).includes(
-        "The specified key does not exist."
-      )
-    ) {
-      cleanupFailed = true;
-      process.stderr.write(
-        `Cleanup warning: staging object remains unverified ${objectKey}.\n`
-      );
-    }
-  }
-  cleanupComplete = !cleanupFailed;
+  cleanupComplete =
+    uploadedObjectCleanupComplete
+    && diagnosticSecretCleanupComplete;
 }
 
 function diagnosticSecretNamePresent() {
@@ -389,8 +357,8 @@ async function writeGateEvidence() {
     result: {
       passed: completed,
       cleanupComplete,
-      temporarySecretRemoved: !diagnosticSecretInstalled,
-      uploadedObjectsRemoved: cleanupComplete,
+      temporarySecretRemoved: diagnosticSecretCleanupComplete,
+      uploadedObjectsRemoved: uploadedObjectCleanupComplete,
       failureCode: failureMessage ? "gate_failed" : null
     }
   };
@@ -482,12 +450,12 @@ function runResult(command, args, options = {}) {
   return result;
 }
 
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function stripAnsi(value) {
-  return value.replace(/\u001b\[[0-9;]*m/g, "");
+function diagnosticObjectUrl(filename) {
+  return new URL(
+    `/v1/diagnostics/virtual-audio/${encodeURIComponent(token)}`
+    + `/objects/${encodeURIComponent(filename)}`,
+    origin
+  );
 }
 
 function boundedInteger(value, name, minimum, maximum) {
