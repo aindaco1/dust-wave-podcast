@@ -123,7 +123,15 @@ iHeartRadio, and Deezer.
   launch channel before Queue consumption. Ordinary Publish remains a
   provider-free dry run, production mode remains inert, and any interrupted
   or provider-ambiguous upload is quarantined for reconciliation instead of
-  replayed.
+  replayed. The implemented reconciliation path requires a recent
+  Super-admin either to verify the exact unlisted provider video and channel
+  or to attest explicitly that no channel video remains; both outcomes are
+  audited and neither replays an ambiguous upload. The next media boundary
+  renders an audio-only YouTube rendition from the exact approved delivery
+  master and show artwork, validates the complete H.264/AAC output, and pins
+  that immutable evidence into this same approval contract. Native video
+  remains a separate, preferred source and premium-only bonuses remain
+  ineligible.
 
 ### H1 premium and revenue
 
