@@ -7,18 +7,18 @@ import path from "node:path";
 process.umask(0o077);
 const options = parseOptions(process.argv.slice(2));
 const token = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN;
-const versionAffinityKey =
-  process.env.VIRTUAL_AUDIO_VERSION_AFFINITY_KEY;
+const versionOverrideId =
+  process.env.VIRTUAL_AUDIO_VERSION_OVERRIDE_ID;
 if (!token || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
   fail(
     "VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN must be supplied through the environment."
   );
 }
 if (
-  versionAffinityKey
-  && !/^[A-Za-z0-9_-]{16,128}$/.test(versionAffinityKey)
+  versionOverrideId
+  && !/^[a-f0-9-]{36}$/.test(versionOverrideId)
 ) {
-  fail("VIRTUAL_AUDIO_VERSION_AFFINITY_KEY is invalid.");
+  fail("VIRTUAL_AUDIO_VERSION_OVERRIDE_ID is invalid.");
 }
 if (!options.origin || !options.output) {
   fail(
@@ -182,7 +182,7 @@ const evidence = {
   scope: {
     syntheticProtocolEmulation: true,
     nativeClientValidation: false,
-    versionAffinity: Boolean(versionAffinityKey),
+    versionOverride: Boolean(versionOverrideId),
     note:
       "User-Agent probes validate HTTP invariants only; they do not count "
       + "as real native-app playback evidence."
@@ -230,8 +230,11 @@ async function rangedProbe(
 async function probe(name, init = {}, clientProfile = null) {
   const startedAt = performance.now();
   const headers = new Headers(init.headers);
-  if (versionAffinityKey) {
-    headers.set("cloudflare-workers-version-key", versionAffinityKey);
+  if (versionOverrideId) {
+    headers.set(
+      "cloudflare-workers-version-overrides",
+      `dust-wave-podcast-staging="${versionOverrideId}"`
+    );
   }
   const response = await fetch(diagnosticUrl, {
     redirect: "error",

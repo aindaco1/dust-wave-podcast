@@ -55,7 +55,7 @@ const concurrency = boundedInteger(
 const outputDirectory = path.resolve(options.output);
 const fixtureDirectory = path.resolve(outputDirectory, "fixtures");
 const token = randomBytes(48).toString("base64url");
-let versionAffinityKey = randomBytes(24).toString("base64url");
+let versionOverrideId = null;
 const uploadedObjects = [];
 let diagnosticSecretInstalled = false;
 let diagnosticSecretCleanupComplete = true;
@@ -93,7 +93,7 @@ try {
   );
   verifyFixtureEvidence(fixtureEvidence);
   ensureDiagnosticSecretIsAbsent();
-  installDiagnosticSecret();
+  await installDiagnosticSecret();
   await waitForDiagnostic(origin, 200);
   await preflightAndUploadObjects(fixtureDirectory);
   await waitForVirtualAudioStability();
@@ -101,7 +101,7 @@ try {
   const childEnvironment = {
     ...process.env,
     VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: token,
-    VIRTUAL_AUDIO_VERSION_AFFINITY_KEY: versionAffinityKey
+    VIRTUAL_AUDIO_VERSION_OVERRIDE_ID: versionOverrideId
   };
   run(process.execPath, [
     path.resolve(repositoryRoot, "scripts/run-virtual-audio-protocol-matrix.mjs"),
@@ -219,7 +219,8 @@ function ensureDiagnosticSecretIsAbsent() {
   }
 }
 
-function installDiagnosticSecret() {
+async function installDiagnosticSecret() {
+  const previousDeploymentId = latestStagingDeployment()?.id ?? null;
   run(wrangler, [
     "secret",
     "put",
@@ -229,6 +230,22 @@ function installDiagnosticSecret() {
   ], { input: `${token}\n` });
   diagnosticSecretInstalled = true;
   diagnosticSecretCleanupComplete = false;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const deployment = latestStagingDeployment();
+    const version = deployment?.versions?.[0];
+    if (
+      deployment
+      && deployment.id !== previousDeploymentId
+      && deployment.versions.length === 1
+      && version?.percentage === 100
+      && /^[a-f0-9-]{36}$/.test(version.version_id)
+    ) {
+      versionOverrideId = version.version_id;
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error("Could not resolve the temporary secret Worker version.");
 }
 
 async function waitForDiagnostic(targetOrigin, expectedStatus) {
@@ -359,7 +376,7 @@ async function performCleanup() {
       );
     } else {
       diagnosticSecretInstalled = false;
-      versionAffinityKey = randomBytes(24).toString("base64url");
+      versionOverrideId = null;
       try {
         await waitForDiagnostic(origin, 404);
         if (diagnosticSecretNamePresent()) {
@@ -410,7 +427,7 @@ async function writeGateEvidence() {
     scope: {
       syntheticProtocolEmulation: true,
       nativeClientValidation: false,
-      versionAffinity: true,
+      versionOverride: true,
       pairs,
       totalMeasuredRequests: pairs * 2
     },
@@ -520,8 +537,37 @@ function diagnosticObjectUrl(filename) {
 
 function diagnosticFetch(url, init = {}) {
   const headers = new Headers(init.headers);
-  headers.set("cloudflare-workers-version-key", versionAffinityKey);
+  if (versionOverrideId) {
+    headers.set(
+      "cloudflare-workers-version-overrides",
+      `dust-wave-podcast-staging="${versionOverrideId}"`
+    );
+  }
   return fetch(url, { ...init, headers });
+}
+
+function latestStagingDeployment() {
+  const result = runResult(wrangler, [
+    "deployments",
+    "list",
+    "--env",
+    "staging",
+    "--json"
+  ]);
+  if (result.status !== 0) {
+    throw new Error("Could not inspect staging Worker deployments.");
+  }
+  let deployments;
+  try {
+    deployments = JSON.parse(result.stdout);
+  } catch {
+    throw new Error("Wrangler returned invalid deployment JSON.");
+  }
+  if (!Array.isArray(deployments) || deployments.length === 0) return null;
+  return [...deployments].sort(
+    (left, right) =>
+      Date.parse(right.created_on) - Date.parse(left.created_on)
+  )[0];
 }
 
 function boundedInteger(value, name, minimum, maximum) {

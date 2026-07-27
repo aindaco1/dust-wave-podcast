@@ -114,10 +114,12 @@ exact-name, hash-verifying, staging-only R2-binding endpoint, runs both
 matrices, and removes the token and only the objects it uploaded. Before
 recording evidence it requires ten consecutive exact one-byte range responses,
 so secret-deployment propagation is setup rather than a hidden matrix retry.
-All setup and matrix requests share a random Cloudflare version-affinity key
-that is separate from the diagnostic token and omitted from evidence, avoiding
-cross-version routing during the temporary secret deployment. Signal handling
-also attempts the same cleanup. The command fails unless cleanup is
+The wrapper resolves the temporary secret's exact 100% Worker version from
+Wrangler's JSON deployment record and pins setup and matrix requests with
+Cloudflare's version-override header. The UUID is represented only as a
+boolean capability in evidence, and the override is cleared before
+secret-removal verification. Signal handling also attempts the same cleanup.
+The command fails unless cleanup is
 confirmed and writes a redacted `staging-gate.json`; production cannot be
 selected by an argument. A force-killed process still requires the manual
 secret/object audit in the staging runbook.

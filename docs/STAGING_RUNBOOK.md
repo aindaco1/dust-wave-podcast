@@ -612,8 +612,9 @@ before writing through the Worker's private R2 binding. It preserves matching
 pre-existing objects, removes only objects uploaded by the current run, waits
 for ten consecutive ranged readiness probes before recording evidence, waits
 for secret removal to propagate, and fails if cleanup cannot be confirmed. A
-separate random Cloudflare version-affinity key pins setup and matrix requests
-to one deployed Worker version and is not written to evidence.
+Cloudflare version override pins setup and matrix requests to the exact
+temporary-secret Worker version and is cleared before secret-removal
+verification.
 After an uncatchable force kill, list staging secret names and inspect the four
 exact `fixtures/virtual-audio/` keys before doing anything else; never use a
 prefix-wide delete.
