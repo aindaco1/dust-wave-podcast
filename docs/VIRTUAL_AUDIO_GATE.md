@@ -114,8 +114,10 @@ exact-name, hash-verifying, staging-only R2-binding endpoint, runs both
 matrices, and removes the token and only the objects it uploaded. Before
 recording evidence it requires ten consecutive exact one-byte range responses,
 so secret-deployment propagation is setup rather than a hidden matrix retry.
-Signal handling also attempts the same cleanup. The command fails unless
-cleanup is
+All setup and matrix requests share a random Cloudflare version-affinity key
+that is separate from the diagnostic token and omitted from evidence, avoiding
+cross-version routing during the temporary secret deployment. Signal handling
+also attempts the same cleanup. The command fails unless cleanup is
 confirmed and writes a redacted `staging-gate.json`; production cannot be
 selected by an argument. A force-killed process still requires the manual
 secret/object audit in the staging runbook.

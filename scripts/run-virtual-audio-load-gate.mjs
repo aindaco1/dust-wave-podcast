@@ -10,10 +10,18 @@ import contract from "../config/virtual-audio-synthetic-fixture.json"
 process.umask(0o077);
 const options = parseOptions(process.argv.slice(2));
 const token = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN;
+const versionAffinityKey =
+  process.env.VIRTUAL_AUDIO_VERSION_AFFINITY_KEY;
 if (!token || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
   fail(
     "VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN must be supplied through the environment."
   );
+}
+if (
+  versionAffinityKey
+  && !/^[A-Za-z0-9_-]{16,128}$/.test(versionAffinityKey)
+) {
+  fail("VIRTUAL_AUDIO_VERSION_AFFINITY_KEY is invalid.");
 }
 if (!options.origin || !options.output) {
   fail(
@@ -110,6 +118,7 @@ const evidence = {
     concurrency,
     warmupPairsExcluded: WARMUP_PAIRS,
     nativeClientValidation: false,
+    versionAffinity: Boolean(versionAffinityKey),
     note:
       "Paired edge-to-Worker timings include public-network variance. "
       + "The baseline is the byte-identical preassembled private-R2 object."
@@ -152,8 +161,8 @@ if (!passed) process.exit(1);
 async function verifyHeads() {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const [virtual, baseline] = await Promise.all([
-      fetch(urls.virtual, { method: "HEAD", redirect: "error" }),
-      fetch(urls.baseline, { method: "HEAD", redirect: "error" })
+      diagnosticFetch(urls.virtual, { method: "HEAD", redirect: "error" }),
+      diagnosticFetch(urls.baseline, { method: "HEAD", redirect: "error" })
     ]);
     const valid = [virtual, baseline].every((response) =>
       response.status === 200
@@ -229,7 +238,7 @@ async function executePair(index, measured) {
 async function probe(variant, pattern) {
   const startedAt = performance.now();
   try {
-    const response = await fetch(urls[variant], {
+    const response = await diagnosticFetch(urls[variant], {
       redirect: "error",
       headers: {
         range: pattern.range,
@@ -264,6 +273,14 @@ async function probe(variant, pattern) {
       sha256: null
     };
   }
+}
+
+function diagnosticFetch(url, init = {}) {
+  const headers = new Headers(init.headers);
+  if (versionAffinityKey) {
+    headers.set("cloudflare-workers-version-key", versionAffinityKey);
+  }
+  return fetch(url, { ...init, headers });
 }
 
 function requestPattern(index) {

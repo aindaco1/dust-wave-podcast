@@ -55,6 +55,7 @@ const concurrency = boundedInteger(
 const outputDirectory = path.resolve(options.output);
 const fixtureDirectory = path.resolve(outputDirectory, "fixtures");
 const token = randomBytes(48).toString("base64url");
+let versionAffinityKey = randomBytes(24).toString("base64url");
 const uploadedObjects = [];
 let diagnosticSecretInstalled = false;
 let diagnosticSecretCleanupComplete = true;
@@ -99,7 +100,8 @@ try {
 
   const childEnvironment = {
     ...process.env,
-    VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: token
+    VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN: token,
+    VIRTUAL_AUDIO_VERSION_AFFINITY_KEY: versionAffinityKey
   };
   run(process.execPath, [
     path.resolve(repositoryRoot, "scripts/run-virtual-audio-protocol-matrix.mjs"),
@@ -155,7 +157,7 @@ async function preflightAndUploadObjects(sourceDirectory) {
   ];
   for (const object of objects) {
     const evidenceUrl = diagnosticObjectUrl(object.filename);
-    const retrieval = await fetch(evidenceUrl, {
+    const retrieval = await diagnosticFetch(evidenceUrl, {
       redirect: "error",
       cache: "no-store"
     });
@@ -184,7 +186,7 @@ async function preflightAndUploadObjects(sourceDirectory) {
       path.resolve(sourceDirectory, object.filename)
     );
     uploadedObjects.push(object);
-    const upload = await fetch(evidenceUrl, {
+    const upload = await diagnosticFetch(evidenceUrl, {
       method: "PUT",
       redirect: "error",
       headers: {
@@ -238,12 +240,12 @@ async function waitForDiagnostic(targetOrigin, expectedStatus) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
       const [response, objectResponse] = await Promise.all([
-        fetch(url, {
+        diagnosticFetch(url, {
           method: "HEAD",
           redirect: "error",
           cache: "no-store"
         }),
-        fetch(objectUrl, {
+        diagnosticFetch(objectUrl, {
           redirect: "error",
           cache: "no-store"
         })
@@ -276,7 +278,7 @@ async function waitForVirtualAudioStability() {
     try {
       const url = new URL(baseUrl);
       url.searchParams.set("readiness", String(attempt));
-      const response = await fetch(url, {
+      const response = await diagnosticFetch(url, {
         redirect: "error",
         cache: "no-store",
         headers: { range: "bytes=0-0" }
@@ -311,11 +313,14 @@ async function cleanup() {
 async function performCleanup() {
   for (const object of [...uploadedObjects].reverse()) {
     try {
-      const deletion = await fetch(diagnosticObjectUrl(object.filename), {
-        method: "DELETE",
-        redirect: "error",
-        cache: "no-store"
-      });
+      const deletion = await diagnosticFetch(
+        diagnosticObjectUrl(object.filename),
+        {
+          method: "DELETE",
+          redirect: "error",
+          cache: "no-store"
+        }
+      );
       if (deletion.status !== 204) {
         uploadedObjectCleanupComplete = false;
         process.stderr.write(
@@ -323,7 +328,7 @@ async function performCleanup() {
         );
         continue;
       }
-      const verification = await fetch(
+      const verification = await diagnosticFetch(
         diagnosticObjectUrl(object.filename),
         { redirect: "error", cache: "no-store" }
       );
@@ -354,6 +359,7 @@ async function performCleanup() {
       );
     } else {
       diagnosticSecretInstalled = false;
+      versionAffinityKey = randomBytes(24).toString("base64url");
       try {
         await waitForDiagnostic(origin, 404);
         if (diagnosticSecretNamePresent()) {
@@ -404,6 +410,7 @@ async function writeGateEvidence() {
     scope: {
       syntheticProtocolEmulation: true,
       nativeClientValidation: false,
+      versionAffinity: true,
       pairs,
       totalMeasuredRequests: pairs * 2
     },
@@ -509,6 +516,12 @@ function diagnosticObjectUrl(filename) {
     + `/objects/${encodeURIComponent(filename)}`,
     origin
   );
+}
+
+function diagnosticFetch(url, init = {}) {
+  const headers = new Headers(init.headers);
+  headers.set("cloudflare-workers-version-key", versionAffinityKey);
+  return fetch(url, { ...init, headers });
 }
 
 function boundedInteger(value, name, minimum, maximum) {

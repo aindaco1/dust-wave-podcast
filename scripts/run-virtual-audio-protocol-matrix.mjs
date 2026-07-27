@@ -7,10 +7,18 @@ import path from "node:path";
 process.umask(0o077);
 const options = parseOptions(process.argv.slice(2));
 const token = process.env.VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN;
+const versionAffinityKey =
+  process.env.VIRTUAL_AUDIO_VERSION_AFFINITY_KEY;
 if (!token || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
   fail(
     "VIRTUAL_AUDIO_DIAGNOSTIC_TOKEN must be supplied through the environment."
   );
+}
+if (
+  versionAffinityKey
+  && !/^[A-Za-z0-9_-]{16,128}$/.test(versionAffinityKey)
+) {
+  fail("VIRTUAL_AUDIO_VERSION_AFFINITY_KEY is invalid.");
 }
 if (!options.origin || !options.output) {
   fail(
@@ -174,6 +182,7 @@ const evidence = {
   scope: {
     syntheticProtocolEmulation: true,
     nativeClientValidation: false,
+    versionAffinity: Boolean(versionAffinityKey),
     note:
       "User-Agent probes validate HTTP invariants only; they do not count "
       + "as real native-app playback evidence."
@@ -220,9 +229,14 @@ async function rangedProbe(
 
 async function probe(name, init = {}, clientProfile = null) {
   const startedAt = performance.now();
+  const headers = new Headers(init.headers);
+  if (versionAffinityKey) {
+    headers.set("cloudflare-workers-version-key", versionAffinityKey);
+  }
   const response = await fetch(diagnosticUrl, {
     redirect: "error",
-    ...init
+    ...init,
+    headers
   });
   const body = new Uint8Array(await response.arrayBuffer());
   const result = {
