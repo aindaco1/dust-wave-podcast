@@ -35,6 +35,7 @@ export type ImportPlanRow = {
   resolved_feed_url_sha256: string;
   resolved_feed_display_url: string;
   feed_sha256: string;
+  source_podcast_guid: string | null;
   selection_sha256: string;
   feed_title: string;
   feed_item_count: number;
@@ -147,6 +148,7 @@ export async function createAdminRssImportPlan(
   if (preview.feedSha256 !== expectedFeedSha256) {
     return planConflict(request, env, "rss_import_feed_changed");
   }
+  assertPodcastGuidCompatibility(show, preview);
   const items = await selectedSnapshotItems(
     preview.episodes,
     selectedSourceIdentities
@@ -176,10 +178,10 @@ export async function createAdminRssImportPlan(
          id, show_id,
          requested_feed_url_sha256, requested_feed_display_url,
          resolved_feed_url_sha256, resolved_feed_display_url,
-         feed_sha256, selection_sha256, feed_title,
+         feed_sha256, source_podcast_guid, selection_sha256, feed_title,
          feed_item_count, migratable_item_count, selected_item_count,
          requested_by_admin_user_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       planId,
       showId,
@@ -188,6 +190,7 @@ export async function createAdminRssImportPlan(
       await sha256Hex(preview.resolvedUrl),
       displayUrl(preview.resolvedUrl),
       preview.feedSha256,
+      preview.podcastGuid,
       selectionSha256,
       preview.title,
       preview.itemCount,
@@ -231,7 +234,8 @@ export async function createAdminRssImportPlan(
         showId,
         feedSha256: preview.feedSha256,
         selectionSha256,
-        selectedItemCount: items.length
+        selectedItemCount: items.length,
+        sourcePodcastGuidPresent: preview.podcastGuid !== null
       }
     })
   ];
@@ -314,7 +318,7 @@ export async function reviewAdminRssImportPlan(
   }
 
   try {
-    await reconcileRssImportPlanSource(feedUrl, existing);
+    await reconcileRssImportPlanSource(env.DB, feedUrl, existing);
   } catch (error) {
     if (
       error instanceof RequestValidationError
@@ -480,7 +484,8 @@ export async function listAdminRssImportPlans(
        plan.requested_feed_display_url,
        plan.resolved_feed_url_sha256,
        plan.resolved_feed_display_url,
-       plan.feed_sha256, plan.selection_sha256, plan.feed_title,
+       plan.feed_sha256, plan.source_podcast_guid,
+       plan.selection_sha256, plan.feed_title,
        plan.feed_item_count, plan.migratable_item_count,
        plan.selected_item_count, plan.status,
        plan.cancellation_reason_sha256,
@@ -595,6 +600,7 @@ function presentPlan(
     requestedFeedUrl: plan.requested_feed_display_url,
     resolvedFeedUrl: plan.resolved_feed_display_url,
     feedSha256: plan.feed_sha256,
+    sourcePodcastGuid: plan.source_podcast_guid,
     selectionSha256: plan.selection_sha256,
     feedTitle: plan.feed_title,
     feedItemCount: plan.feed_item_count,
@@ -636,7 +642,7 @@ export async function loadRssImportPlanEvidence(
        id, show_id,
        requested_feed_url_sha256, requested_feed_display_url,
        resolved_feed_url_sha256, resolved_feed_display_url,
-       feed_sha256, selection_sha256, feed_title,
+       feed_sha256, source_podcast_guid, selection_sha256, feed_title,
        feed_item_count, migratable_item_count, selected_item_count,
        status, cancellation_reason_sha256,
        requested_at, reviewed_at, canceled_at, updated_at
@@ -659,6 +665,7 @@ export async function loadRssImportPlanEvidence(
 }
 
 export async function reconcileRssImportPlanSource(
+  db: D1Database,
   feedUrl: string,
   evidence: {
     plan: ImportPlanRow;
@@ -669,6 +676,15 @@ export async function reconcileRssImportPlanSource(
   items: PlanSnapshotItem[];
 }> {
   const preview = await loadPodcastRssImportPreview(feedUrl);
+  const show = await loadActiveShow(db, evidence.plan.show_id);
+  if (!show) {
+    throw new RequestValidationError(
+      "The target show is unavailable.",
+      "rss_import_show_unavailable",
+      409
+    );
+  }
+  assertPodcastGuidCompatibility(show, preview);
   const items = await selectedSnapshotItems(
     preview.episodes,
     evidence.items.map(({ source_identity_sha256 }) =>
@@ -677,6 +693,7 @@ export async function reconcileRssImportPlanSource(
   );
   if (
     preview.feedSha256 !== evidence.plan.feed_sha256
+    || preview.podcastGuid !== evidence.plan.source_podcast_guid
     || await sha256Hex(preview.resolvedUrl)
       !== evidence.plan.resolved_feed_url_sha256
     || await selectionDigest(items)
@@ -695,10 +712,43 @@ export async function reconcileRssImportPlanSource(
 async function loadActiveShow(
   db: D1Database,
   showId: string
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; podcast_guid: string | null } | null> {
   return db.prepare(
-    `SELECT id FROM shows WHERE id = ? AND status != 'archived'`
-  ).bind(showId).first<{ id: string }>();
+    `SELECT id, podcast_guid
+     FROM shows
+     WHERE id = ? AND status != 'archived'`
+  ).bind(showId).first<{ id: string; podcast_guid: string | null }>();
+}
+
+function assertPodcastGuidCompatibility(
+  show: { podcast_guid: string | null },
+  preview: {
+    podcastGuid: string | null;
+    podcastGuidStatus: "absent" | "valid" | "invalid";
+  }
+): void {
+  if (preview.podcastGuidStatus === "invalid") {
+    throw new RequestValidationError(
+      "The source feed has invalid Podcasting 2.0 channel identity.",
+      "rss_import_podcast_guid_invalid",
+      409
+    );
+  }
+  if (preview.podcastGuidStatus === "absent") return;
+  if (!show.podcast_guid) {
+    throw new RequestValidationError(
+      "Assign the source channel GUID to the show before planning migration.",
+      "rss_import_show_podcast_guid_unassigned",
+      409
+    );
+  }
+  if (show.podcast_guid !== preview.podcastGuid) {
+    throw new RequestValidationError(
+      "The source feed and target show have different channel identities.",
+      "rss_import_podcast_guid_mismatch",
+      409
+    );
+  }
 }
 
 function selectedIdentityList(value: unknown): string[] {

@@ -215,7 +215,7 @@ export async function createAdminRssImportExecution(
     });
   }
 
-  await reconcileRssImportPlanSource(feedUrl, evidence);
+  await reconcileRssImportPlanSource(env.DB, feedUrl, evidence);
   const show = await env.DB.prepare(
     `SELECT id, slug
      FROM shows
@@ -514,7 +514,11 @@ export async function processRssImportExecutionItem(
     }
     const evidence = await loadRssImportPlanEvidence(env.DB, row.plan_id);
     if (!evidence) throw executionError("rss_import_plan_not_found");
-    const reconciled = await reconcileRssImportPlanSource(feedUrl, evidence);
+    const reconciled = await reconcileRssImportPlanSource(
+      env.DB,
+      feedUrl,
+      evidence
+    );
     const source = reconciled.preview.episodes.find(({ sourceIdentitySha256 }) =>
       sourceIdentitySha256 === row.source_identity_sha256
     );

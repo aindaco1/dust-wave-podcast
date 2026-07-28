@@ -8,6 +8,10 @@ import type { PodcastEnv } from "./env";
 import { fetchWithTimeout } from "./fetch-with-timeout";
 import { privateJson } from "./http";
 import {
+  discoverPodcastGuid,
+  type PodcastGuidDiscovery
+} from "./podcast-guid";
+import {
   readJsonObject,
   RequestValidationError,
   requiredText,
@@ -51,6 +55,7 @@ const RESERVED_HOST_SUFFIXES = [
 type PreviewShowRow = {
   id: string;
   title: string;
+  podcast_guid: string | null;
 };
 
 type ImportFeedResponse = {
@@ -90,6 +95,8 @@ export type RssImportPreview = {
   language: string | null;
   artworkUrl: string | null;
   ownerEmailPresent: boolean;
+  podcastGuid: string | null;
+  podcastGuidStatus: PodcastGuidDiscovery["status"];
   itemCount: number;
   audioItemCount: number;
   migratableItemCount: number;
@@ -134,7 +141,7 @@ export async function previewAdminRssImport(
     requiredText(body.feedUrl, "feedUrl", 2_000)
   );
   const show = await env.DB.prepare(
-    `SELECT id, title
+    `SELECT id, title, podcast_guid
      FROM shows
      WHERE id = ? AND status != 'archived'`
   ).bind(showId).first<PreviewShowRow>();
@@ -151,7 +158,8 @@ export async function previewAdminRssImport(
   return privateJson(request, env.ALLOWED_ORIGINS, {
     show: {
       id: show.id,
-      title: show.title
+      title: show.title,
+      podcastGuid: show.podcast_guid
     },
     preview,
     importMutationPerformed: false
@@ -250,6 +258,7 @@ export async function parsePodcastRssImportPreview(
       /<itunes:owner\b[^>]*>[\s\S]*?<itunes:email\b[^>]*>[\s\S]+?<\/itunes:email>[\s\S]*?<\/itunes:owner>/iu
     )
   );
+  const podcastGuid = discoverPodcastGuid(normalized, channelMetadata);
   const episodes = await Promise.all(items.map(parseEpisodePreview));
   const audioItemCount = episodes.filter(
     ({ enclosure }) => enclosure.mimeType?.startsWith("audio/")
@@ -270,6 +279,8 @@ export async function parsePodcastRssImportPreview(
     language,
     artworkUrl,
     ownerEmailPresent,
+    podcastGuid: podcastGuid.guid,
+    podcastGuidStatus: podcastGuid.status,
     itemCount: episodes.length,
     audioItemCount,
     migratableItemCount,

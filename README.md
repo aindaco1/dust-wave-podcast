@@ -50,10 +50,15 @@ staging execution boundary are also implemented. A recently authenticated super-
 must confirm import rights; the Worker performs a bounded,
 redirect-controlled public-HTTPS fetch, sanitizes RSS metadata, hides the
 owner address, and reports which items have valid audio enclosures and stable
-import identity. A selected plan freezes the exact feed, source identities,
-metadata, and query-stripped display URLs. Review requires the exact source
-URL to be re-entered and re-fetches the feed before accepting byte-identical
-evidence. Preparing and reviewing remain zero-copy.
+import identity. It also discovers the source Podcasting 2.0 channel UUIDv5
+under any correctly declared namespace prefix and presents it beside the
+destination identity. A selected plan freezes the exact feed, source channel
+GUID or explicit absence, source episode identities, metadata, and
+query-stripped display URLs. Invalid, conflicting, or valid-but-unassigned
+channel identity fails closed; migration never silently replaces show
+identity. Review requires the exact source URL to be re-entered and re-fetches
+the feed before accepting byte-identical identity and content evidence.
+Preparing and reviewing remain zero-copy.
 
 Only `RSS_IMPORT_EXECUTION_MODE=staging_copy`, a dedicated
 `RSS_IMPORT_URL_SECRET`, another exact feed reconciliation, recent

@@ -4,8 +4,71 @@ export const PODCAST_GUID_NAMESPACE =
 export const PODCAST_GUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
+const PODCAST_NAMESPACE_URIS = new Set([
+  "https://podcastindex.org/namespace/1.0",
+  "https://github.com/Podcastindex-org/podcast-namespace/blob/main/docs/1.0.md"
+]);
+
+export type PodcastGuidDiscovery = {
+  status: "absent" | "valid" | "invalid";
+  guid: string | null;
+};
+
 export function isPodcastGuid(value: unknown): value is string {
   return typeof value === "string" && PODCAST_GUID_PATTERN.test(value);
+}
+
+export function discoverPodcastGuid(
+  rssDocument: string,
+  channelMetadata: string
+): PodcastGuidDiscovery {
+  const rootAttributes = rssDocument.match(/<rss\b([^>]*)>/iu)?.[1] ?? "";
+  const prefixes = [...rootAttributes.matchAll(
+    /xmlns:([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(?:"([^"]+)"|'([^']+)')/gu
+  )]
+    .filter((match) =>
+      PODCAST_NAMESPACE_URIS.has(match[2] ?? match[3] ?? "")
+    )
+    .map((match) => match[1]);
+  const uniquePrefixes = [...new Set(prefixes)];
+  if (
+    /<podcast:guid\b/iu.test(channelMetadata)
+    && !uniquePrefixes.includes("podcast")
+  ) {
+    return { status: "invalid", guid: null };
+  }
+  if (uniquePrefixes.length === 0) {
+    return { status: "absent", guid: null };
+  }
+
+  let openingCount = 0;
+  const values: string[] = [];
+  for (const prefix of uniquePrefixes) {
+    const escapedPrefix = escapeRegex(prefix);
+    openingCount += countMatches(
+      channelMetadata,
+      new RegExp(`<${escapedPrefix}:guid\\b`, "giu")
+    );
+    values.push(
+      ...[...channelMetadata.matchAll(
+        new RegExp(
+          `<${escapedPrefix}:guid\\s*>([^<]+)<\\/${escapedPrefix}:guid\\s*>`,
+          "giu"
+        )
+      )].map((match) => match[1].trim())
+    );
+  }
+  if (openingCount === 0) {
+    return { status: "absent", guid: null };
+  }
+  if (
+    openingCount !== 1
+    || values.length !== 1
+    || !isPodcastGuid(values[0])
+  ) {
+    return { status: "invalid", guid: null };
+  }
+  return { status: "valid", guid: values[0] };
 }
 
 export async function podcastGuidForFeedUrl(
@@ -68,4 +131,12 @@ function formatUuid(bytes: Uint8Array): string {
     hex.slice(16, 20),
     hex.slice(20, 32)
   ].join("-");
+}
+
+function countMatches(value: string, pattern: RegExp): number {
+  return [...value.matchAll(pattern)].length;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }

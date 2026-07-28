@@ -365,10 +365,14 @@ than 500 items, and malformed RSS structure. It reduces remote titles and
 summaries to bounded plain text, revalidates every returned URL, hashes the
 exact feed and each GUID/enclosure identity, previews at most 25 items, and
 returns only an owner-email presence boolean. External HTML, an owner address,
-raw GUID, cookies, response headers, and provider bodies never enter the
-response, D1, audit metadata, or logs. The preview performs no import-domain,
-R2, directory, redirect, or provider mutation; the normal admin-session
-last-seen heartbeat remains unchanged.
+raw episode GUID, cookies, response headers, and provider bodies never enter
+the response, D1, audit metadata, or logs. The canonical source channel GUID is
+the exception: the parser discovers one attribute-free lowercase UUIDv5 under
+the declared Podcasting 2.0 namespace, and the private preview presents it
+beside the destination show's stored identity. Missing is explicit; malformed
+or duplicated identity is invalid. The preview performs no import-domain, R2,
+directory, redirect, or provider mutation; the normal admin-session last-seen
+heartbeat remains unchanged.
 
 Preparing a migration plan is a second zero-copy boundary for recently
 authenticated super-admins. It re-fetches the authorized feed and binds one to
@@ -377,12 +381,19 @@ per-item metadata/enclosure digests. D1 retains hashes for the exact requested,
 resolved, and enclosure URLs but only query/fragment-stripped display URLs, so
 signed source tokens do not become plan or audit data. Item evidence and plan
 identity/count/digest evidence cannot be updated or deleted. Only the
-draft-to-reviewed or terminal canceled state may change.
+draft-to-reviewed or terminal canceled state may change. A valid source
+channel GUID must exactly equal the destination show's already assigned GUID;
+invalid, conflicting, or valid-but-unassigned identity fails closed. The plan
+freezes the exact source GUID, or explicit absence, and a trigger prevents it
+from changing. No import route silently derives, assigns, or replaces show
+identity.
 
 Review requires the exact feed URL to be supplied again, explicit rights and
 selection confirmation, recent authentication, CSRF, and a fresh source
 fetch. A changed redirect target, feed byte, selected identity, or metadata
-digest fails closed. Cancellation stores and audits only a purpose-bound
+digest fails closed. The source-versus-show channel identity and frozen plan
+value are reconciled again before review and execution. Cancellation stores
+and audits only a purpose-bound
 reason digest. List responses are private/no-store and show-scoped; mutating
 routes remain super-admin-only. The APIs explicitly return zero-copy and
 zero-episode-mutation flags and have no R2, Queue, provider, redirect, or

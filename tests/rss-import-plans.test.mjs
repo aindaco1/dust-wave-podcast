@@ -204,6 +204,118 @@ describe("reviewed RSS import plans", () => {
     expect(() => harness.database.prepare(
       "DELETE FROM rss_import_plans WHERE id = 'opera_import_plan'"
     ).run()).toThrow(/rss_import_plans_immutable/u);
+    expect(() => harness.database.prepare(
+      `UPDATE rss_import_plans
+       SET source_podcast_guid = ?
+       WHERE id = 'opera_import_plan'`
+    ).run(
+      "d21642df-1816-55c8-b308-6209066e9ef6"
+    )).toThrow(/rss_import_plan_podcast_guid_immutable/u);
+  });
+
+  it("freezes a matching source GUID and rejects invalid or conflicting identity", async () => {
+    const harness = await createHarness();
+    const assignedGuid = "d21642df-1816-55c8-b308-6209066e9ef6";
+    const matchingFeed = withPodcastGuid(validPodcastFeed(), assignedGuid);
+    const preview = await parsePodcastRssImportPreview(
+      matchingFeed,
+      signedFeedUrl
+    );
+    vi.stubGlobal("fetch", vi.fn(async () => feedResponse(matchingFeed)));
+
+    const prepared = await preparePlan(harness, preview);
+    expect(prepared.status).toBe(200);
+    expect(await prepared.json()).toMatchObject({
+      plan: {
+        sourcePodcastGuid: assignedGuid
+      }
+    });
+    expect(
+      harness.database.prepare(
+        "SELECT source_podcast_guid FROM rss_import_plans"
+      ).get()
+    ).toEqual({ source_podcast_guid: assignedGuid });
+
+    const conflictHarness = await createHarness();
+    const conflictingFeed = withPodcastGuid(
+      validPodcastFeed(),
+      "917393e3-1b1e-5cef-ace4-edaa54e1f810"
+    );
+    const conflictingPreview = await parsePodcastRssImportPreview(
+      conflictingFeed,
+      signedFeedUrl
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => feedResponse(conflictingFeed))
+    );
+    const conflict = await preparePlan(
+      conflictHarness,
+      conflictingPreview
+    );
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      error: "rss_import_podcast_guid_mismatch"
+    });
+    expect(conflictHarness.planCount()).toBe(0);
+
+    const invalidHarness = await createHarness();
+    const invalidFeed = withPodcastGuid(
+      validPodcastFeed(),
+      "not-a-podcast-guid"
+    );
+    const invalidPreview = await parsePodcastRssImportPreview(
+      invalidFeed,
+      signedFeedUrl
+    );
+    vi.stubGlobal("fetch", vi.fn(async () => feedResponse(invalidFeed)));
+    const invalid = await preparePlan(invalidHarness, invalidPreview);
+    expect(invalid.status).toBe(409);
+    expect(await invalid.json()).toMatchObject({
+      error: "rss_import_podcast_guid_invalid"
+    });
+    expect(invalidHarness.planCount()).toBe(0);
+  });
+
+  it("requires one-time show identity assignment before freezing a source GUID", async () => {
+    const harness = await createHarness();
+    harness.database.prepare(
+      `INSERT INTO shows (
+         id, slug, title, canonical_url, rss_slug
+       ) VALUES (
+         'show_unassigned',
+         'unassigned',
+         'Unassigned',
+         'https://dustwave.xyz/podcasts/unassigned/',
+         'unassigned'
+       )`
+    ).run();
+    const sourceGuid = "917393e3-1b1e-5cef-ace4-edaa54e1f810";
+    const feed = withPodcastGuid(validPodcastFeed(), sourceGuid);
+    const preview = await parsePodcastRssImportPreview(feed, signedFeedUrl);
+    vi.stubGlobal("fetch", vi.fn(async () => feedResponse(feed)));
+
+    const response = await handleRequest(
+      adminRequest(
+        "/v1/admin/shows/show_unassigned/rss-import/plans",
+        {
+          planId: "unassigned_import_plan",
+          feedUrl: signedFeedUrl,
+          ownershipConfirmed: true,
+          expectedFeedSha256: preview.feedSha256,
+          selectedSourceIdentitySha256: [
+            preview.episodes[0].sourceIdentitySha256
+          ]
+        }
+      ),
+      harness.env
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "rss_import_show_podcast_guid_unassigned"
+    });
+    expect(harness.planCount()).toBe(0);
   });
 
   it("rejects a changed feed during review and preserves the draft", async () => {
@@ -456,6 +568,19 @@ function validPodcastFeed() {
     </item>
   </channel>
 </rss>`;
+}
+
+function withPodcastGuid(feed, guid) {
+  return feed
+    .replace(
+      "<rss version=\"2.0\"",
+      "<rss version=\"2.0\" "
+        + "xmlns:podcast=\"https://podcastindex.org/namespace/1.0\""
+    )
+    .replace(
+      "<channel>",
+      `<channel><podcast:guid>${guid}</podcast:guid>`
+    );
 }
 
 function d1Database(database) {

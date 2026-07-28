@@ -29,6 +29,8 @@ describe("RSS migration preview", () => {
       description: "Historias desde la selva.",
       language: "es-mx",
       ownerEmailPresent: true,
+      podcastGuid: null,
+      podcastGuidStatus: "absent",
       itemCount: 1,
       audioItemCount: 1,
       migratableItemCount: 1,
@@ -57,6 +59,35 @@ describe("RSS migration preview", () => {
     );
     expect(JSON.stringify(preview)).not.toContain("owner@example.org");
     expect(JSON.stringify(preview)).not.toContain("<p>");
+  });
+
+  it("reports a canonical source GUID and marks malformed identity invalid", async () => {
+    const guid = "d21642df-1816-55c8-b308-6209066e9ef6";
+    const feed = validPodcastFeed()
+      .replace(
+        "<rss version=\"2.0\"",
+        "<rss version=\"2.0\" "
+          + "xmlns:p20=\"https://podcastindex.org/namespace/1.0\""
+      )
+      .replace("<channel>", `<channel><p20:guid>${guid}</p20:guid>`);
+    await expect(
+      parsePodcastRssImportPreview(
+        feed,
+        "https://podcast.example.org/feed.xml"
+      )
+    ).resolves.toMatchObject({
+      podcastGuid: guid,
+      podcastGuidStatus: "valid"
+    });
+    await expect(
+      parsePodcastRssImportPreview(
+        feed.replace(guid, "not-a-uuid"),
+        "https://podcast.example.org/feed.xml"
+      )
+    ).resolves.toMatchObject({
+      podcastGuid: null,
+      podcastGuidStatus: "invalid"
+    });
   });
 
   it("reports newsletter image items without treating them as episodes", async () => {
@@ -149,6 +180,11 @@ describe("RSS migration preview", () => {
     );
     const payload = await response.json() as {
       importMutationPerformed: boolean;
+      show: {
+        id: string;
+        title: string;
+        podcastGuid: string | null;
+      };
       preview: {
         redirectCount: number;
         resolvedUrl: string;
@@ -159,6 +195,11 @@ describe("RSS migration preview", () => {
     expect(response.status).toBe(200);
     expect(payload).toMatchObject({
       importMutationPerformed: false,
+      show: {
+        id: "show_opera",
+        title: "Ópera en la Selva",
+        podcastGuid: "d21642df-1816-55c8-b308-6209066e9ef6"
+      },
       preview: {
         redirectCount: 1,
         resolvedUrl: "https://feeds.example.org/opera.xml",
@@ -219,12 +260,13 @@ async function routeFixture({
             return recent ? { recent: 1 } : null;
           }
           if (
-            query.includes("SELECT id, title")
+            query.includes("SELECT id, title, podcast_guid")
             && query.includes("FROM shows")
           ) {
             return {
               id: "show_opera",
-              title: "Ópera en la Selva"
+              title: "Ópera en la Selva",
+              podcast_guid: "d21642df-1816-55c8-b308-6209066e9ef6"
             };
           }
           return null;

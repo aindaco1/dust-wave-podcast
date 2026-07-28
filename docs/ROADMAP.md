@@ -68,7 +68,11 @@ iHeartRadio, and Deezer.
   bounded public-HTTPS fetches and safe XML reduction report which source
   items are real migratable audio without exposing the owner email. The
   reviewed-plan boundary freezes up to 25 selected source identities, exact
-  feed/metadata digests, and query-stripped display URLs, then requires a
+  feed/metadata digests, query-stripped display URLs, and the source
+  Podcasting 2.0 channel UUIDv5 or explicit absence. The bilingual admin
+  compares that identity with the destination show before selection; invalid,
+  conflicting, or valid-but-unassigned identity blocks planning. No migration
+  route silently replaces show identity. The plan then requires a
   recently authenticated Super-admin to re-enter and re-fetch the exact feed
   before review. Preparing, reviewing, listing, or canceling this immutable
   evidence performs zero media copies and zero episode mutations. The next

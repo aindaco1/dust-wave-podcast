@@ -428,9 +428,13 @@ most 5 MiB/500 RSS items. XML entity/doctype declarations, invalid UTF-8,
 unsupported content types, unsafe episode/enclosure URLs, and malformed
 catalogs fail closed. The private response returns sanitized plain-text
 metadata, content digests, counts, and at most 25 item summaries. It reports
-only whether an owner email exists; it never returns the address. The route
-does not create or update a show, episode, media object, redirect, directory,
-or provider object. The ordinary authenticated-session heartbeat may still
+only whether an owner email exists; it never returns the address. The response
+also returns the destination show's stored `podcastGuid` plus the source
+channel's canonical Podcasting 2.0 `podcastGuid` and
+`podcastGuidStatus` (`absent`, `valid`, or `invalid`). An alternate XML prefix
+is accepted only when it declares the canonical namespace URI. The route does
+not create or update a show, episode, media object, redirect, directory, or
+provider object. The ordinary authenticated-session heartbeat may still
 advance.
 
 Plan preparation accepts exactly `planId`, `feedUrl`,
@@ -440,7 +444,12 @@ a changed feed or a non-migratable/out-of-preview selection, and persists
 immutable per-item metadata/enclosure digests. Full query-bearing feed and
 enclosure URLs are not retained: D1 stores their SHA-256 values and
 query/fragment-free display forms. Exact retries by plan ID are idempotent;
-another plan for the same show/feed/selection conflicts.
+another plan for the same show/feed/selection conflicts. A malformed source
+channel GUID, a valid source GUID that differs from the destination show, or a
+valid source GUID targeting a show without an assigned identity fails closed.
+When valid, the exact source GUID is frozen into the immutable plan. `NULL`
+records that the source feed had no channel GUID; plan preparation never
+silently assigns or replaces a show's identity.
 
 Review accepts the exact `feedUrl`, `ownershipConfirmed: true`,
 `reviewConfirmed: true`, `expectedFeedSha256`, and
@@ -450,7 +459,9 @@ metadata digest to match. Cancel accepts `expectedSelectionSha256` and a
 bounded reason, but retains and audits only its purpose-bound SHA-256. All plan
 responses explicitly report `mediaCopyPerformed: false` and
 `episodeMutationPerformed: false`; none of these routes writes R2, the episode
-catalog, redirects, directories, or providers.
+catalog, redirects, directories, or providers. Review and execution re-run the
+same source-versus-show channel-identity gate and require the newly fetched
+GUID state to match the frozen plan.
 
 Execution is a separate, fail-closed boundary. It is available only with
 `RSS_IMPORT_EXECUTION_MODE=staging_copy` and a dedicated
