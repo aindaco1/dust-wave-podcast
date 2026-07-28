@@ -297,6 +297,8 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/rss-import/plans` | recently authenticated super-admin | Re-fetch and freeze one exact 1–25 episode selection without copying media or creating episodes |
 | `POST` | `/v1/admin/rss-import/plans/{id}/review` | recently authenticated super-admin | Re-fetch and reconcile the exact feed, selection, and metadata before marking the zero-copy plan reviewed |
 | `POST` | `/v1/admin/rss-import/plans/{id}/cancel` | recently authenticated super-admin | Terminally cancel a plan while retaining only a digest of the internal reason |
+| `GET` | `/v1/admin/rss-import/plans/{id}/execution` | analyst+ | Read private-copy/draft evidence and whether this environment permits execution |
+| `POST` | `/v1/admin/rss-import/plans/{id}/execution` | recently authenticated super-admin | Staging-only exact-feed reconciliation and immutable queueing of private source-audio copies plus unpublished draft episodes |
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
@@ -407,6 +409,28 @@ bounded reason, but retains and audits only its purpose-bound SHA-256. All plan
 responses explicitly report `mediaCopyPerformed: false` and
 `episodeMutationPerformed: false`; none of these routes writes R2, the episode
 catalog, redirects, directories, or providers.
+
+Execution is a separate, fail-closed boundary. It is available only with
+`RSS_IMPORT_EXECUTION_MODE=staging_copy` and a dedicated
+`RSS_IMPORT_URL_SECRET`; production is committed as `disabled`. Creation
+accepts exactly an execution ID, the re-entered feed URL, both reviewed
+digests, `executionConfirmed: true`, and one exact target slug/source-language
+mapping for every selected identity. It requires a reviewed plan, recent
+Super-admin authentication, same-origin CSRF, unused show-local slugs, and one
+more byte/metadata reconciliation before D1 and Queue work are created.
+
+The URL is purpose-bound AES-GCM ciphertext in D1 for at most seven days. Queue
+messages contain only execution/show/source-identity values and digests. Each
+item re-reconciles the feed, follows at most two independently checked HTTPS
+audio redirects, enforces the reviewed content type and byte count with a
+1 GiB ceiling, and streams once into private R2 while computing SHA-256. A
+successful copy atomically creates one `draft`/`processing` episode, its
+stable source GUID and canonical News URL, and completed private
+`source_audio` upload evidence. It does not assign delivery audio or create
+publication, News, RSS, redirect, directory, YouTube, email, ad, billing, or
+provider work. Queue recovery is bounded to five attempts; item and execution
+responses expose only stable error codes and content-free reconciliation
+evidence. An execution locks its reviewed plan against cancellation.
 
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |

@@ -1,0 +1,775 @@
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { sha256Hex } from "@dustwave/worker-core/crypto";
+
+import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
+import { handleRequest } from "../src/app";
+import { processRssImportExecutionItem } from "../src/rss-import-executions";
+import { parsePodcastRssImportPreview } from "../src/rss-import-preview";
+
+const migrationsDirectory = fileURLToPath(
+  new URL("../migrations/", import.meta.url)
+);
+const siteOrigin = "https://dust-wave-website-staging.pages.dev";
+const apiOrigin = "https://dust-wave-podcast-staging.jogo.workers.dev";
+const sessionSecret = "rss_import_execution_session_secret";
+const sessionToken = "rss_import_execution_session";
+const csrfToken = "rss_import_execution_csrf";
+const urlSecret = "rss_import_url_secret_at_least_32_characters";
+const feedUrl =
+  "https://podcast.example.org/feed.xml?token=private-feed-token";
+const audioUrl =
+  "https://cdn.example.org/audio/uno.mp3?token=private-audio-token";
+const audio = new TextEncoder().encode("ID3-private-import-fixture");
+
+let harnesses = [];
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  for (const harness of harnesses) harness.database.close();
+  harnesses = [];
+});
+
+describe("RSS import executions", () => {
+  it("streams one reviewed source into private R2 and a draft without publishing", async () => {
+    installDigestStream();
+    const harness = await createHarness();
+    const plan = await createReviewedPlan(harness);
+    const provider = vi.fn(async (input) => {
+      const url = String(input);
+      if (url === feedUrl) return feedResponse(validPodcastFeed());
+      if (url === audioUrl) {
+        return new Response(audio, {
+          status: 200,
+          headers: {
+            "content-type": "audio/mpeg",
+            "content-length": String(audio.byteLength)
+          }
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", provider);
+    const executionRequestBody = {
+      executionId: "rss_execution_fixture",
+      feedUrl,
+      expectedFeedSha256: plan.feedSha256,
+      expectedSelectionSha256: plan.selectionSha256,
+      executionConfirmed: true,
+      items: [{
+        sourceIdentitySha256:
+          plan.items[0].sourceIdentitySha256,
+        targetSlug: "episodio-importado",
+        sourceLanguage: "es"
+      }]
+    };
+
+    const queued = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/execution`,
+        executionRequestBody
+      ),
+      harness.env
+    );
+    expect(queued.status).toBe(202);
+    expect(await queued.json()).toMatchObject({
+      execution: {
+        id: "rss_execution_fixture",
+        status: "queued",
+        expectedItemCount: 1,
+        copiedItemCount: 0,
+        draftItemCount: 0,
+        sourceUrlRetained: true,
+        items: [{
+          targetSlug: "episodio-importado",
+          status: "queued"
+        }]
+      },
+      idempotent: false,
+      publicationMutationPerformed: false,
+      redirectMutationPerformed: false,
+      providerContactPerformed: false
+    });
+    expect(harness.queueMessages).toHaveLength(1);
+    expect(JSON.stringify(harness.queueMessages)).not.toContain(
+      "private-feed-token"
+    );
+    expect(JSON.stringify(harness.queueMessages)).not.toContain(
+      "private-audio-token"
+    );
+    expect(harness.persistedExecutionText()).not.toContain(
+      "private-feed-token"
+    );
+    expect(harness.persistedExecutionText()).not.toContain(
+      "private-audio-token"
+    );
+    expect(harness.episodeCount()).toBe(0);
+    expect(harness.puts).toBe(0);
+
+    const exactRetry = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/execution`,
+        executionRequestBody
+      ),
+      harness.env
+    );
+    expect(exactRetry.status).toBe(200);
+    expect(await exactRetry.json()).toMatchObject({
+      execution: { id: "rss_execution_fixture", status: "queued" },
+      idempotent: true
+    });
+    expect(harness.queueMessages).toHaveLength(1);
+
+    const job = harness.queueMessages[0];
+    await processRssImportExecutionItem(harness.env, job);
+
+    expect(harness.puts).toBe(1);
+    expect(harness.deletes).toBe(0);
+    expect(harness.storedBytes()).toEqual(audio);
+    expect(harness.storedMetadata()).toMatchObject({
+      kind: "rss_import_source_audio",
+      executionId: "rss_execution_fixture",
+      planId: plan.id,
+      sourceIdentitySha256: plan.items[0].sourceIdentitySha256
+    });
+    const episode = harness.database.prepare(
+      `SELECT
+         id, slug, title, summary, status, access, public_at,
+         audio_key, source_audio_key, media_status, source_language
+       FROM episodes
+       WHERE slug = 'episodio-importado'`
+    ).get();
+    expect(episode).toMatchObject({
+      slug: "episodio-importado",
+      title: "Episodio uno",
+      summary: "Una introducción bilingüe.",
+      status: "draft",
+      access: "public",
+      public_at: "2026-07-26T12:00:00.000Z",
+      audio_key: null,
+      media_status: "processing",
+      source_language: "es"
+    });
+    expect(episode.source_audio_key).toContain(
+      "/source_audio/rss-import-rss_execution_fixture.mp3"
+    );
+    const upload = harness.database.prepare(
+      `SELECT
+         kind, status, content_type, expected_bytes, completed_bytes,
+         object_etag
+       FROM media_uploads
+       WHERE episode_id = ?`
+    ).get(episode.id);
+    expect(upload).toMatchObject({
+      kind: "source_audio",
+      status: "completed",
+      content_type: "audio/mpeg",
+      expected_bytes: audio.byteLength,
+      completed_bytes: audio.byteLength,
+      object_etag: '"rss-import-etag"'
+    });
+    expect(harness.database.prepare(
+      "SELECT COUNT(*) AS count FROM distribution_jobs"
+    ).get().count).toBe(0);
+    expect(harness.database.prepare(
+      "SELECT COUNT(*) AS count FROM site_publications"
+    ).get().count).toBe(0);
+    const execution = harness.database.prepare(
+      `SELECT
+         status, copied_item_count, draft_item_count, failed_item_count,
+         feed_url_ciphertext
+       FROM rss_import_executions
+       WHERE id = 'rss_execution_fixture'`
+    ).get();
+    expect(execution).toMatchObject({
+      status: "succeeded",
+      copied_item_count: 1,
+      draft_item_count: 1,
+      failed_item_count: 0,
+      feed_url_ciphertext:
+        "not_retained:rss_import_execution_complete:v1"
+    });
+    const item = harness.database.prepare(
+      `SELECT
+         status, copied_bytes, copied_sha256, copied_mime_type,
+         episode_id, last_error_code
+       FROM rss_import_execution_items
+       WHERE execution_id = 'rss_execution_fixture'`
+    ).get();
+    expect(item).toMatchObject({
+      status: "succeeded",
+      copied_bytes: audio.byteLength,
+      copied_sha256: createHash("sha256").update(audio).digest("hex"),
+      copied_mime_type: "audio/mpeg",
+      episode_id: episode.id,
+      last_error_code: null
+    });
+    expect(harness.persistedExecutionText()).not.toContain(
+      "private-feed-token"
+    );
+    expect(harness.persistedExecutionText()).not.toContain(
+      "private-audio-token"
+    );
+
+    const fetchesAfterSuccess = provider.mock.calls.length;
+    await processRssImportExecutionItem(harness.env, job);
+    expect(provider).toHaveBeenCalledTimes(fetchesAfterSuccess);
+    expect(harness.puts).toBe(1);
+    expect(harness.episodeCount()).toBe(1);
+
+    const listed = await handleRequest(
+      adminGet(`/v1/admin/rss-import/plans/${plan.id}/execution`),
+      harness.env
+    );
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      execution: {
+        status: "succeeded",
+        copiedItemCount: 1,
+        draftItemCount: 1,
+        sourceUrlRetained: false
+      },
+      publicationMutationPerformed: false
+    });
+    const canceled = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/cancel`,
+        {
+          expectedSelectionSha256: plan.selectionSha256,
+          reason: "Execution already created"
+        }
+      ),
+      harness.env
+    );
+    expect(canceled.status).toBe(409);
+    expect(await canceled.json()).toEqual({
+      error: "rss_import_plan_has_execution"
+    });
+  });
+
+  it("fails closed on changed audio metadata and creates no draft", async () => {
+    installDigestStream();
+    const harness = await createHarness();
+    const plan = await createReviewedPlan(harness);
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+      if (String(input) === feedUrl) {
+        return feedResponse(validPodcastFeed());
+      }
+      return new Response(audio, {
+        status: 200,
+        headers: {
+          "content-type": "audio/ogg",
+          "content-length": String(audio.byteLength)
+        }
+      });
+    }));
+    const queued = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/execution`,
+        {
+          executionId: "rss_execution_mime_failure",
+          feedUrl,
+          expectedFeedSha256: plan.feedSha256,
+          expectedSelectionSha256: plan.selectionSha256,
+          executionConfirmed: true,
+          items: [{
+            sourceIdentitySha256:
+              plan.items[0].sourceIdentitySha256,
+            targetSlug: "episodio-fallido",
+            sourceLanguage: "es"
+          }]
+        }
+      ),
+      harness.env
+    );
+    expect(queued.status).toBe(202);
+    await expect(
+      processRssImportExecutionItem(
+        harness.env,
+        harness.queueMessages[0]
+      )
+    ).rejects.toThrow("rss_import_audio_content_type_changed");
+    expect(harness.episodeCount()).toBe(0);
+    expect(harness.puts).toBe(0);
+    expect(harness.database.prepare(
+      `SELECT status, last_error_code
+       FROM rss_import_execution_items
+       WHERE execution_id = 'rss_execution_mime_failure'`
+    ).get()).toEqual({
+      status: "failed",
+      last_error_code: "rss_import_audio_content_type_changed"
+    });
+  });
+
+  it("removes an overlong streamed object and creates no draft", async () => {
+    installDigestStream();
+    const harness = await createHarness();
+    const plan = await createReviewedPlan(harness);
+    const oversized = new Uint8Array(audio.byteLength + 1);
+    oversized.set(audio);
+    oversized[oversized.length - 1] = 1;
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+      if (String(input) === feedUrl) {
+        return feedResponse(validPodcastFeed());
+      }
+      return new Response(oversized, {
+        status: 200,
+        headers: { "content-type": "audio/mpeg" }
+      });
+    }));
+    const queued = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/execution`,
+        {
+          executionId: "rss_execution_size_failure",
+          feedUrl,
+          expectedFeedSha256: plan.feedSha256,
+          expectedSelectionSha256: plan.selectionSha256,
+          executionConfirmed: true,
+          items: [{
+            sourceIdentitySha256:
+              plan.items[0].sourceIdentitySha256,
+            targetSlug: "episodio-size-failure",
+            sourceLanguage: "es"
+          }]
+        }
+      ),
+      harness.env
+    );
+    expect(queued.status).toBe(202);
+    await expect(
+      processRssImportExecutionItem(
+        harness.env,
+        harness.queueMessages[0]
+      )
+    ).rejects.toThrow("rss_import_audio_size_mismatch");
+    expect(harness.deletes).toBe(1);
+    expect(harness.storedBytes()).toBeUndefined();
+    expect(harness.episodeCount()).toBe(0);
+    expect(harness.database.prepare(
+      `SELECT status, last_error_code
+       FROM rss_import_execution_items
+       WHERE execution_id = 'rss_execution_size_failure'`
+    ).get()).toEqual({
+      status: "failed",
+      last_error_code: "rss_import_audio_size_mismatch"
+    });
+  });
+
+  it("does not create an execution if review is canceled during reconciliation", async () => {
+    const harness = await createHarness();
+    const plan = await createReviewedPlan(harness);
+    let canceled = false;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      if (!canceled) {
+        harness.database.prepare(
+          `UPDATE rss_import_plans
+           SET
+             status = 'canceled',
+             canceled_by_admin_user_id = 'rss_execution_admin',
+             cancellation_reason_sha256 = ?,
+             canceled_at = datetime('now'),
+             updated_at = datetime('now')
+           WHERE id = ?`
+        ).run("c".repeat(64), plan.id);
+        canceled = true;
+      }
+      return feedResponse(validPodcastFeed());
+    }));
+    const response = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/execution`,
+        {
+          executionId: "rss_execution_canceled_race",
+          feedUrl,
+          expectedFeedSha256: plan.feedSha256,
+          expectedSelectionSha256: plan.selectionSha256,
+          executionConfirmed: true,
+          items: [{
+            sourceIdentitySha256:
+              plan.items[0].sourceIdentitySha256,
+            targetSlug: "episodio-canceled-race",
+            sourceLanguage: "es"
+          }]
+        }
+      ),
+      harness.env
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "rss_import_plan_not_reviewed"
+    });
+    expect(harness.database.prepare(
+      "SELECT COUNT(*) AS count FROM rss_import_executions"
+    ).get().count).toBe(0);
+    expect(harness.queueMessages).toHaveLength(0);
+    expect(harness.episodeCount()).toBe(0);
+    expect(harness.puts).toBe(0);
+  });
+
+  it("keeps production-disabled execution closed before D1, Queue, or R2", async () => {
+    let touched = 0;
+    const closed = await handleRequest(
+      adminRequest(
+        "/v1/admin/rss-import/plans/plan_fixture/execution",
+        {}
+      ),
+      {
+        ENVIRONMENT: "production",
+        RSS_IMPORT_EXECUTION_MODE: "disabled",
+        ALLOWED_ORIGINS: siteOrigin,
+        DB: {
+          prepare() {
+            touched += 1;
+            throw new Error("D1 must stay closed");
+          }
+        },
+        JOBS: {
+          async send() {
+            touched += 1;
+          }
+        },
+        MEDIA_BUCKET: {
+          async put() {
+            touched += 1;
+          }
+        }
+      }
+    );
+    expect(closed.status).toBe(404);
+    expect(await closed.json()).toEqual({
+      error: "rss_import_execution_unavailable"
+    });
+    expect(touched).toBe(0);
+  });
+});
+
+async function createReviewedPlan(harness) {
+  const preview = await parsePodcastRssImportPreview(
+    validPodcastFeed(),
+    feedUrl
+  );
+  vi.stubGlobal("fetch", vi.fn(async () =>
+    feedResponse(validPodcastFeed())
+  ));
+  const created = await handleRequest(
+    adminRequest(
+      "/v1/admin/shows/show_opera_en_la_selva/rss-import/plans",
+      {
+        planId: "rss_plan_for_execution",
+        feedUrl,
+        ownershipConfirmed: true,
+        expectedFeedSha256: preview.feedSha256,
+        selectedSourceIdentitySha256: [
+          preview.episodes[0].sourceIdentitySha256
+        ]
+      }
+    ),
+    harness.env
+  );
+  expect(created.status).toBe(200);
+  const plan = (await created.json()).plan;
+  const reviewed = await handleRequest(
+    adminRequest(
+      `/v1/admin/rss-import/plans/${plan.id}/review`,
+      {
+        feedUrl,
+        ownershipConfirmed: true,
+        expectedFeedSha256: plan.feedSha256,
+        expectedSelectionSha256: plan.selectionSha256,
+        reviewConfirmed: true
+      }
+    ),
+    harness.env
+  );
+  expect(reviewed.status).toBe(200);
+  return (await reviewed.json()).plan;
+}
+
+async function createHarness() {
+  const database = new DatabaseSync(":memory:");
+  applyMigrations(database);
+  const sessionTokenHash = await sha256Hex(
+    `${sessionSecret}:${sessionToken}`
+  );
+  const csrfTokenHash = await sha256Hex(
+    `${sessionSecret}:${csrfToken}`
+  );
+  database.prepare(`
+    INSERT INTO admin_users (
+      id, email_lookup_hash, status, activated_at, last_authenticated_at
+    ) VALUES (
+      'rss_execution_admin',
+      ?,
+      'active',
+      datetime('now'),
+      datetime('now')
+    )
+  `).run("d".repeat(64));
+  database.prepare(`
+    INSERT INTO admin_user_roles (
+      id, admin_user_id, role, show_id
+    ) VALUES (
+      'rss_execution_role',
+      'rss_execution_admin',
+      'super_admin',
+      NULL
+    )
+  `).run();
+  database.prepare(`
+    INSERT INTO admin_sessions (
+      token_hash, admin_user_id, csrf_token_hash, expires_at
+    ) VALUES (?, 'rss_execution_admin', ?, datetime('now', '+1 hour'))
+  `).run(sessionTokenHash, csrfTokenHash);
+
+  const queueMessages = [];
+  let puts = 0;
+  let deletes = 0;
+  let stored = null;
+  const bucket = {
+    async put(key, body, options) {
+      puts += 1;
+      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+      stored = { key, bytes, options };
+      return {
+        key,
+        version: "rss-import-fixture",
+        size: bytes.byteLength,
+        etag: "rss-import-etag",
+        httpEtag: '"rss-import-etag"',
+        uploaded: new Date(),
+        httpMetadata: options.httpMetadata,
+        customMetadata: options.customMetadata,
+        range: undefined,
+        checksums: {
+          toJSON() {
+            return {};
+          }
+        },
+        writeHttpMetadata() {}
+      };
+    },
+    async delete(key) {
+      deletes += 1;
+      if (stored?.key === key) stored = null;
+    }
+  };
+  const harness = {
+    database,
+    queueMessages,
+    get puts() {
+      return puts;
+    },
+    get deletes() {
+      return deletes;
+    },
+    storedBytes() {
+      return stored?.bytes;
+    },
+    storedMetadata() {
+      return stored?.options.customMetadata;
+    },
+    episodeCount() {
+      return Number(database.prepare(
+        `SELECT COUNT(*) AS count
+         FROM episodes
+         WHERE id != 'episode_fixture_that_does_not_exist'`
+      ).get().count);
+    },
+    persistedExecutionText() {
+      return JSON.stringify({
+        executions: database.prepare(
+          "SELECT * FROM rss_import_executions"
+        ).all(),
+        items: database.prepare(
+          "SELECT * FROM rss_import_execution_items"
+        ).all(),
+        audits: database.prepare(
+          `SELECT action, target_type, target_id, metadata_json
+           FROM admin_audit_events`
+        ).all()
+      });
+    },
+    env: {
+      ENVIRONMENT: "staging",
+      RSS_IMPORT_EXECUTION_MODE: "staging_copy",
+      RSS_IMPORT_URL_SECRET: urlSecret,
+      SITE_ORIGIN: siteOrigin,
+      FEED_ORIGIN: apiOrigin,
+      ALLOWED_ORIGINS: `${siteOrigin},http://localhost:8080`,
+      ADMIN_SESSION_SECRET: sessionSecret,
+      MEDIA_KEY_PREFIX: "podcasts/",
+      MEDIA_BUCKET_NAME: "dustwave-media-staging",
+      DB: d1Database(database),
+      MEDIA_BUCKET: bucket,
+      JOBS: {
+        async send(message) {
+          queueMessages.push(message);
+        }
+      }
+    }
+  };
+  harnesses.push(harness);
+  return harness;
+}
+
+function installDigestStream() {
+  const nativeCrypto = globalThis.crypto;
+  class TestDigestStream extends WritableStream {
+    constructor(algorithm) {
+      const chunks = [];
+      let resolveDigest;
+      let rejectDigest;
+      const digest = new Promise((resolve, reject) => {
+        resolveDigest = resolve;
+        rejectDigest = reject;
+      });
+      super({
+        write(chunk) {
+          chunks.push(
+            chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk)
+          );
+        },
+        async close() {
+          try {
+            const bytes = Buffer.concat(
+              chunks.map((chunk) =>
+                Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+              )
+            );
+            resolveDigest(
+              await nativeCrypto.subtle.digest(algorithm, bytes)
+            );
+          } catch (error) {
+            rejectDigest(error);
+          }
+        },
+        abort(error) {
+          rejectDigest(error);
+        }
+      });
+      this.digest = digest;
+    }
+  }
+  vi.stubGlobal("crypto", {
+    subtle: nativeCrypto.subtle,
+    getRandomValues: nativeCrypto.getRandomValues.bind(nativeCrypto),
+    randomUUID: nativeCrypto.randomUUID.bind(nativeCrypto),
+    DigestStream: TestDigestStream
+  });
+}
+
+function adminRequest(path, body) {
+  return new Request(`${apiOrigin}${path}`, {
+    method: "POST",
+    headers: {
+      cookie: `${ADMIN_SESSION_COOKIE}=${sessionToken}`,
+      "content-type": "application/json",
+      origin: siteOrigin,
+      "x-podcast-csrf": csrfToken
+    },
+    body: JSON.stringify(body)
+  });
+}
+
+function adminGet(path) {
+  return new Request(`${apiOrigin}${path}`, {
+    headers: {
+      cookie: `${ADMIN_SESSION_COOKIE}=${sessionToken}`,
+      origin: siteOrigin
+    }
+  });
+}
+
+function feedResponse(feed) {
+  return new Response(feed, {
+    status: 200,
+    headers: {
+      "content-type": "application/rss+xml; charset=utf-8"
+    }
+  });
+}
+
+function validPodcastFeed() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Ópera en la Selva</title>
+    <description>Historias desde la selva.</description>
+    <language>es-MX</language>
+    <item>
+      <title>Episodio uno</title>
+      <guid isPermaLink="false">opera-episode-one</guid>
+      <description>Una introducción bilingüe.</description>
+      <link>https://podcast.example.org/episodes/uno</link>
+      <pubDate>Sun, 26 Jul 2026 12:00:00 GMT</pubDate>
+      <itunes:duration>12:34</itunes:duration>
+      <itunes:explicit>no</itunes:explicit>
+      <enclosure url="${audioUrl}" length="${audio.byteLength}" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>`;
+}
+
+function d1Database(database) {
+  const prepare = (query) => {
+    let values = [];
+    const statement = {
+      bind(...bound) {
+        values = bound;
+        return statement;
+      },
+      async first() {
+        return database.prepare(query).get(...values) ?? null;
+      },
+      async all() {
+        return {
+          success: true,
+          results: database.prepare(query).all(...values),
+          meta: {}
+        };
+      },
+      async run() {
+        return statement.executeRun();
+      },
+      executeRun() {
+        const result = database.prepare(query).run(...values);
+        return {
+          success: true,
+          results: [],
+          meta: { changes: Number(result.changes) }
+        };
+      }
+    };
+    return statement;
+  };
+  return {
+    prepare,
+    async batch(statements) {
+      database.exec("BEGIN");
+      try {
+        const results = statements.map((statement) =>
+          statement.executeRun()
+        );
+        database.exec("COMMIT");
+        return results;
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+    }
+  };
+}
+
+function applyMigrations(database) {
+  for (const filename of readdirSync(migrationsDirectory)
+    .filter((candidate) => candidate.endsWith(".sql"))
+    .sort()) {
+    database.exec(readFileSync(join(migrationsDirectory, filename), "utf8"));
+  }
+}

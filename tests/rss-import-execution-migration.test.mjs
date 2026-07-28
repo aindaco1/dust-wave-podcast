@@ -1,0 +1,86 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+import { describe, expect, it } from "vitest";
+
+const migrationsDirectory = fileURLToPath(
+  new URL("../migrations/", import.meta.url)
+);
+
+describe("RSS import execution migration", () => {
+  it("replays with private-source retention and immutable reconciliation evidence", () => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      applyMigrations(db);
+      const executionColumns = db.prepare(
+        "PRAGMA table_info(rss_import_executions)"
+      ).all().map(({ name }) => name);
+      expect(executionColumns).toEqual(expect.arrayContaining([
+        "feed_url_ciphertext",
+        "feed_url_sha256",
+        "feed_sha256",
+        "selection_sha256",
+        "expected_item_count",
+        "copied_item_count",
+        "draft_item_count",
+        "failed_item_count",
+        "source_url_expires_at"
+      ]));
+      const itemColumns = db.prepare(
+        "PRAGMA table_info(rss_import_execution_items)"
+      ).all().map(({ name }) => name);
+      expect(itemColumns).toEqual(expect.arrayContaining([
+        "target_episode_id",
+        "target_slug",
+        "target_object_key",
+        "attempt_count",
+        "response_resolved_url_sha256",
+        "copied_bytes",
+        "copied_sha256",
+        "copied_etag",
+        "episode_id",
+        "last_error_code"
+      ]));
+      const triggers = db.prepare(
+        `SELECT name
+         FROM sqlite_master
+         WHERE type = 'trigger'
+           AND name LIKE 'rss_import_%'`
+      ).all().map(({ name }) => String(name));
+      expect(triggers).toEqual(expect.arrayContaining([
+        "rss_import_execution_identity_immutable",
+        "rss_import_execution_items_identity_immutable",
+        "rss_import_executions_immutable_delete",
+        "rss_import_execution_items_immutable_delete",
+        "rss_import_plan_execution_lock"
+      ]));
+      const migration = readFileSync(
+        join(migrationsDirectory, "0056_rss_import_executions.sql"),
+        "utf8"
+      );
+      expect(migration).toContain(
+        "substr(feed_url_ciphertext, 1, 11) = 'aes-gcm-v1:'"
+      );
+      expect(migration).toContain("attempt_count BETWEEN 0 AND 5");
+      expect(migration).toContain(
+        "status IN ('queued', 'running', 'succeeded', 'partial', 'failed')"
+      );
+      expect(migration).not.toMatch(/\bDROP\s+(?:TABLE|COLUMN)\b/iu);
+      expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+      expect(db.prepare("PRAGMA quick_check").get()).toEqual({
+        quick_check: "ok"
+      });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+function applyMigrations(database) {
+  for (const filename of readdirSync(migrationsDirectory)
+    .filter((candidate) => candidate.endsWith(".sql"))
+    .sort()) {
+    database.exec(readFileSync(join(migrationsDirectory, filename), "utf8"));
+  }
+}

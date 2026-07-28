@@ -67,15 +67,20 @@ iHeartRadio, and Deezer.
   boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
   bounded public-HTTPS fetches and safe XML reduction report which source
   items are real migratable audio without exposing the owner email. The
-  reviewed-plan boundary now freezes up to 25 selected source identities,
-  exact feed/metadata digests, and query-stripped display URLs, then requires a
+  reviewed-plan boundary freezes up to 25 selected source identities, exact
+  feed/metadata digests, and query-stripped display URLs, then requires a
   recently authenticated Super-admin to re-enter and re-fetch the exact feed
   before review. Preparing, reviewing, listing, or canceling this immutable
-  evidence performs zero media copies and zero episode mutations. A later
-  execution boundary will copy immutable audio into private R2, create draft
-  episode revisions with stable source identities, reconcile post-copy
-  counts/digests, and only then provide the old-host redirect checklist. Never
-  activate a 301 redirect during preview, plan review, or before owner
+  evidence performs zero media copies and zero episode mutations. The next
+  boundary is now implemented only in isolated staging: one more exact
+  reconciliation plus explicit per-item slug/language mapping queues bounded,
+  retry-safe streaming copies into private R2 and creates unpublished draft
+  episodes with stable source identities and post-copy byte/SHA-256 evidence.
+  Production execution stays disabled, protected source URLs are encrypted and
+  short-lived, and the boundary has no News/RSS/YouTube/directory/provider
+  publication path. Working-master review, owner reconciliation, and the
+  old-host redirect checklist remain later gates. Never activate a 301
+  redirect during preview, plan review, private copy, or before owner
   reconciliation.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode

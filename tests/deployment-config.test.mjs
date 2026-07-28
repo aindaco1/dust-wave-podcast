@@ -115,4 +115,17 @@ describe("deployment configuration", () => {
       "disabled"
     );
   });
+
+  it("keeps RSS execution staging-only behind a dedicated secret", () => {
+    const requiredSecrets = new Set(
+      config.env.staging.secrets.required
+    );
+    expect(requiredSecrets.has("RSS_IMPORT_URL_SECRET")).toBe(true);
+    expect(config.env.staging.vars.RSS_IMPORT_EXECUTION_MODE).toBe(
+      "staging_copy"
+    );
+    expect(config.env.production.vars.RSS_IMPORT_EXECUTION_MODE).toBe(
+      "disabled"
+    );
+  });
 });

@@ -27,7 +27,7 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 type ImportPlanStatus = "draft" | "reviewed" | "canceled";
 
-type ImportPlanRow = {
+export type ImportPlanRow = {
   id: string;
   show_id: string;
   requested_feed_url_sha256: string;
@@ -48,7 +48,7 @@ type ImportPlanRow = {
   updated_at: string;
 };
 
-type ImportPlanItemRow = {
+export type ImportPlanItemRow = {
   plan_id: string;
   source_identity_sha256: string;
   ordinal: number;
@@ -66,7 +66,7 @@ type ImportPlanItemRow = {
   warnings_json: string;
 };
 
-type PlanSnapshotItem = {
+export type PlanSnapshotItem = {
   sourceIdentitySha256: string;
   ordinal: number;
   metadataSha256: string;
@@ -122,7 +122,7 @@ export async function createAdminRssImportPlan(
     body.selectedSourceIdentitySha256
   );
 
-  const existing = await loadPlanWithItems(env.DB, planId);
+  const existing = await loadRssImportPlanEvidence(env.DB, planId);
   if (existing) {
     if (
       existing.plan.show_id !== showId
@@ -236,7 +236,7 @@ export async function createAdminRssImportPlan(
     })
   ];
   await env.DB.batch(statements);
-  const created = await loadPlanWithItems(env.DB, planId);
+  const created = await loadRssImportPlanEvidence(env.DB, planId);
   if (!created) {
     return planConflict(request, env, "rss_import_plan_conflict");
   }
@@ -291,7 +291,7 @@ export async function reviewAdminRssImportPlan(
     body.expectedSelectionSha256,
     "expectedSelectionSha256"
   );
-  const existing = await loadPlanWithItems(env.DB, planId);
+  const existing = await loadRssImportPlanEvidence(env.DB, planId);
   if (!existing) return planNotFound(request, env);
   if (
     existing.plan.feed_sha256 !== expectedFeedSha256
@@ -313,22 +313,16 @@ export async function reviewAdminRssImportPlan(
     });
   }
 
-  const preview = await loadPodcastRssImportPreview(feedUrl);
-  const reviewedItems = await selectedSnapshotItems(
-    preview.episodes,
-    existing.items.map(({ source_identity_sha256 }) =>
-      source_identity_sha256
-    )
-  );
-  if (
-    preview.feedSha256 !== existing.plan.feed_sha256
-    || await sha256Hex(preview.resolvedUrl)
-      !== existing.plan.resolved_feed_url_sha256
-    || await selectionDigest(reviewedItems)
-      !== existing.plan.selection_sha256
-    || !sameMetadata(existing.items, reviewedItems)
-  ) {
-    return planConflict(request, env, "rss_import_feed_changed");
+  try {
+    await reconcileRssImportPlanSource(feedUrl, existing);
+  } catch (error) {
+    if (
+      error instanceof RequestValidationError
+      && error.code === "rss_import_feed_changed"
+    ) {
+      return planConflict(request, env, error.code);
+    }
+    throw error;
   }
 
   const [updated] = await env.DB.batch([
@@ -358,7 +352,7 @@ export async function reviewAdminRssImportPlan(
   if (Number(updated.meta.changes ?? 0) !== 1) {
     return planConflict(request, env, "rss_import_plan_conflict");
   }
-  const reviewed = await loadPlanWithItems(env.DB, planId);
+  const reviewed = await loadRssImportPlanEvidence(env.DB, planId);
   if (!reviewed) return planConflict(request, env, "rss_import_plan_conflict");
   return privateJson(request, env.ALLOWED_ORIGINS, {
     plan: presentPlan(reviewed.plan, reviewed.items),
@@ -395,7 +389,7 @@ export async function cancelAdminRssImportPlan(
   const reasonSha256 = await sha256Hex(
     `rss-import-cancellation-v1\0${reason}`
   );
-  const existing = await loadPlanWithItems(env.DB, planId);
+  const existing = await loadRssImportPlanEvidence(env.DB, planId);
   if (!existing) return planNotFound(request, env);
   if (existing.plan.selection_sha256 !== expectedSelectionSha256) {
     return planConflict(request, env, "rss_import_plan_changed");
@@ -411,37 +405,54 @@ export async function cancelAdminRssImportPlan(
       episodeMutationPerformed: false
     });
   }
-  const [updated] = await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE rss_import_plans
-       SET
-         status = 'canceled',
-         canceled_by_admin_user_id = ?,
-         cancellation_reason_sha256 = ?,
-         canceled_at = datetime('now'),
-         updated_at = datetime('now')
-       WHERE id = ? AND status IN ('draft', 'reviewed')`
-    ).bind(
-      auth.authorization.identity.id,
-      reasonSha256,
-      planId
-    ),
-    prepareAdminAuditAfterSingleChange(env.DB, {
-      adminUserId: auth.authorization.identity.id,
-      action: "rss_import.plan_canceled",
-      targetType: "rss_import_plan",
-      targetId: planId,
-      metadata: {
-        showId: existing.plan.show_id,
-        selectionSha256: existing.plan.selection_sha256,
-        reasonSha256
-      }
-    })
-  ]);
+  const execution = await env.DB.prepare(
+    `SELECT id FROM rss_import_executions WHERE plan_id = ? LIMIT 1`
+  ).bind(planId).first<{ id: string }>();
+  if (execution) {
+    return planConflict(request, env, "rss_import_plan_has_execution");
+  }
+  let updated: D1Result;
+  try {
+    [updated] = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE rss_import_plans
+         SET
+           status = 'canceled',
+           canceled_by_admin_user_id = ?,
+           cancellation_reason_sha256 = ?,
+           canceled_at = datetime('now'),
+           updated_at = datetime('now')
+         WHERE id = ? AND status IN ('draft', 'reviewed')`
+      ).bind(
+        auth.authorization.identity.id,
+        reasonSha256,
+        planId
+      ),
+      prepareAdminAuditAfterSingleChange(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "rss_import.plan_canceled",
+        targetType: "rss_import_plan",
+        targetId: planId,
+        metadata: {
+          showId: existing.plan.show_id,
+          selectionSha256: existing.plan.selection_sha256,
+          reasonSha256
+        }
+      })
+    ]);
+  } catch (error) {
+    if (
+      error instanceof Error
+      && error.message.includes("rss_import_plan_has_execution")
+    ) {
+      return planConflict(request, env, "rss_import_plan_has_execution");
+    }
+    throw error;
+  }
   if (Number(updated.meta.changes ?? 0) !== 1) {
     return planConflict(request, env, "rss_import_plan_conflict");
   }
-  const canceled = await loadPlanWithItems(env.DB, planId);
+  const canceled = await loadRssImportPlanEvidence(env.DB, planId);
   if (!canceled) return planConflict(request, env, "rss_import_plan_conflict");
   return privateJson(request, env.ALLOWED_ORIGINS, {
     plan: presentPlan(canceled.plan, canceled.items),
@@ -613,7 +624,7 @@ function presentPlan(
   };
 }
 
-async function loadPlanWithItems(
+export async function loadRssImportPlanEvidence(
   db: D1Database,
   planId: string
 ): Promise<{
@@ -645,6 +656,40 @@ async function loadPlanWithItems(
      ORDER BY ordinal`
   ).bind(planId).all<ImportPlanItemRow>();
   return { plan, items: items.results };
+}
+
+export async function reconcileRssImportPlanSource(
+  feedUrl: string,
+  evidence: {
+    plan: ImportPlanRow;
+    items: ImportPlanItemRow[];
+  }
+): Promise<{
+  preview: Awaited<ReturnType<typeof loadPodcastRssImportPreview>>;
+  items: PlanSnapshotItem[];
+}> {
+  const preview = await loadPodcastRssImportPreview(feedUrl);
+  const items = await selectedSnapshotItems(
+    preview.episodes,
+    evidence.items.map(({ source_identity_sha256 }) =>
+      source_identity_sha256
+    )
+  );
+  if (
+    preview.feedSha256 !== evidence.plan.feed_sha256
+    || await sha256Hex(preview.resolvedUrl)
+      !== evidence.plan.resolved_feed_url_sha256
+    || await selectionDigest(items)
+      !== evidence.plan.selection_sha256
+    || !sameMetadata(evidence.items, items)
+  ) {
+    throw new RequestValidationError(
+      "The source feed changed after the migration plan was prepared.",
+      "rss_import_feed_changed",
+      409
+    );
+  }
+  return { preview, items };
 }
 
 async function loadActiveShow(

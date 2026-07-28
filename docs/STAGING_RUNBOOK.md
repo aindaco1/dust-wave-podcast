@@ -183,6 +183,15 @@ Replay all migrations from zero and confirm direct item update/delete and plan
 delete fail. This migration is additive; retain the pre-migration staging Time
 Travel bookmark. Do not apply it to production as part of a staging exercise.
 
+For migration `0056`, verify `rss_import_executions` and
+`rss_import_execution_items`, recovery/show indexes, composite plan-item
+foreign key, exact status/count constraints, identity/delete immutability
+triggers, and the trigger that prevents canceling a plan after execution
+exists. Confirm both tables are empty, foreign-key checks are empty, and
+`PRAGMA quick_check` is `ok` immediately after the staging migration. Retain a
+new pre-`0056` Time Travel bookmark. The migration is additive; do not apply it
+to production as part of a staging exercise.
+
 For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
 the four `episode_chapter_*` review/history tables and indexes exist, any
 legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key
@@ -558,6 +567,16 @@ Required for announcement consent and dry-run delivery:
 - `ANNOUNCEMENT_DESTINATION_SECRET`
 - `ANNOUNCEMENT_DELIVERY_MODE=dry_run`
 
+Required only for the isolated RSS private-copy boundary:
+
+- a newly generated Podcast-only `RSS_IMPORT_URL_SECRET`
+- `RSS_IMPORT_EXECUTION_MODE=staging_copy`
+
+Keep production `RSS_IMPORT_EXECUTION_MODE=disabled`. Do not reuse a Pool,
+Store, session, feed-token, Stripe, Resend, processor, or provider secret.
+Wrangler can confirm only the staging secret name; never print or attempt to
+read the value.
+
 Required only for a controlled live announcement test:
 
 - `RESEND_WEBHOOK_SECRET`
@@ -638,9 +657,25 @@ Before any existing-feed migration:
 8. Cancel an isolated fixture with a unique internal phrase; confirm the raw
    phrase is absent from plan and audit rows while its purpose-bound digest is
    present. Confirm plan/item evidence cannot be edited or deleted.
-9. Do not configure a new-feed tag or old-host 301 redirect. Those actions
-   remain unavailable until a later immutable copy/reconciliation boundary and
-   owner approval.
+9. Before an execution test, capture a new staging Time Travel bookmark and
+   record episode, upload, import-execution, publication-job, distribution-job,
+   and R2-prefix counts. Use only a rights-cleared, tightly bounded fixture
+   whose reviewed enclosure bytes and MIME type are known.
+10. Re-enter the exact feed, map every selected identity once to a unique
+    show-local slug and `en`/`es` source language, explicitly confirm the
+    private copy, and queue it. Confirm Queue contains no URL or source token.
+11. Confirm the stream copied the exact reviewed byte count into the private
+    `source_audio` prefix, stored SHA-256/R2 ETag evidence, created exactly one
+    `draft`/`processing` episode and completed source upload per successful
+    item, erased the sealed URL at terminal completion, and remains
+    idempotent on replay.
+12. Confirm publication, News, RSS, distribution, YouTube, announcement, ad,
+    billing, and redirect counts did not change. Confirm an enclosure
+    byte/MIME drift fixture fails closed without an episode and a production-
+    mode request returns unavailable before D1, Queue, or R2 mutation.
+13. Do not configure a new-feed tag or old-host 301 redirect. Working-master
+    review, owner reconciliation, publication, and the redirect checklist
+    remain separate approval gates.
 
 The authorized Ópera en la Selva Substack URL is useful as a negative preview
 fixture while it contains newsletter article/image enclosures; it must not be
@@ -1226,3 +1261,8 @@ For the full-episode YouTube test, use a separate fixture publication:
 - A Worker-code rollback after migration `0052` must leave delivery job/part
   tables and triggers in place. They preserve immutable evidence and prevent
   older/manual delivery audio from silently replacing a current-master render.
+- A Worker-code rollback after migration `0056` must leave the execution/item
+  tables and triggers in place. They retain copy/draft evidence, prevent
+  identity edits or cancellation races, and let operators reconcile any
+  private object before a later forward deployment. Disable
+  `RSS_IMPORT_EXECUTION_MODE` and pause affected Queue work before rollback.

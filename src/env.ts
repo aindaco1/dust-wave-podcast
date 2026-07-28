@@ -34,6 +34,8 @@ export type PodcastEnv = Env & {
   MEDIA_BUCKET_NAME?: string;
   RESEND_API_KEY?: string;
   RESEND_WEBHOOK_SECRET?: string;
+  RSS_IMPORT_EXECUTION_MODE?: string;
+  RSS_IMPORT_URL_SECRET?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_MODE?: string;
   STRIPE_PORTAL_CONFIGURATION_ID?: string;

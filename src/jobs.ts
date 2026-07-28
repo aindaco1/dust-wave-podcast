@@ -8,6 +8,9 @@ import { processClipYouTubePublication } from "./clip-youtube";
 import { processAnnouncementDelivery } from "./announcement-delivery";
 import { processEpisodeYouTubePublication } from "./episode-youtube";
 import { validateAndRecordPublicFeed } from "./feed-validation";
+import {
+  processRssImportExecutionItem
+} from "./rss-import-executions";
 
 export type PublicationDestination = "rss" | "youtube" | "news" | "email";
 
@@ -103,6 +106,10 @@ export async function processPodcastJob(
   env: PodcastEnv,
   job: PodcastJob
 ): Promise<void> {
+  if (job.type === "execute-rss-import-item") {
+    await processRssImportExecutionItem(env, job);
+    return;
+  }
   if (job.type === "send-announcement") {
     await processAnnouncementDelivery(env, job);
     return;

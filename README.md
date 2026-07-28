@@ -39,18 +39,28 @@ sponsor-reconciliation gates pass. Public clip selection and verified range
 delivery are implemented as a staging preview with production disabled;
 production-live YouTube/GitHub publishing remains roadmap work.
 
-An existing-show RSS migration preview and reviewed plan boundary are also
-implemented without a copy boundary. A recently authenticated super-admin
+An existing-show RSS migration preview, reviewed-plan boundary, and isolated
+staging execution boundary are also implemented. A recently authenticated super-admin
 must confirm import rights; the Worker performs a bounded,
 redirect-controlled public-HTTPS fetch, sanitizes RSS metadata, hides the
 owner address, and reports which items have valid audio enclosures and stable
 import identity. A selected plan freezes the exact feed, source identities,
 metadata, and query-stripped display URLs. Review requires the exact source
 URL to be re-entered and re-fetches the feed before accepting byte-identical
-evidence. The plan is immutable, auditable, and cancelable, but writes no
-episode or media state and never configures a redirect. Media copying, draft
-creation, post-copy reconciliation, and the old-host 301 checklist remain
-separately gated work.
+evidence. Preparing and reviewing remain zero-copy.
+
+Only `RSS_IMPORT_EXECUTION_MODE=staging_copy`, a dedicated
+`RSS_IMPORT_URL_SECRET`, another exact feed reconciliation, recent
+Super-admin authentication, and an explicit item-to-slug/language mapping can
+queue execution. Each item streams directly into private R2 while calculating
+SHA-256, verifies the reviewed MIME type and byte count, and creates only an
+unpublished draft episode plus completed private source-upload evidence.
+The protected source URL is AES-GCM sealed, never enters Queue or audit data,
+and is erased after completion or seven days. Production keeps execution
+disabled. This boundary cannot create News/RSS/YouTube/directory jobs, contact
+a provider, change billing/email/ads, or configure the old-host redirect;
+working-master review, publication, reconciliation, and the 301 checklist stay
+separate.
 
 The delivery boundary now derives one fixed-profile MP3 and bounded player
 waveform from the exact approved working master through a staging-only,

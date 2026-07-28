@@ -16,6 +16,9 @@ import { cleanupPodcastAnalytics } from "./podcast-analytics";
 import {
   cleanupVirtualAudioDiagnosticLeases
 } from "./diagnostics";
+import {
+  scheduleRssImportExecutions
+} from "./rss-import-executions";
 
 export default {
   async fetch(
@@ -88,6 +91,7 @@ export default {
   ): Promise<void> {
     await Promise.all([
       scheduleDuePublications(env),
+      scheduleRssImportExecutions(env),
       pruneAdminAuthState(env.DB),
       pruneListenerAuthState(env.DB),
       pruneSubscriptionBillingRateLimits(env.DB),

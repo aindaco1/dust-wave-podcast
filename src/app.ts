@@ -245,6 +245,10 @@ import {
   reviewAdminRssImportPlan
 } from "./rss-import-plans";
 import {
+  createAdminRssImportExecution,
+  getAdminRssImportExecution
+} from "./rss-import-executions";
+import {
   abortMultipartUpload,
   completeMultipartUpload,
   createMultipartUpload,
@@ -300,6 +304,8 @@ const ADMIN_RSS_IMPORT_PLAN_REVIEW_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/review$/;
 const ADMIN_RSS_IMPORT_PLAN_CANCEL_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/cancel$/;
+const ADMIN_RSS_IMPORT_PLAN_EXECUTION_PATH =
+  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/execution$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
 const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
@@ -941,6 +947,25 @@ async function routeRequest(
       env,
       adminRssImportPlanCancelMatch[1]
     );
+  }
+  const adminRssImportPlanExecutionMatch = url.pathname.match(
+    ADMIN_RSS_IMPORT_PLAN_EXECUTION_PATH
+  );
+  if (adminRssImportPlanExecutionMatch) {
+    if (method === "GET") {
+      return getAdminRssImportExecution(
+        request,
+        env,
+        adminRssImportPlanExecutionMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return createAdminRssImportExecution(
+        request,
+        env,
+        adminRssImportPlanExecutionMatch[1]
+      );
+    }
   }
   const adminShowMarketingDryRunMatch = url.pathname.match(
     ADMIN_SHOW_MARKETING_DRY_RUN_PATH

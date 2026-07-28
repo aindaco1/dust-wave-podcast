@@ -337,7 +337,7 @@ chunk boundaries. It never fabricates words, speaker identity, or word timing.
 The final transcript still requires review, and the separate English/Spanish
 word-alignment quality gate remains locked.
 
-## RSS migration preview and reviewed-plan boundary
+## RSS migration preview, reviewed plan, and private-copy boundary
 
 Only a recently authenticated super-admin with same-origin CSRF may preview an
 existing show's source feed, and the request must explicitly confirm import
@@ -373,8 +373,35 @@ digest fails closed. Cancellation stores and audits only a purpose-bound
 reason digest. List responses are private/no-store and show-scoped; mutating
 routes remain super-admin-only. The APIs explicitly return zero-copy and
 zero-episode-mutation flags and have no R2, Queue, provider, redirect, or
-episode write path. Copying media, creating drafts, post-copy reconciliation,
-and activating a feed redirect remain separate future approval gates.
+episode write path.
+
+Execution is a distinct staging-only capability. Production commits
+`RSS_IMPORT_EXECUTION_MODE=disabled`; staging additionally requires
+`staging_copy`, a dedicated AES-GCM `RSS_IMPORT_URL_SECRET`, recent
+Super-admin authentication, CSRF, an exact complete slug/language mapping, and
+another full feed reconciliation. The source URL is sealed with an
+execution-specific purpose and additional-data context, retained for at most
+seven days, and never copied into Queue payloads, audit metadata, logs, or API
+responses. Execution identity, plan/show/feed/selection digests, target
+episode identity, source identity, and target object key are immutable and
+undeletable. Once execution exists, a D1 trigger prevents plan cancellation.
+
+Every item re-opens the sealed URL, verifies its hash, reconciles the reviewed
+source metadata, validates at most two manual HTTPS audio redirects, and
+enforces exact MIME and byte evidence with a 1 GiB ceiling. The response body
+is counted while it is streamed to private R2 and a SHA-256 `DigestStream`;
+remote audio is never buffered in Worker memory. Only after R2 size evidence
+matches does one D1 batch create a `draft`/`processing` episode, stable
+source-identity GUID, and completed private source-upload record. Failures
+delete the deterministic private object where possible, record only a stable
+code, and remain eligible for no more than five attempts. Success erases the
+source URL as soon as all items finish.
+
+This capability never sets delivery audio, publishes News/RSS, configures a
+redirect/directory, creates YouTube/email/ad/billing work, or contacts a
+provider other than the explicitly authorized source host. Working-master
+approval, owner reconciliation, publication, and old-host 301 activation are
+separate gates.
 
 ## Before production
 
