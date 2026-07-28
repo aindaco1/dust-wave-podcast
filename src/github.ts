@@ -3,6 +3,7 @@ import {
   planEpisodePublication,
   type NewsPublicationMode
 } from "./publication-intent";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import type { EpisodeAccess } from "./types";
 
 const PUBLICATION_DATA_PATH = "src/_data/podcastEpisodePublications.json";
@@ -74,7 +75,7 @@ export async function publishEpisodeNewsSnapshot(
        JOIN shows s ON s.id = e.show_id
        WHERE e.id = ?
          AND e.status = 'published'
-         AND e.public_at <= datetime('now')
+         AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
          AND e.access IN ('public', 'early_access', 'premium_bonus', 'free_mini')
          AND e.media_status = 'ready'
          AND EXISTS (

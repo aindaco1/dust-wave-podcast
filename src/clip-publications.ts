@@ -12,6 +12,7 @@ import {
 } from "./clips";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   optionalText,
   positiveInteger,
@@ -450,7 +451,7 @@ export async function listPublicEpisodeClips(
        AND publication.status = 'approved'
        AND show_record.status != 'archived'
        AND episode.status = 'published'
-       AND episode.public_at <= datetime('now')
+       AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
        AND episode.access IN ('public', 'early_access', 'free_mini')
        AND episode.media_status = 'ready'
        AND clip.revision = publication.clip_revision
@@ -510,7 +511,7 @@ export async function servePublicClipMedia(
        AND publication.status = 'approved'
        AND show_record.status != 'archived'
        AND episode.status = 'published'
-       AND episode.public_at <= datetime('now')
+       AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
        AND episode.access IN ('public', 'early_access', 'free_mini')
        AND episode.media_status = 'ready'
        AND clip.revision = publication.clip_revision
@@ -604,7 +605,7 @@ async function loadPublicEpisode(
        AND show_record.status != 'archived'
        AND episode.slug = ?
        AND episode.status = 'published'
-       AND episode.public_at <= datetime('now')
+       AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
        AND episode.access IN ('public', 'early_access', 'free_mini')
        AND episode.media_status = 'ready'
      LIMIT 1`

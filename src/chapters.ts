@@ -9,6 +9,7 @@ import {
   privateFeedTokenNeedsTouch,
   touchPrivateFeedToken
 } from "./private-feeds";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   readJsonObject,
   RequestValidationError,
@@ -90,7 +91,7 @@ export async function servePublicEpisodeChapters(
          AND s.status != 'archived'
          AND e.slug = ?
          AND e.status = 'published'
-         AND e.public_at <= datetime('now')
+         AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
          AND e.access IN ('public', 'early_access', 'free_mini')
          AND e.media_status = 'ready'
        LIMIT 1`
@@ -129,7 +130,7 @@ export async function servePrivateEpisodeChapters(
          AND subscription.status = 'active'
          AND (
            subscription.current_period_end IS NULL
-           OR subscription.current_period_end > datetime('now')
+           OR subscription.current_period_end > ${SQL_UTC_NOW_RFC3339}
          )
          AND e.slug = ?
          AND e.status IN ('scheduled', 'published')
@@ -137,15 +138,16 @@ export async function servePrivateEpisodeChapters(
          AND (
            (
              e.access IN ('public', 'free_mini')
-             AND e.public_at <= datetime('now')
+             AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
            )
            OR (
              e.access = 'early_access'
-             AND COALESCE(e.premium_at, e.public_at) <= datetime('now')
+             AND COALESCE(e.premium_at, e.public_at)
+               <= ${SQL_UTC_NOW_RFC3339}
            )
            OR (
              e.access = 'premium_bonus'
-             AND e.premium_at <= datetime('now')
+             AND e.premium_at <= ${SQL_UTC_NOW_RFC3339}
            )
          )
        LIMIT 1`

@@ -1,3 +1,4 @@
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import type { EpisodeRow, PriceRow, PublicShow, ShowRow } from "./types";
 
 const SHOW_COLUMNS = `
@@ -72,7 +73,9 @@ export async function getPublicShow(db: D1Database, slug: string): Promise<Publi
         `SELECT id, slug, title, summary, episode_number, season_number, access,
                 public_at, premium_at, canonical_url, duration_seconds
          FROM episodes
-         WHERE show_id = ? AND status = 'published' AND public_at <= datetime('now')
+         WHERE show_id = ?
+           AND status = 'published'
+           AND public_at <= ${SQL_UTC_NOW_RFC3339}
          ORDER BY public_at DESC`
       )
       .bind(show.id)

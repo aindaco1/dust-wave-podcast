@@ -39,6 +39,12 @@ sponsor-reconciliation gates pass. Public clip selection and verified range
 delivery are implemented as a staging preview with production disabled;
 production-live YouTube/GitHub publishing remains roadmap work.
 
+Public release, premium-window, subscription-expiry, tax-rate, and publication
+job boundaries compare canonical millisecond UTC RFC 3339 timestamps against
+one shared SQL clock. This avoids SQLite TEXT ordering drift between
+`YYYY-MM-DDTHH:mm:ss.sssZ` application/provider values and
+`YYYY-MM-DD HH:mm:ss` database timestamps while preserving due-time indexes.
+
 An existing-show RSS migration preview, reviewed-plan boundary, and isolated
 staging execution boundary are also implemented. A recently authenticated super-admin
 must confirm import rights; the Worker performs a bounded,

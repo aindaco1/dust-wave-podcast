@@ -6,6 +6,7 @@ import {
   privateFeedTokenNeedsTouch,
   touchPrivateFeedToken
 } from "./private-feeds";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 
 type FeedShow = {
   id: string;
@@ -75,7 +76,7 @@ export async function servePublicFeed(
        FROM episodes episode
        WHERE episode.show_id = ?
          AND episode.status = 'published'
-         AND episode.public_at <= datetime('now')
+         AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
          AND episode.access IN ('public', 'early_access', 'free_mini')
          AND episode.media_status = 'ready'
          AND episode.audio_key IS NOT NULL
@@ -132,7 +133,7 @@ export async function servePrivateFeed(
          AND s.status = 'active'
          AND (
            s.current_period_end IS NULL
-           OR s.current_period_end > datetime('now')
+           OR s.current_period_end > ${SQL_UTC_NOW_RFC3339}
          )
        LIMIT 1`
     )
@@ -166,16 +167,16 @@ export async function servePrivateFeed(
          AND (
            (
              episode.access IN ('public', 'free_mini')
-             AND episode.public_at <= datetime('now')
+             AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
            )
            OR (
              episode.access = 'early_access'
              AND COALESCE(episode.premium_at, episode.public_at)
-               <= datetime('now')
+               <= ${SQL_UTC_NOW_RFC3339}
            )
            OR (
              episode.access = 'premium_bonus'
-             AND episode.premium_at <= datetime('now')
+             AND episode.premium_at <= ${SQL_UTC_NOW_RFC3339}
            )
          )
        ORDER BY release_at DESC, episode.created_at DESC`

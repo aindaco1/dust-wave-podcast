@@ -18,6 +18,18 @@ npm run deploy:production:dry
 The production dry run validates packaging only. It is not authorization to
 deploy production.
 
+Run the focused timestamp contract whenever release, entitlement, tax, or
+publication scheduling SQL changes:
+
+```sh
+npx vitest run tests/sql-time-boundaries.test.mjs tests/jobs.test.ts \
+  tests/feed-media.test.ts tests/tax-quotes.test.ts
+```
+
+The contract must show that same-day RFC 3339 past/present rows are due,
+future rows remain closed, raw SQLite clocks are absent from canonical
+external-time predicates, and the composite due-time index is still selected.
+
 Confirm invocation logs and automatic traces remain disabled because private
 feed bearer values are path-scoped. Queue failures must emit the bounded
 structured `job_failed` event before retrying; never log a job payload or

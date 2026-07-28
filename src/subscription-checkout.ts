@@ -21,6 +21,7 @@ import {
   resolveSubscriptionTaxQuote,
   subscriptionCheckoutConfigured
 } from "./tax-quotes";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   readJsonObject,
   RequestValidationError,
@@ -190,7 +191,7 @@ export async function createSubscriptionCheckout(
          AND s.status = 'active'
          AND (
            s.current_period_end IS NULL
-           OR s.current_period_end > datetime('now')
+           OR s.current_period_end > ${SQL_UTC_NOW_RFC3339}
          )
        LIMIT 1`
     )

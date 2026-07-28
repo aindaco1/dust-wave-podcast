@@ -8,6 +8,7 @@ import { hmacSha256 } from "@dustwave/worker-core/crypto";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import { trustedSiteOrigin } from "./passwordless-security";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   readJsonObject,
   RequestValidationError,
@@ -209,8 +210,11 @@ export async function resolveSubscriptionTaxQuote(
          AND t.status = 'approved'
          AND t.provider_mode = ?
          AND t.stripe_tax_rate_id IS NOT NULL
-         AND t.effective_at <= datetime('now')
-         AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))
+         AND t.effective_at <= ${SQL_UTC_NOW_RFC3339}
+         AND (
+           t.expires_at IS NULL
+           OR t.expires_at > ${SQL_UTC_NOW_RFC3339}
+         )
        ORDER BY
          length(t.jurisdiction_code) DESC,
          t.effective_at DESC,

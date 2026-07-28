@@ -11,6 +11,7 @@ import { validateAndRecordPublicFeed } from "./feed-validation";
 import {
   processRssImportExecutionItem
 } from "./rss-import-executions";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 
 export type PublicationDestination = "rss" | "youtube" | "news" | "email";
 
@@ -74,7 +75,8 @@ export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
     .prepare(
       `UPDATE episodes
        SET status = 'published', updated_at = datetime('now')
-       WHERE status = 'scheduled' AND public_at <= datetime('now')`
+       WHERE status = 'scheduled'
+         AND public_at <= ${SQL_UTC_NOW_RFC3339}`
     )
     .run();
   const due = await env.DB
@@ -85,7 +87,7 @@ export async function scheduleDuePublications(env: PodcastEnv): Promise<void> {
        FROM distribution_jobs j
        JOIN episodes e ON e.id = j.episode_id
        WHERE j.status = 'queued'
-         AND j.scheduled_at <= datetime('now')
+         AND j.scheduled_at <= ${SQL_UTC_NOW_RFC3339}
        ORDER BY j.scheduled_at
        LIMIT 100`
     )

@@ -176,6 +176,9 @@ iHeartRadio, and Deezer.
   promotion decision pass.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
+- Keep public release, early-access/bonus, subscription-expiry, assigned-tax,
+  and publication-job schedules on one millisecond UTC RFC 3339 SQL clock so
+  same-day ISO timestamps become due exactly and remain indexable.
 - Publish audio-only or native-video episodes to the configurable YouTube
   channel at the public release time. Early-access episodes wait for public
   release; premium-only bonuses never publish to YouTube. The first

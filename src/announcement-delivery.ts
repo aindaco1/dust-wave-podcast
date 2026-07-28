@@ -26,6 +26,7 @@ import {
 } from "./notification-destination";
 import { isValidEmailAddress } from "./passwordless-security";
 import { sendPodcastAnnouncementEmail } from "./resend";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import type { PodcastJob } from "./types";
 import {
   boundedPageSize,
@@ -903,7 +904,7 @@ async function loadDelivery(
          s.status = 'active'
          AND (
            s.current_period_end IS NULL
-           OR s.current_period_end > datetime('now')
+           OR s.current_period_end > ${SQL_UTC_NOW_RFC3339}
          )
        ) AS entitlement_active,
        EXISTS (

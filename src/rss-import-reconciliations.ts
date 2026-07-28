@@ -14,6 +14,7 @@ import {
   type RssImportExecutionRow
 } from "./rss-import-executions";
 import { validatedImportFeedUrl } from "./rss-import-preview";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   readJsonObject,
   RequestValidationError,
@@ -1657,7 +1658,7 @@ async function buildCutoverSnapshot(
          FROM episodes
          WHERE show_id = ?
            AND status = 'published'
-           AND datetime(public_at) <= datetime('now')
+           AND public_at <= ${SQL_UTC_NOW_RFC3339}
            AND access IN ('public', 'early_access', 'free_mini')
            AND media_status = 'ready'
            AND audio_key IS NOT NULL

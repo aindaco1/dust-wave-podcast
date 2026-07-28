@@ -12,6 +12,7 @@ import {
   privateJson,
   trustedAllowedOrigin
 } from "./http";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   readJsonObject,
   RequestValidationError,
@@ -133,7 +134,7 @@ export async function recordPodcastPlayerEvent(
      FROM episodes
      WHERE id = ?
        AND status = 'published'
-       AND public_at <= datetime('now')
+       AND public_at <= ${SQL_UTC_NOW_RFC3339}
        AND access IN ('public', 'early_access', 'free_mini')
        AND media_status = 'ready'
        AND audio_key IS NOT NULL`
@@ -356,7 +357,7 @@ async function loadAnalyticsOverview(
          AND status = 'active'
          AND (
            current_period_end IS NULL
-           OR current_period_end > datetime('now')
+           OR current_period_end > ${SQL_UTC_NOW_RFC3339}
          )`
     ).bind(showId).first<{ listener_count: number }>()
   ]);

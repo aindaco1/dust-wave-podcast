@@ -10,6 +10,7 @@ import { requireAdmin } from "./admin-auth";
 import { projectStripeTaxEvent } from "./billing-tax-evidence";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import { subscriptionCheckoutConfigured } from "./tax-quotes";
 import {
   isTruthy,
@@ -175,8 +176,11 @@ export async function getBillingReadiness(
          AND t.rate_parts_per_million IS NOT NULL
          AND t.provider_mode = ?
          AND t.stripe_tax_rate_id IS NOT NULL
-         AND t.effective_at <= datetime('now')
-         AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))
+         AND t.effective_at <= ${SQL_UTC_NOW_RFC3339}
+         AND (
+           t.expires_at IS NULL
+           OR t.expires_at > ${SQL_UTC_NOW_RFC3339}
+         )
          AND s.billing_mode = ?`
     ).bind(expectedMode, expectedMode).first<{ count: number }>(),
     env.DB.prepare(

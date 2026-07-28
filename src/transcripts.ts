@@ -6,6 +6,7 @@ import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   readJsonObject,
   RequestValidationError,
@@ -85,7 +86,7 @@ export async function servePublicEpisodeTranscripts(
          AND s.status != 'archived'
          AND e.slug = ?
          AND e.status = 'published'
-         AND e.public_at <= datetime('now')
+         AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
          AND e.access IN ('public', 'early_access', 'free_mini')
          AND e.media_status = 'ready'
        LIMIT 1`

@@ -30,6 +30,7 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
   readSignedJsonBody,
@@ -1040,7 +1041,7 @@ export async function servePublicEpisodePeaks(
      WHERE job.episode_id = ?
        AND job.status = 'approved'
        AND episode.status = 'published'
-       AND episode.public_at <= datetime('now')
+       AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
        AND episode.access IN ('public', 'early_access', 'free_mini')
        AND episode.media_status = 'ready'
        AND episode.audio_key = job.output_object_key

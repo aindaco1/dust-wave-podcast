@@ -87,6 +87,12 @@
   invalid, revoked, cross-show, and expired tokens all fail as the same `404`.
   Private responses are no-store, omit public CORS, and carry noindex and
   no-referrer policy.
+- Application and provider boundary times are canonical millisecond UTC
+  RFC 3339. Release, premium, entitlement-expiry, assigned-tax, and durable
+  publication-job predicates use the same shared RFC 3339 SQL clock. They do
+  not compare ISO `T...Z` values with SQLite's space-delimited
+  `datetime('now')`; the executable contract also proves same-day
+  past/present/future behavior and verifies the due-time index remains usable.
 - Raw private-feed bearer values are never stored or written by application
   logs. Cloudflare automatic invocation URL logs are disabled for the Worker;
   explicit structured logs contain event metadata rather than request URLs.

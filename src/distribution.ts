@@ -11,6 +11,7 @@ import {
   publicationJobType,
   type PublicationDestination
 } from "./jobs";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   optionalText,
   readJsonObject,
@@ -615,7 +616,7 @@ export async function retryDistributionJob(
       `UPDATE distribution_jobs
        SET
          status = 'queued',
-         scheduled_at = datetime('now'),
+         scheduled_at = ${SQL_UTC_NOW_RFC3339},
          started_at = NULL,
          completed_at = NULL,
          provider_id = NULL,

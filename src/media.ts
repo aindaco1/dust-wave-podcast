@@ -10,6 +10,7 @@ import {
   safeDownloadFilename
 } from "./media-range";
 import { recordPodcastMediaDelivery } from "./podcast-analytics";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 
 type MediaEpisode = {
   id: string;
@@ -40,7 +41,7 @@ export async function servePublicEpisodeAudio(
        FROM episodes
        WHERE id = ?
          AND status = 'published'
-         AND public_at <= datetime('now')
+         AND public_at <= ${SQL_UTC_NOW_RFC3339}
          AND access IN ('public', 'early_access', 'free_mini')
          AND media_status = 'ready'
          AND audio_key IS NOT NULL`
@@ -86,7 +87,7 @@ export async function servePrivateEpisodeAudio(
          AND s.status = 'active'
          AND (
            s.current_period_end IS NULL
-           OR s.current_period_end > datetime('now')
+           OR s.current_period_end > ${SQL_UTC_NOW_RFC3339}
          )
          AND e.status IN ('scheduled', 'published')
          AND e.media_status = 'ready'
@@ -94,15 +95,16 @@ export async function servePrivateEpisodeAudio(
          AND (
            (
              e.access IN ('public', 'free_mini')
-             AND e.public_at <= datetime('now')
+             AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
            )
            OR (
              e.access = 'early_access'
-             AND COALESCE(e.premium_at, e.public_at) <= datetime('now')
+             AND COALESCE(e.premium_at, e.public_at)
+               <= ${SQL_UTC_NOW_RFC3339}
            )
            OR (
              e.access = 'premium_bonus'
-             AND e.premium_at <= datetime('now')
+             AND e.premium_at <= ${SQL_UTC_NOW_RFC3339}
            )
          )
        LIMIT 1`

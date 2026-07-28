@@ -3,6 +3,10 @@
 All bodies are JSON unless noted. Public routes may be called without a
 session. Admin routes use an HttpOnly cookie scoped to `/v1/admin`; mutating
 routes also require the `x-podcast-csrf` value returned at login exchange.
+Application/provider date-time inputs are normalized to fixed-width
+millisecond UTC RFC 3339 (`YYYY-MM-DDTHH:mm:ss.sssZ`). Release, premium,
+entitlement, assigned-tax, and publication-job boundaries use that same
+representation in D1.
 
 ## Public
 

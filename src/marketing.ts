@@ -6,6 +6,7 @@ import {
 import { requireAdmin } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   optionalText,
   readJsonObject,
@@ -51,7 +52,7 @@ export const ELIGIBLE_ANNOUNCEMENT_AUDIENCE_SQL = `
     AND s.status = 'active'
     AND (
       s.current_period_end IS NULL
-      OR s.current_period_end > datetime('now')
+      OR s.current_period_end > ${SQL_UTC_NOW_RFC3339}
     )
     AND NOT EXISTS (
       SELECT 1
