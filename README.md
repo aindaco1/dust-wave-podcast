@@ -87,6 +87,14 @@ attestation all agree, staging can freeze an immutable cutover packet. That
 packet is evidence only and cannot contact or configure the old host, change
 DNS, or activate a redirect.
 
+A final staging-only activation approval can then bind one fresh cutover
+packet, the immutable owner-control method, current show/episode evidence, and
+explicit final-review, manual-action, rollback, and zero-activation
+acknowledgements. The approval is append-only and becomes stale with its
+packet. It authorizes only a later owner-controlled manual handoff: the Worker
+still cannot contact the host, change DNS, configure a provider, or activate a
+new-feed tag or HTTP 301, and production remains closed.
+
 The delivery boundary now derives one fixed-profile MP3 and bounded player
 waveform from the exact approved working master through a staging-only,
 credential-minimized workflow. Full decode, complete-frame validation,

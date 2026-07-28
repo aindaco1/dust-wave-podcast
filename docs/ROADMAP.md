@@ -106,6 +106,13 @@ iHeartRadio, and Deezer.
   that validation, and the owner-control attestation remains current. The
   packet is hash/count/version evidence only: it cannot contact the old host,
   submit a directory, change DNS, or activate a new-feed tag or HTTP 301.
+  A final isolated-staging approval now binds one still-fresh packet to the
+  attested redirect method after explicit final review, manual-action,
+  rollback, and zero-activation confirmations. It is immutable, idempotent,
+  and becomes stale with the packet. The boundary prepares only an auditable
+  owner handoff: automatic activation remains unavailable, production remains
+  closed, and no host, DNS, provider, R2, episode, publication, directory,
+  email, ad, or billing state changes.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed

@@ -479,6 +479,20 @@ stale. Production returns unavailable before D1/R2, and neither preview nor
 creation contacts a host, mutates publication, changes DNS, or activates a
 new-feed tag or HTTP 301.
 
+Final redirect authorization is a separate recent-Super-admin,
+same-origin-CSRF boundary and is also staging-only. It accepts only the exact
+fresh cutover packet and evidence digest plus explicit final-review,
+manual-action, rollback-plan, and zero-activation confirmations. D1 rechecks
+the packet, attestation, old/new feed hashes, redirect method, and current
+show/episode evidence versions in the conditional insert. One approval exists
+per packet; rows and their cross-evidence links cannot be updated or deleted.
+
+The response distinguishes a fresh manual-owner handoff from runtime
+activation. `activationAvailable` remains false, and approval cannot contact
+the old host, change DNS, configure a provider, emit a new-feed tag or HTTP
+301, or mutate R2, episodes, publication, directories, email, advertising, or
+billing. A later evidence change makes both the packet and approval stale.
+
 ## Before production
 
 - Re-run the private-feed threat model and rotation drill alongside real-time

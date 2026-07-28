@@ -341,6 +341,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/rss-import/plans/{id}/reconciliation` | recently authenticated super-admin | Immutably approve one unchanged staging copy snapshot without publishing, modifying R2, or activating a redirect |
 | `POST` | `/v1/admin/rss-import/plans/{id}/redirect-attestation` | recently authenticated super-admin | Record immutable hash-only evidence of old-host control and the expected permanent redirect method without contacting or changing the host |
 | `POST` | `/v1/admin/rss-import/plans/{id}/cutover-packet` | recently authenticated super-admin | Freeze exact current-revision RSS/News, post-publication feed validation, 10-directory recovery/re-observation, and owner-control evidence without activating a redirect |
+| `POST` | `/v1/admin/rss-import/plans/{id}/redirect-activation-approval` | recently authenticated super-admin | Approve one exact fresh cutover packet for a later manual owner/provider action after final review and rollback acknowledgement; performs no activation |
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
@@ -562,6 +563,22 @@ retries are idempotent; semantic duplication conflicts; later publication,
 feed, or directory evidence makes the packet visibly stale. The packet
 performs no R2, episode, publication, redirect, directory, provider, email,
 advertising, or billing mutation and cannot configure the old host.
+
+Final redirect authorization is a separate staging-only evidence boundary. It
+accepts exactly `approvalId`, `expectedPacketId`,
+`expectedEvidenceSha256`, and four true confirmations:
+`finalReviewConfirmed`, `manualActionAcknowledged`,
+`rollbackPlanConfirmed`, and `noActivationPerformedConfirmed`. The packet,
+owner-control attestation, copy reconciliation, show evidence version, episode
+evidence total, old/new feed hashes, and redirect method must still agree.
+
+One immutable approval may exist per cutover packet. Exact retries are
+idempotent and another identifier conflicts. A later publication, feed,
+directory, show, or episode evidence change makes the approval visibly stale.
+The response can mark the manual owner handoff ready while
+`activationAvailable` remains `false`; it never contacts the host, changes
+DNS, configures a provider, emits a new-feed tag or HTTP 301, or mutates R2,
+episodes, publication, directories, email, advertising, or billing.
 
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |

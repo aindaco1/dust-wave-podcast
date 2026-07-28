@@ -259,6 +259,7 @@ import {
 import {
   createAdminRssImportCutoverPacket,
   createAdminRssImportReconciliation,
+  createAdminRssImportRedirectActivationApproval,
   createAdminRssImportRedirectAttestation,
   getAdminRssImportReconciliation
 } from "./rss-import-reconciliations";
@@ -332,6 +333,8 @@ const ADMIN_RSS_IMPORT_REDIRECT_ATTESTATION_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/redirect-attestation$/;
 const ADMIN_RSS_IMPORT_CUTOVER_PACKET_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/cutover-packet$/;
+const ADMIN_RSS_IMPORT_REDIRECT_ACTIVATION_APPROVAL_PATH =
+  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/redirect-activation-approval$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
 const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
@@ -1076,6 +1079,20 @@ async function routeRequest(
       request,
       env,
       adminRssImportCutoverPacketMatch[1]
+    );
+  }
+  const adminRssImportRedirectActivationApprovalMatch =
+    url.pathname.match(
+      ADMIN_RSS_IMPORT_REDIRECT_ACTIVATION_APPROVAL_PATH
+    );
+  if (
+    adminRssImportRedirectActivationApprovalMatch
+    && method === "POST"
+  ) {
+    return createAdminRssImportRedirectActivationApproval(
+      request,
+      env,
+      adminRssImportRedirectActivationApprovalMatch[1]
     );
   }
   const adminShowMarketingDryRunMatch = url.pathname.match(

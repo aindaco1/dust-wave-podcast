@@ -187,6 +187,55 @@ describe("RSS import execution migration", () => {
       expect(cutoverMigration).not.toMatch(
         /\bDROP\s+(?:TABLE|COLUMN)\b/iu
       );
+      const activationApprovalColumns = db.prepare(
+        `PRAGMA table_info(
+          rss_import_redirect_activation_approvals
+        )`
+      ).all().map(({ name }) => name);
+      expect(activationApprovalColumns).toEqual(
+        expect.arrayContaining([
+          "cutover_packet_id",
+          "redirect_attestation_id",
+          "reconciliation_id",
+          "execution_id",
+          "plan_id",
+          "show_id",
+          "cutover_evidence_sha256",
+          "reconciliation_evidence_sha256",
+          "old_feed_url_sha256",
+          "new_feed_url_sha256",
+          "redirect_method",
+          "show_evidence_version",
+          "episode_evidence_version_total",
+          "final_review_confirmed",
+          "manual_action_acknowledged",
+          "rollback_plan_confirmed",
+          "no_activation_performed_confirmed",
+          "approved_by_admin_user_id",
+          "approved_at"
+        ])
+      );
+      expect(triggers).toEqual(expect.arrayContaining([
+        "rss_import_redirect_activation_approval_evidence_guard",
+        "rss_import_redirect_activation_approvals_immutable_update",
+        "rss_import_redirect_activation_approvals_immutable_delete"
+      ]));
+      const activationApprovalMigration = readFileSync(
+        join(
+          migrationsDirectory,
+          "0064_rss_import_redirect_activation_approvals.sql"
+        ),
+        "utf8"
+      );
+      expect(activationApprovalMigration).toContain(
+        "rss_import_redirect_activation_approval_immutable"
+      );
+      expect(activationApprovalMigration).toContain(
+        "no_activation_performed_confirmed"
+      );
+      expect(activationApprovalMigration).not.toMatch(
+        /\bDROP\s+(?:TABLE|COLUMN)\b/iu
+      );
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"

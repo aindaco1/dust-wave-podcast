@@ -51,6 +51,15 @@ const CUTOVER_PACKET_COLUMNS = `
   episode_evidence_version_total, owner_review_confirmed,
   no_activation_confirmed, prepared_by_admin_user_id,
   prepared_at, created_at`;
+const REDIRECT_ACTIVATION_APPROVAL_COLUMNS = `
+  id, cutover_packet_id, redirect_attestation_id,
+  reconciliation_id, execution_id, plan_id, show_id,
+  cutover_evidence_sha256, reconciliation_evidence_sha256,
+  old_feed_url_sha256, new_feed_url_sha256, redirect_method,
+  show_evidence_version, episode_evidence_version_total,
+  final_review_confirmed, manual_action_acknowledged,
+  rollback_plan_confirmed, no_activation_performed_confirmed,
+  approved_by_admin_user_id, approved_at, created_at`;
 
 type ReconciliationRow = {
   id: string;
@@ -120,6 +129,30 @@ type CutoverPacketRow = {
   no_activation_confirmed: number;
   prepared_by_admin_user_id: string | null;
   prepared_at: string;
+  created_at: string;
+};
+
+type RedirectActivationApprovalRow = {
+  id: string;
+  cutover_packet_id: string;
+  redirect_attestation_id: string;
+  reconciliation_id: string;
+  execution_id: string;
+  plan_id: string;
+  show_id: string;
+  cutover_evidence_sha256: string;
+  reconciliation_evidence_sha256: string;
+  old_feed_url_sha256: string;
+  new_feed_url_sha256: string;
+  redirect_method: RedirectMethod;
+  show_evidence_version: number;
+  episode_evidence_version_total: number;
+  final_review_confirmed: number;
+  manual_action_acknowledged: number;
+  rollback_plan_confirmed: number;
+  no_activation_performed_confirmed: number;
+  approved_by_admin_user_id: string | null;
+  approved_at: string;
   created_at: string;
 };
 
@@ -1038,6 +1071,292 @@ export async function createAdminRssImportCutoverPacket(
   );
 }
 
+export async function createAdminRssImportRedirectActivationApproval(
+  request: Request,
+  env: PodcastEnv,
+  planIdValue: string
+): Promise<Response> {
+  if (!rssImportExecutionEnabled(env)) {
+    return reconciliationUnavailable(request, env);
+  }
+  const planId = validIdentifier(planIdValue, "planId");
+  const execution = await loadRssImportExecutionEvidence(env.DB, planId);
+  if (!execution) return reconciliationNotFound(request, env);
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: ["super_admin"],
+    requireCsrf: true,
+    showId: execution.execution.show_id
+  });
+  if (!auth.ok) return auth.response;
+  const recent = await requireRecentAdminAuthentication(
+    request,
+    env,
+    auth.authorization.identity.id
+  );
+  if (recent) return recent;
+  const body = await readJsonObject(request, 8_000);
+  requireExactKeys(body, [
+    "approvalId",
+    "expectedPacketId",
+    "expectedEvidenceSha256",
+    "finalReviewConfirmed",
+    "manualActionAcknowledged",
+    "rollbackPlanConfirmed",
+    "noActivationPerformedConfirmed"
+  ]);
+  if (
+    body.finalReviewConfirmed !== true
+    || body.manualActionAcknowledged !== true
+    || body.rollbackPlanConfirmed !== true
+    || body.noActivationPerformedConfirmed !== true
+  ) {
+    throw new RequestValidationError(
+      "Final review, manual action, rollback, and zero activation must be confirmed.",
+      "rss_import_redirect_activation_approval_confirmation_required"
+    );
+  }
+  const approvalId = validIdentifier(body.approvalId, "approvalId");
+  const expectedPacketId = validIdentifier(
+    body.expectedPacketId,
+    "expectedPacketId"
+  );
+  const expectedEvidenceSha256 = validSha256(
+    body.expectedEvidenceSha256,
+    "expectedEvidenceSha256"
+  );
+  const context = await loadReconciliationContext(
+    env.DB,
+    execution.execution,
+    execution.items
+  );
+  if (!context) return reconciliationNotFound(request, env);
+  const reconciliationSnapshot = await buildReconciliationSnapshot(
+    env,
+    context
+  );
+  const cutover = await buildCutoverSnapshot(
+    env,
+    context,
+    reconciliationSnapshot
+  );
+  const packet = await loadCutoverPacketById(env.DB, expectedPacketId);
+  if (
+    !packet
+    || packet.evidence_sha256 !== expectedEvidenceSha256
+    || !sameCutoverPacket(packet, context, cutover)
+  ) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_activation_packet_changed"
+    );
+  }
+  if (
+    !cutover.readyForPacket
+    || !context.reconciliation
+    || !context.redirectAttestation
+  ) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_activation_approval_not_ready"
+    );
+  }
+
+  const existingById = await loadRedirectActivationApprovalById(
+    env.DB,
+    approvalId
+  );
+  if (existingById) {
+    if (!sameRedirectActivationApproval(
+      existingById,
+      packet,
+      context
+    )) {
+      return reconciliationConflict(
+        request,
+        env,
+        "rss_import_redirect_activation_approval_conflict"
+      );
+    }
+    return reconciliationResponse(
+      request,
+      env,
+      context,
+      reconciliationSnapshot,
+      { idempotent: true }
+    );
+  }
+  const matching = await loadRedirectActivationApprovalForPacket(
+    env.DB,
+    packet.id
+  );
+  if (matching) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_activation_approval_conflict"
+    );
+  }
+
+  let inserted: D1Result;
+  try {
+    [inserted] = await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO rss_import_redirect_activation_approvals (
+           id, cutover_packet_id, redirect_attestation_id,
+           reconciliation_id, execution_id, plan_id, show_id,
+           cutover_evidence_sha256,
+           reconciliation_evidence_sha256,
+           old_feed_url_sha256, new_feed_url_sha256,
+           redirect_method, show_evidence_version,
+           episode_evidence_version_total,
+           final_review_confirmed, manual_action_acknowledged,
+           rollback_plan_confirmed,
+           no_activation_performed_confirmed,
+           approved_by_admin_user_id
+         )
+         SELECT
+           ?, packet.id, attestation.id, packet.reconciliation_id,
+           packet.execution_id, packet.plan_id, packet.show_id,
+           packet.evidence_sha256,
+           packet.reconciliation_evidence_sha256,
+           attestation.old_feed_url_sha256,
+           attestation.new_feed_url_sha256,
+           attestation.redirect_method,
+           packet.show_evidence_version,
+           packet.episode_evidence_version_total,
+           1, 1, 1, 1, ?
+         FROM rss_import_cutover_packets packet
+         JOIN rss_import_redirect_attestations attestation
+           ON attestation.id = packet.redirect_attestation_id
+          AND attestation.reconciliation_id =
+            packet.reconciliation_id
+          AND attestation.execution_id = packet.execution_id
+         WHERE packet.id = ?
+           AND packet.execution_id = ?
+           AND packet.plan_id = ?
+           AND packet.show_id = ?
+           AND packet.evidence_sha256 = ?
+           AND packet.reconciliation_evidence_sha256 = ?
+           AND packet.owner_review_confirmed = 1
+           AND packet.no_activation_confirmed = 1
+           AND attestation.owner_control_confirmed = 1
+           AND attestation.permanence_acknowledged = 1
+           AND attestation.no_activation_confirmed = 1
+           AND (
+             SELECT version
+             FROM publication_show_evidence_versions
+             WHERE show_id = packet.show_id
+           ) = packet.show_evidence_version
+           AND (
+             SELECT COALESCE(
+               SUM(episode.publication_evidence_version),
+               0
+             )
+             FROM rss_import_execution_items item
+             JOIN episodes episode
+               ON episode.id = item.target_episode_id
+             WHERE item.execution_id = packet.execution_id
+           ) = packet.episode_evidence_version_total`
+      ).bind(
+        approvalId,
+        auth.authorization.identity.id,
+        packet.id,
+        context.execution.id,
+        planId,
+        context.show.id,
+        cutover.evidenceSha256,
+        context.reconciliation.evidence_sha256
+      ),
+      prepareAdminAuditAfterSingleChange(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "rss_import.redirect_activation_approved",
+        targetType: "rss_import_redirect_activation_approval",
+        targetId: approvalId,
+        metadata: {
+          cutoverPacketId: packet.id,
+          redirectAttestationId: context.redirectAttestation.id,
+          reconciliationId: context.reconciliation.id,
+          executionId: context.execution.id,
+          planId,
+          showId: context.show.id,
+          cutoverEvidenceSha256: cutover.evidenceSha256,
+          redirectMethod: context.redirectAttestation.redirect_method,
+          manualActionAcknowledged: true,
+          rollbackPlanConfirmed: true,
+          redirectMutationPerformed: false,
+          providerContactPerformed: false
+        }
+      })
+    ]);
+  } catch (error) {
+    const raced = await loadRedirectActivationApprovalById(
+      env.DB,
+      approvalId
+    );
+    if (raced && sameRedirectActivationApproval(
+      raced,
+      packet,
+      context
+    )) {
+      return reconciliationResponse(
+        request,
+        env,
+        context,
+        reconciliationSnapshot,
+        { idempotent: true }
+      );
+    }
+    const racedMatching =
+      await loadRedirectActivationApprovalForPacket(
+        env.DB,
+        packet.id
+      );
+    if (racedMatching) {
+      return reconciliationConflict(
+        request,
+        env,
+        "rss_import_redirect_activation_approval_conflict"
+      );
+    }
+    throw error;
+  }
+  if (Number(inserted.meta.changes ?? 0) !== 1) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_activation_approval_not_ready"
+    );
+  }
+  const created = await loadRedirectActivationApprovalById(
+    env.DB,
+    approvalId
+  );
+  if (!created || !sameRedirectActivationApproval(
+    created,
+    packet,
+    context
+  )) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_activation_approval_conflict"
+    );
+  }
+  return reconciliationResponse(
+    request,
+    env,
+    context,
+    reconciliationSnapshot,
+    {
+      idempotent: false,
+      status: 201,
+      activationApprovalRecorded: true
+    }
+  );
+}
+
 async function loadReconciliationContext(
   db: D1Database,
   execution: RssImportExecutionRow,
@@ -1571,6 +1890,73 @@ function sameCutoverPacket(
   );
 }
 
+async function loadLatestRedirectActivationApproval(
+  db: D1Database,
+  executionId: string
+): Promise<RedirectActivationApprovalRow | null> {
+  return db.prepare(
+    `SELECT ${REDIRECT_ACTIVATION_APPROVAL_COLUMNS}
+     FROM rss_import_redirect_activation_approvals
+     WHERE execution_id = ?
+     ORDER BY approved_at DESC, rowid DESC
+     LIMIT 1`
+  ).bind(executionId).first<RedirectActivationApprovalRow>();
+}
+
+async function loadRedirectActivationApprovalById(
+  db: D1Database,
+  id: string
+): Promise<RedirectActivationApprovalRow | null> {
+  return db.prepare(
+    `SELECT ${REDIRECT_ACTIVATION_APPROVAL_COLUMNS}
+     FROM rss_import_redirect_activation_approvals
+     WHERE id = ?`
+  ).bind(id).first<RedirectActivationApprovalRow>();
+}
+
+async function loadRedirectActivationApprovalForPacket(
+  db: D1Database,
+  packetId: string
+): Promise<RedirectActivationApprovalRow | null> {
+  return db.prepare(
+    `SELECT ${REDIRECT_ACTIVATION_APPROVAL_COLUMNS}
+     FROM rss_import_redirect_activation_approvals
+     WHERE cutover_packet_id = ?`
+  ).bind(packetId).first<RedirectActivationApprovalRow>();
+}
+
+function sameRedirectActivationApproval(
+  row: RedirectActivationApprovalRow,
+  packet: CutoverPacketRow,
+  context: ReconciliationContext
+): boolean {
+  return Boolean(
+    context.reconciliation
+    && context.redirectAttestation
+    && row.cutover_packet_id === packet.id
+    && row.redirect_attestation_id === context.redirectAttestation.id
+    && row.reconciliation_id === context.reconciliation.id
+    && row.execution_id === context.execution.id
+    && row.plan_id === context.plan.id
+    && row.show_id === context.show.id
+    && row.cutover_evidence_sha256 === packet.evidence_sha256
+    && row.reconciliation_evidence_sha256
+      === context.reconciliation.evidence_sha256
+    && row.old_feed_url_sha256
+      === context.redirectAttestation.old_feed_url_sha256
+    && row.new_feed_url_sha256
+      === context.redirectAttestation.new_feed_url_sha256
+    && row.redirect_method === context.redirectAttestation.redirect_method
+    && row.show_evidence_version === packet.show_evidence_version
+    && row.episode_evidence_version_total
+      === packet.episode_evidence_version_total
+    && row.final_review_confirmed === 1
+    && row.manual_action_acknowledged === 1
+    && row.rollback_plan_confirmed === 1
+    && row.no_activation_performed_confirmed === 1
+  );
+}
+
 async function buildCutoverSnapshot(
   env: PodcastEnv,
   context: ReconciliationContext,
@@ -1927,11 +2313,20 @@ async function reconciliationResponse(
     status?: number;
     attestationRecorded?: boolean;
     cutoverPacketRecorded?: boolean;
+    activationApprovalRecorded?: boolean;
   }
 ): Promise<Response> {
-  const [cutover, cutoverPacket] = await Promise.all([
+  const [
+    cutover,
+    cutoverPacket,
+    redirectActivationApproval
+  ] = await Promise.all([
     buildCutoverSnapshot(env, context, snapshot),
-    loadLatestCutoverPacket(env.DB, context.execution.id)
+    loadLatestCutoverPacket(env.DB, context.execution.id),
+    loadLatestRedirectActivationApproval(
+      env.DB,
+      context.execution.id
+    )
   ]);
   const approvalFresh = reconciliationApprovalFresh(context, snapshot);
   const importedEpisodesPublic =
@@ -1950,6 +2345,16 @@ async function reconciliationResponse(
     cutoverPacket
     && sameCutoverPacket(cutoverPacket, context, cutover)
   );
+  const activationApprovalFresh = Boolean(
+    packetFresh
+    && cutoverPacket
+    && redirectActivationApproval
+    && sameRedirectActivationApproval(
+      redirectActivationApproval,
+      cutoverPacket,
+      context
+    )
+  );
   const redirectBlockers = unique([
     ...(approvalFresh
       ? []
@@ -1966,6 +2371,9 @@ async function reconciliationResponse(
     ...(redirectAttestationFresh
       ? []
       : ["rss_import_old_host_attestation_required"]),
+    ...(activationApprovalFresh
+      ? ["rss_import_redirect_manual_owner_action_required"]
+      : ["rss_import_redirect_activation_approval_required"]),
     "rss_import_redirect_activation_unavailable"
   ]);
   return privateJson(request, env.ALLOWED_ORIGINS, {
@@ -2064,6 +2472,10 @@ async function reconciliationResponse(
       activationAvailable: false,
       ready: false,
       attestationAvailable: approvalFresh,
+      activationApprovalAvailable: packetFresh,
+      readyForActivationApproval:
+        packetFresh && !activationApprovalFresh,
+      manualActivationReady: activationApprovalFresh,
       oldFeedDisplayUrl: context.plan.requested_feed_display_url,
       newFeedUrl,
       attestation: context.redirectAttestation
@@ -2075,13 +2487,27 @@ async function reconciliationResponse(
             attestedAt: context.redirectAttestation.attested_at
           }
         : null,
+      activationApproval: redirectActivationApproval
+        ? {
+            id: redirectActivationApproval.id,
+            cutoverPacketId:
+              redirectActivationApproval.cutover_packet_id,
+            cutoverEvidenceSha256:
+              redirectActivationApproval.cutover_evidence_sha256,
+            redirectMethod:
+              redirectActivationApproval.redirect_method,
+            fresh: activationApprovalFresh,
+            approvedAt: redirectActivationApproval.approved_at
+          }
+        : null,
       blockers: redirectBlockers,
       checks: {
         ownerReconciliationApproved: approvalFresh,
         importedEpisodesPublic,
         canonicalFeedRevalidated: feedValidatedAfterImport,
         directoryCertificationReady: directoryReobservationReady,
-        ownerRedirectAttested: redirectAttestationFresh
+        ownerRedirectAttested: redirectAttestationFresh,
+        finalActivationApproved: activationApprovalFresh
       }
     },
     idempotent: options.idempotent,
@@ -2089,6 +2515,8 @@ async function reconciliationResponse(
       options.attestationRecorded === true,
     cutoverPacketMutationPerformed:
       options.cutoverPacketRecorded === true,
+    redirectActivationApprovalMutationPerformed:
+      options.activationApprovalRecorded === true,
     r2MutationPerformed: false,
     episodeMutationPerformed: false,
     publicationMutationPerformed: false,

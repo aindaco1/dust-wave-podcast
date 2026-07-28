@@ -230,6 +230,15 @@ and its table-scoped `PRAGMA quick_check` is `ok`. Retain a new pre-`0059`
 Time Travel bookmark. The migration is additive; do not apply it to
 production as part of a staging exercise.
 
+For migration `0064`, verify
+`rss_import_redirect_activation_approvals`, its show/approved index,
+one-approval-per-packet constraint, cross-evidence guard, and immutable
+update/delete triggers. Confirm the table is empty, foreign-key checks are
+empty, and its table-scoped `PRAGMA quick_check` is `ok`. Retain a new
+pre-`0064` Time Travel bookmark. The migration is additive and records only a
+staging owner handoff; do not apply it to production or activate any redirect
+as part of this exercise.
+
 For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
 the four `episode_chapter_*` review/history tables and indexes exist, any
 legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key
@@ -755,6 +764,15 @@ Before any existing-feed migration:
     episode, publication, redirect, provider, email, ad, and billing mutation
     flags remain false. Never configure a new-feed tag, HTTP 301, DNS, or
     provider setting in this exercise.
+21. Re-enter the exact fresh cutover packet/digest and explicitly confirm
+    final review, later manual owner action, a rollback plan, and that this
+    request performs no activation. Confirm exact replay is idempotent,
+    another identifier conflicts, direct update/delete fails, and a later
+    show/episode/feed/directory evidence change marks both packet and approval
+    stale. The response may mark the manual handoff ready but must keep
+    `activationAvailable: false` and report zero R2, episode, publication,
+    redirect, provider, email, ad, and billing mutations. Do not contact the
+    old host or activate a redirect.
 
 The authorized Ópera en la Selva Substack URL is useful as a negative preview
 fixture while it contains newsletter article/image enclosures; it must not be

@@ -592,6 +592,102 @@ describe("RSS import executions", () => {
        SET certified_destination_count = 11
        WHERE id = 'rss_cutover_fixture'`
     ).run()).toThrow("rss_import_cutover_packet_immutable");
+    const activationApprovalRequestBody = {
+      approvalId: "rss_redirect_activation_approval_fixture",
+      expectedPacketId: "rss_cutover_fixture",
+      expectedEvidenceSha256:
+        cutoverState.cutoverReadiness.evidenceSha256,
+      finalReviewConfirmed: true,
+      manualActionAcknowledged: true,
+      rollbackPlanConfirmed: true,
+      noActivationPerformedConfirmed: true
+    };
+    const activationApprovalCreated = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${
+          plan.id
+        }/redirect-activation-approval`,
+        activationApprovalRequestBody
+      ),
+      harness.env
+    );
+    expect(activationApprovalCreated.status).toBe(201);
+    expect(await activationApprovalCreated.json()).toMatchObject({
+      idempotent: false,
+      redirectActivationApprovalMutationPerformed: true,
+      r2MutationPerformed: false,
+      episodeMutationPerformed: false,
+      publicationMutationPerformed: false,
+      redirectMutationPerformed: false,
+      providerContactPerformed: false,
+      oldHostRedirectChecklist: {
+        activationAvailable: false,
+        ready: false,
+        readyForActivationApproval: false,
+        manualActivationReady: true,
+        activationApproval: {
+          id: "rss_redirect_activation_approval_fixture",
+          cutoverPacketId: "rss_cutover_fixture",
+          fresh: true,
+          redirectMethod: "provider_managed_redirect"
+        },
+        checks: {
+          finalActivationApproved: true
+        },
+        blockers: expect.arrayContaining([
+          "rss_import_redirect_manual_owner_action_required",
+          "rss_import_redirect_activation_unavailable"
+        ])
+      }
+    });
+    const activationApprovalRetry = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${
+          plan.id
+        }/redirect-activation-approval`,
+        activationApprovalRequestBody
+      ),
+      harness.env
+    );
+    expect(activationApprovalRetry.status).toBe(200);
+    expect(await activationApprovalRetry.json()).toMatchObject({
+      idempotent: true,
+      redirectActivationApprovalMutationPerformed: false,
+      oldHostRedirectChecklist: {
+        manualActivationReady: true,
+        activationApproval: {
+          id: "rss_redirect_activation_approval_fixture",
+          fresh: true
+        }
+      }
+    });
+    const activationApprovalConflict = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${
+          plan.id
+        }/redirect-activation-approval`,
+        {
+          ...activationApprovalRequestBody,
+          approvalId: "rss_redirect_activation_approval_conflict"
+        }
+      ),
+      harness.env
+    );
+    expect(activationApprovalConflict.status).toBe(409);
+    expect(await activationApprovalConflict.json()).toEqual({
+      error: "rss_import_redirect_activation_approval_conflict"
+    });
+    expect(harness.database.prepare(
+      `SELECT COUNT(*) AS count
+       FROM rss_import_redirect_activation_approvals`
+    ).get().count).toBe(1);
+    expect(() => harness.database.prepare(
+      `UPDATE rss_import_redirect_activation_approvals
+       SET manual_action_acknowledged = 0
+       WHERE id = 'rss_redirect_activation_approval_fixture'`
+    ).run()).toThrow(
+      "rss_import_redirect_activation_approval_immutable"
+    );
     const canceled = await handleRequest(
       adminRequest(
         `/v1/admin/rss-import/plans/${plan.id}/cancel`,
@@ -952,6 +1048,32 @@ describe("RSS import executions", () => {
     );
     expect(cutoverClosed.status).toBe(404);
     expect(await cutoverClosed.json()).toEqual({
+      error: "rss_import_reconciliation_unavailable"
+    });
+    const activationApprovalClosed = await handleRequest(
+      adminRequest(
+        "/v1/admin/rss-import/plans/plan_fixture/redirect-activation-approval",
+        {}
+      ),
+      {
+        ENVIRONMENT: "production",
+        RSS_IMPORT_EXECUTION_MODE: "disabled",
+        ALLOWED_ORIGINS: siteOrigin,
+        DB: {
+          prepare() {
+            touched += 1;
+            throw new Error("D1 must stay closed");
+          }
+        },
+        MEDIA_BUCKET: {
+          async head() {
+            touched += 1;
+          }
+        }
+      }
+    );
+    expect(activationApprovalClosed.status).toBe(404);
+    expect(await activationApprovalClosed.json()).toEqual({
       error: "rss_import_reconciliation_unavailable"
     });
     expect(touched).toBe(0);
