@@ -127,7 +127,7 @@ function recordValidFeed(db) {
      ) VALUES (
        ?, 'valid',
        'https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml',
-       'dustwave-rss-launch-v2',
+       'dustwave-rss-launch-v3',
        ?, 1,
        '2026-07-28T12:00:00.000Z',
        '2026-07-28T12:00:00.000Z'

@@ -5,10 +5,11 @@ import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { servePublicFeed } from "./feed";
 import { privateJson } from "./http";
+import { isPodcastGuid } from "./podcast-guid";
 import { validIdentifier } from "./validation";
 
 export const PUBLIC_FEED_VALIDATOR_VERSION =
-  "dustwave-rss-launch-v2";
+  "dustwave-rss-launch-v3";
 const MAXIMUM_FEED_BYTES = 5 * 1024 * 1024;
 
 type FeedValidationShow = {
@@ -229,6 +230,19 @@ export function validatePublicPodcastFeed(
     throw new PublicFeedValidationError(
       "The canonical feed channel category is missing.",
       "feed_channel_metadata_incomplete"
+    );
+  }
+  const channelGuids = [...channelMetadata.matchAll(
+    /<podcast:guid>([^<]+)<\/podcast:guid>/gu
+  )];
+  if (
+    channelGuids.length !== 1
+    || countMatches(channelMetadata, /<podcast:guid\b/gu) !== 1
+    || !isPodcastGuid(channelGuids[0]?.[1])
+  ) {
+    throw new PublicFeedValidationError(
+      "The canonical feed channel GUID is invalid.",
+      "feed_channel_guid_invalid"
     );
   }
 

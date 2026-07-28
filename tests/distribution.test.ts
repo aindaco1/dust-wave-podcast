@@ -123,7 +123,7 @@ describe("streamlined publishing directory registry", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       valid: true,
-      validatorVersion: "dustwave-rss-launch-v2",
+      validatorVersion: "dustwave-rss-launch-v3",
       itemCount: 1
     });
     expect(
@@ -703,7 +703,7 @@ async function distributionFixture({
             };
           }
           if (
-            query.includes("rss_slug, author_name")
+            query.includes("rss_slug, podcast_guid, author_name")
             && query.includes("WHERE rss_slug = ?")
           ) {
             return {
@@ -716,6 +716,7 @@ async function distributionFixture({
               canonical_url:
                 "https://dustwave.xyz/podcasts/opera-en-la-selva/",
               rss_slug: "opera-en-la-selva",
+              podcast_guid: "d21642df-1816-55c8-b308-6209066e9ef6",
               author_name: "Dust Wave",
               category: "Arts",
               explicit: 0
@@ -726,7 +727,7 @@ async function distributionFixture({
               status: "valid",
               feed_url:
                 "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
-              validator_version: "dustwave-rss-launch-v2",
+              validator_version: "dustwave-rss-launch-v3",
               feed_sha256: "a".repeat(64),
               item_count: 1,
               failure_code: null,

@@ -25,7 +25,7 @@ describe("canonical feed launch validation", () => {
       showId: "show_opera",
       feedUrl:
         "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
-      validatorVersion: "dustwave-rss-launch-v2",
+      validatorVersion: "dustwave-rss-launch-v3",
       itemCount: 1
     });
     expect(evidence.feedSha256).toMatch(/^[a-f0-9]{64}$/u);
@@ -57,6 +57,10 @@ describe("canonical feed launch validation", () => {
     });
     expect(xml).toContain(
       'type="text/vtt" language="es"/>'
+    );
+    expect(xml).toContain(
+      "<podcast:guid>d21642df-1816-55c8-b308-6209066e9ef6"
+      + "</podcast:guid>"
     );
     expect(() =>
       validatePublicPodcastFeed(
@@ -95,6 +99,31 @@ describe("canonical feed launch validation", () => {
       )
     ).toThrowError(expect.objectContaining({
       code: "feed_transcript_metadata_invalid"
+    }));
+    expect(() =>
+      validatePublicPodcastFeed(
+        xml.replace(
+          "d21642df-1816-55c8-b308-6209066e9ef6",
+          "d21642df-1816-45c8-b308-6209066e9ef6"
+        ),
+        feedUrl
+      )
+    ).toThrowError(expect.objectContaining({
+      code: "feed_channel_guid_invalid"
+    }));
+    expect(() =>
+      validatePublicPodcastFeed(
+        xml.replace(
+          "</podcast:guid>",
+          "</podcast:guid>"
+            + "<podcast:guid>"
+            + "d21642df-1816-55c8-b308-6209066e9ef6"
+            + "</podcast:guid>"
+        ),
+        feedUrl
+      )
+    ).toThrowError(expect.objectContaining({
+      code: "feed_channel_guid_invalid"
     }));
   });
 
@@ -184,7 +213,7 @@ async function feedFixture({
             };
           }
           if (
-            query.includes("rss_slug, author_name")
+            query.includes("rss_slug, podcast_guid, author_name")
             && query.includes("WHERE rss_slug = ?")
           ) {
             return {
@@ -197,6 +226,7 @@ async function feedFixture({
               canonical_url:
                 "https://dustwave.xyz/podcasts/opera-en-la-selva/",
               rss_slug: "opera-en-la-selva",
+              podcast_guid: "d21642df-1816-55c8-b308-6209066e9ef6",
               author_name: "Dust Wave",
               category,
               explicit: 0

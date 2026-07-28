@@ -33,6 +33,13 @@ Append `?download=1` to the episode media URL for attachment disposition.
 Public audio is available only when the episode is published, due, eligible
 for public access, and backed by ready delivery media.
 
+Public and private RSS expose the same stored Podcasting 2.0
+`<podcast:guid>` channel identity. It is a lowercase UUIDv5 assigned from the
+show's first permanent public feed URL and never recomputed from a private
+token, staging origin, or later host URL. D1 permits a future show one valid
+assignment, enforces platform-wide uniqueness, and then makes the value
+immutable.
+
 The permanent public media URL remains stable. In `disabled` or
 `staging_validate` mode it streams the approved full file directly. The
 guarded automatic modes first require both show/episode flags, the signing and
@@ -320,7 +327,7 @@ including under concurrent requests.
 
 | Method | Path | Roles | Purpose |
 |---|---|---|---|
-| `GET` | `/v1/admin/shows` | analyst+ | Show overview |
+| `GET` | `/v1/admin/shows` | analyst+ | Show overview, including the read-only immutable Podcasting 2.0 channel GUID |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
 | `POST` | `/v1/admin/shows/{id}/rss-import/preview` | recently authenticated super-admin | Fetch and sanitize one explicitly authorized public HTTPS RSS feed without importing episodes or media |
 | `GET` | `/v1/admin/shows/{id}/rss-import/plans` | analyst+ | List the ten most recent show-scoped immutable migration plans and selected evidence |
@@ -551,9 +558,10 @@ eligible YouTube jobs. The RSS job no longer succeeds merely because the feed
 route exists: it renders the same public feed used by clients, reads at most
 5 MiB, rejects unsafe XML declarations, verifies the exact self URL and strong
 ETag, requires the launch RSS/iTunes/Podcasting 2.0 metadata, and checks every
-item for a unique stable GUID and a positive HTTPS enclosure. The current
-validation digest, item count, validator version, and content-free failure code
-are stored per show.
+item for a unique stable GUID and a positive HTTPS enclosure. Validator v3
+also requires exactly one lowercase Podcasting 2.0 UUIDv5 channel GUID; v1/v2
+evidence is stale by construction. The current validation digest, item count,
+validator version, and content-free failure code are stored per show.
 
 The Distribution tab's show-level validation action uses the same validator
 without contacting a directory or changing publication state. It requires a

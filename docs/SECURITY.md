@@ -45,6 +45,13 @@
   sequence after a failed sequence; D1 triggers make that evidence part of the
   show publication epoch. Listing/dashboard URLs stay in private admin state
   and audit metadata retains only presence booleans.
+- Podcasting 2.0 channel identity is a stored lowercase UUIDv5 derived once
+  from the first permanent public feed URL. D1 validates its version/variant,
+  enforces uniqueness, allows at most one assignment, and makes it immutable
+  afterward. Public and private RSS share this value; private bearer URLs,
+  staging origins, and later host changes never seed or replace it. UUIDv5
+  SHA-1 is used only for standards-compatible identity, not authentication,
+  authorization, integrity, or secrecy.
 - Sponsor campaign creation, edits, approval, and the kill switch are
   show-scoped admin mutations with CSRF/origin enforcement and audit events.
   Edits reset approval; direct campaigns require an active sponsor; revoked
@@ -492,7 +499,7 @@ rechecks active unexpired show entitlement and release eligibility on every
 request, uses tokenized RSS URLs, and is private/no-store without wildcard
 CORS. Neither projection logs or returns the raw bearer, internal cue IDs,
 editor markup, revision metadata, or word-alignment rows. Launch/cutover
-evidence accepts only the current `dustwave-rss-launch-v2` validator contract,
+evidence accepts only the current `dustwave-rss-launch-v3` validator contract,
 so a previously valid v1 result becomes visibly stale and cannot certify
 publication. RSS discovery does not trust approval metadata alone: public and
 private feeds reuse the projection parser, speaker-confirmation checks, and

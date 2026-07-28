@@ -176,8 +176,9 @@ Podcasting 2.0 `<podcast:transcript>` tag per approved English/Spanish
 language only after the same bounded canonical parse and SHA-256 check used by
 the VTT route; malformed or tampered rows are omitted instead of advertising a
 dead URL. Private-only episodes keep tokenized transcript URLs and recheck
-entitlement on every request. Feed validator v2 rejects unsafe transcript
-metadata and treats older validation evidence as stale before launch/cutover.
+entitlement on every request. Feed validator v3 rejects unsafe transcript
+metadata, requires one immutable Podcasting 2.0 channel UUIDv5, and treats
+older validation evidence as stale before launch/cutover.
 
 Production review is a separate private collaboration layer over the same
 versioned audio, transcript, chapter, clip, and ad-plan targets. Timestamped
@@ -334,6 +335,11 @@ The permanent feed and media origins are reserved as `feeds.dustwave.xyz` and
 private so premium access, dynamic ad decisions, byte ranges, and telemetry
 cannot be bypassed. No DNS record is attached before the applicable staging
 routes pass.
+
+Each show has one stored Podcasting 2.0 channel UUIDv5. Ópera en la Selva's
+identity is assigned from its permanent public feed URL; public and private RSS
+emit the same immutable value so later host moves do not split the show across
+the open podcast ecosystem.
 
 ## Local setup
 

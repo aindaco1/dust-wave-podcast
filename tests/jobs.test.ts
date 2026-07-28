@@ -86,7 +86,7 @@ describe("publication job revisions", () => {
                 };
               }
               if (
-                query.includes("rss_slug, author_name")
+                query.includes("rss_slug, podcast_guid, author_name")
                 && query.includes("WHERE rss_slug = ?")
               ) {
                 return {
@@ -99,6 +99,8 @@ describe("publication job revisions", () => {
                   canonical_url:
                     "https://dustwave.xyz/podcasts/opera-en-la-selva/",
                   rss_slug: "opera-en-la-selva",
+                  podcast_guid:
+                    "d21642df-1816-55c8-b308-6209066e9ef6",
                   author_name: "Dust Wave",
                   category: "Arts",
                   explicit: 0

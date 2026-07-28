@@ -52,6 +52,7 @@ type ShowAdminRow = {
   artwork_url: string | null;
   canonical_url: string;
   rss_slug: string;
+  podcast_guid: string | null;
   youtube_channel_url: string | null;
   premium_enabled: number;
   early_access_days: number | null;
@@ -73,7 +74,8 @@ export async function listAdminShows(
       `SELECT
          s.id, s.slug, s.title, s.description, s.description_en, s.language,
          s.status, s.artwork_url, s.canonical_url, s.rss_slug,
-         s.youtube_channel_url, s.premium_enabled, s.early_access_days,
+         s.podcast_guid, s.youtube_channel_url, s.premium_enabled,
+         s.early_access_days,
          s.free_mini_episode_enabled, s.author_name, s.category, s.explicit,
          COUNT(e.id) AS episode_count
        FROM shows s
@@ -1023,6 +1025,7 @@ function presentAdminShow(show: ShowAdminRow): Record<string, unknown> {
     artworkUrl: show.artwork_url,
     canonicalUrl: show.canonical_url,
     feedUrl: `https://feeds.dustwave.xyz/${show.rss_slug}/rss.xml`,
+    podcastGuid: show.podcast_guid,
     youtubeChannelUrl: show.youtube_channel_url,
     premiumEnabled: show.premium_enabled === 1,
     earlyAccessDays: show.early_access_days,
