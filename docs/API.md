@@ -330,6 +330,7 @@ including under concurrent requests.
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview, including the read-only immutable Podcasting 2.0 channel GUID |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
 | `POST` | `/v1/admin/shows/{id}/rss-import/preview` | recently authenticated super-admin | Fetch and sanitize one explicitly authorized public HTTPS RSS feed without importing episodes or media |
+| `POST` | `/v1/admin/shows/{id}/rss-import/podcast-guid` | recently authenticated super-admin | Deliberately assign a previewed source channel GUID once to an empty coming-soon show |
 | `GET` | `/v1/admin/shows/{id}/rss-import/plans` | analyst+ | List the ten most recent show-scoped immutable migration plans and selected evidence |
 | `POST` | `/v1/admin/shows/{id}/rss-import/plans` | recently authenticated super-admin | Re-fetch and freeze one exact 1–25 episode selection without copying media or creating episodes |
 | `POST` | `/v1/admin/rss-import/plans/{id}/review` | recently authenticated super-admin | Re-fetch and reconcile the exact feed, selection, and metadata before marking the zero-copy plan reviewed |
@@ -437,6 +438,20 @@ not create or update a show, episode, media object, redirect, directory, or
 provider object. The ordinary authenticated-session heartbeat may still
 advance.
 
+One-time identity assignment accepts exactly `feedUrl`,
+`ownershipConfirmed: true`, `expectedFeedSha256`, `expectedPodcastGuid`, and
+`assignmentConfirmed: true`. It is available only while the destination show
+is `coming_soon`, has no channel GUID, episodes, or migration plans, and the
+source preview contains one valid lowercase Podcasting 2.0 UUIDv5. The Worker
+re-fetches the exact source and requires both preview values to remain
+unchanged. It atomically assigns the show, stores immutable query-stripped
+provenance, and writes a hash-minimized audit event. Exact retries are
+idempotent only against the same stored source URL, feed digest, and GUID.
+Another assigned show, a reused GUID, changed source evidence, or a destination
+that is no longer empty fails closed. The route performs no episode, import,
+publication, R2, redirect, directory, YouTube, email, advertising, billing, or
+provider mutation.
+
 Plan preparation accepts exactly `planId`, `feedUrl`,
 `ownershipConfirmed: true`, the preview's `expectedFeedSha256`, and one to 25
 unique `selectedSourceIdentitySha256` values. It re-fetches the source, rejects
@@ -449,7 +464,8 @@ channel GUID, a valid source GUID that differs from the destination show, or a
 valid source GUID targeting a show without an assigned identity fails closed.
 When valid, the exact source GUID is frozen into the immutable plan. `NULL`
 records that the source feed had no channel GUID; plan preparation never
-silently assigns or replaces a show's identity.
+silently assigns or replaces a show's identity. An unassigned destination must
+first pass the separate explicit identity-assignment boundary above.
 
 Review accepts the exact `feedUrl`, `ownershipConfirmed: true`,
 `reviewConfirmed: true`, `expectedFeedSha256`, and

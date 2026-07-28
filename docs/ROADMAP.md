@@ -72,7 +72,11 @@ iHeartRadio, and Deezer.
   Podcasting 2.0 channel UUIDv5 or explicit absence. The bilingual admin
   compares that identity with the destination show before selection; invalid,
   conflicting, or valid-but-unassigned identity blocks planning. No migration
-  route silently replaces show identity. The plan then requires a
+  route silently replaces show identity. A separate recent-Super-admin action
+  can adopt the exact previewed UUIDv5 once only while a future destination is
+  empty and `coming_soon`; immutable source provenance, explicit rights, and
+  irreversible-action confirmation are required, and the action cannot import
+  or publish. The plan then requires a
   recently authenticated Super-admin to re-enter and re-fetch the exact feed
   before review. Preparing, reviewing, listing, or canceling this immutable
   evidence performs zero media copies and zero episode mutations. The next

@@ -11,6 +11,12 @@ import {
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
+  displayRssImportUrl,
+  requireExactRssImportKeys,
+  requireRssImportOwnershipConfirmation,
+  validRssImportSha256
+} from "./rss-import-contract";
+import {
   loadPodcastRssImportPreview,
   type RssImportEpisodePreview,
   validatedImportFeedUrl
@@ -23,8 +29,6 @@ import {
 } from "./validation";
 
 const MAXIMUM_PLAN_ITEMS = 25;
-const SHA256_PATTERN = /^[a-f0-9]{64}$/;
-
 type ImportPlanStatus = "draft" | "reviewed" | "canceled";
 
 export type ImportPlanRow = {
@@ -103,19 +107,19 @@ export async function createAdminRssImportPlan(
   );
   if (recent) return recent;
   const body = await readJsonObject(request, 12_000);
-  requireExactKeys(body, [
+  requireExactRssImportKeys(body, [
     "planId",
     "feedUrl",
     "ownershipConfirmed",
     "expectedFeedSha256",
     "selectedSourceIdentitySha256"
-  ]);
-  requireOwnershipConfirmation(body.ownershipConfirmed);
+  ], "plan");
+  requireRssImportOwnershipConfirmation(body.ownershipConfirmed);
   const planId = validIdentifier(body.planId, "planId");
   const feedUrl = validatedImportFeedUrl(
     requiredText(body.feedUrl, "feedUrl", 2_000)
   );
-  const expectedFeedSha256 = validSha256(
+  const expectedFeedSha256 = validRssImportSha256(
     body.expectedFeedSha256,
     "expectedFeedSha256"
   );
@@ -186,9 +190,9 @@ export async function createAdminRssImportPlan(
       planId,
       showId,
       await sha256Hex(preview.requestedUrl),
-      displayUrl(preview.requestedUrl),
+      displayRssImportUrl(preview.requestedUrl),
       await sha256Hex(preview.resolvedUrl),
-      displayUrl(preview.resolvedUrl),
+      displayRssImportUrl(preview.resolvedUrl),
       preview.feedSha256,
       preview.podcastGuid,
       selectionSha256,
@@ -270,14 +274,14 @@ export async function reviewAdminRssImportPlan(
   );
   if (recent) return recent;
   const body = await readJsonObject(request, 5_000);
-  requireExactKeys(body, [
+  requireExactRssImportKeys(body, [
     "feedUrl",
     "ownershipConfirmed",
     "expectedFeedSha256",
     "expectedSelectionSha256",
     "reviewConfirmed"
-  ]);
-  requireOwnershipConfirmation(body.ownershipConfirmed);
+  ], "plan review");
+  requireRssImportOwnershipConfirmation(body.ownershipConfirmed);
   if (body.reviewConfirmed !== true) {
     throw new RequestValidationError(
       "The immutable migration selection must be explicitly confirmed.",
@@ -287,11 +291,11 @@ export async function reviewAdminRssImportPlan(
   const feedUrl = validatedImportFeedUrl(
     requiredText(body.feedUrl, "feedUrl", 2_000)
   );
-  const expectedFeedSha256 = validSha256(
+  const expectedFeedSha256 = validRssImportSha256(
     body.expectedFeedSha256,
     "expectedFeedSha256"
   );
-  const expectedSelectionSha256 = validSha256(
+  const expectedSelectionSha256 = validRssImportSha256(
     body.expectedSelectionSha256,
     "expectedSelectionSha256"
   );
@@ -384,8 +388,12 @@ export async function cancelAdminRssImportPlan(
   );
   if (recent) return recent;
   const body = await readJsonObject(request, 2_000);
-  requireExactKeys(body, ["expectedSelectionSha256", "reason"]);
-  const expectedSelectionSha256 = validSha256(
+  requireExactRssImportKeys(
+    body,
+    ["expectedSelectionSha256", "reason"],
+    "plan cancellation"
+  );
+  const expectedSelectionSha256 = validRssImportSha256(
     body.expectedSelectionSha256,
     "expectedSelectionSha256"
   );
@@ -559,10 +567,10 @@ async function selectedSnapshotItems(
       durationSeconds: episode.durationSeconds,
       explicit: episode.explicit,
       canonicalDisplayUrl: episode.canonicalUrl
-        ? displayUrl(episode.canonicalUrl)
+        ? displayRssImportUrl(episode.canonicalUrl)
         : null,
       enclosureUrlSha256: await sha256Hex(episode.enclosure.url),
-      enclosureDisplayUrl: displayUrl(episode.enclosure.url),
+      enclosureDisplayUrl: displayRssImportUrl(episode.enclosure.url),
       enclosureMimeType: episode.enclosure.mimeType,
       enclosureBytes: episode.enclosure.bytes,
       warnings: [...episode.warnings]
@@ -762,7 +770,7 @@ function selectedIdentityList(value: unknown): string[] {
     );
   }
   const identities = value.map((candidate) =>
-    validSha256(candidate, "selectedSourceIdentitySha256")
+    validRssImportSha256(candidate, "selectedSourceIdentitySha256")
   );
   if (new Set(identities).size !== identities.length) {
     throw new RequestValidationError(
@@ -798,44 +806,6 @@ function sameMetadata(
   return stored.every((item) =>
     digests.get(item.source_identity_sha256) === item.metadata_sha256
   );
-}
-
-function displayUrl(value: string): string {
-  const url = new URL(value);
-  url.username = "";
-  url.password = "";
-  url.search = "";
-  url.hash = "";
-  return url.toString();
-}
-
-function validSha256(value: unknown, field: string): string {
-  const digest = requiredText(value, field, 64).toLowerCase();
-  if (!SHA256_PATTERN.test(digest)) {
-    throw new RequestValidationError(`${field} must be a SHA-256 digest`);
-  }
-  return digest;
-}
-
-function requireOwnershipConfirmation(value: unknown): void {
-  if (value !== true) {
-    throw new RequestValidationError(
-      "You must confirm that Dust Wave owns or may import this podcast.",
-      "rss_import_ownership_confirmation_required"
-    );
-  }
-}
-
-function requireExactKeys(
-  value: Record<string, unknown>,
-  keys: string[]
-): void {
-  const allowed = new Set(keys);
-  if (Object.keys(value).some((key) => !allowed.has(key))) {
-    throw new RequestValidationError(
-      "The RSS import plan request has unsupported fields."
-    );
-  }
 }
 
 function safeWarnings(value: string): string[] {

@@ -12,6 +12,10 @@ import {
   type PodcastGuidDiscovery
 } from "./podcast-guid";
 import {
+  requireExactRssImportKeys,
+  requireRssImportOwnershipConfirmation
+} from "./rss-import-contract";
+import {
   readJsonObject,
   RequestValidationError,
   requiredText,
@@ -130,13 +134,12 @@ export async function previewAdminRssImport(
   if (recent) return recent;
 
   const body = await readJsonObject(request, 5_000);
-  requireExactKeys(body, ["feedUrl", "ownershipConfirmed"]);
-  if (body.ownershipConfirmed !== true) {
-    throw new RequestValidationError(
-      "You must confirm that Dust Wave owns or may import this podcast.",
-      "rss_import_ownership_confirmation_required"
-    );
-  }
+  requireExactRssImportKeys(
+    body,
+    ["feedUrl", "ownershipConfirmed"],
+    "preview"
+  );
+  requireRssImportOwnershipConfirmation(body.ownershipConfirmed);
   const requestedUrl = validatedImportFeedUrl(
     requiredText(body.feedUrl, "feedUrl", 2_000)
   );
@@ -666,18 +669,6 @@ function normalizedLanguage(value: string): string | null {
   return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/u.test(normalized)
     ? normalized
     : null;
-}
-
-function requireExactKeys(
-  value: Record<string, unknown>,
-  keys: string[]
-): void {
-  const allowed = new Set(keys);
-  if (Object.keys(value).some((key) => !allowed.has(key))) {
-    throw new RequestValidationError(
-      "The RSS import preview request has unsupported fields."
-    );
-  }
 }
 
 function countMatches(value: string, pattern: RegExp): number {

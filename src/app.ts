@@ -244,6 +244,9 @@ import {
 } from "./transcripts";
 import { previewAdminRssImport } from "./rss-import-preview";
 import {
+  assignAdminRssImportPodcastGuid
+} from "./rss-import-identity";
+import {
   cancelAdminRssImportPlan,
   createAdminRssImportPlan,
   listAdminRssImportPlans,
@@ -313,6 +316,8 @@ const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
 const ADMIN_SHOW_RSS_IMPORT_PREVIEW_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/preview$/;
+const ADMIN_SHOW_RSS_IMPORT_PODCAST_GUID_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/podcast-guid$/;
 const ADMIN_SHOW_RSS_IMPORT_PLANS_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/plans$/;
 const ADMIN_RSS_IMPORT_PLAN_REVIEW_PATH =
@@ -961,6 +966,16 @@ async function routeRequest(
       request,
       env,
       adminShowRssImportPreviewMatch[1]
+    );
+  }
+  const adminShowRssImportPodcastGuidMatch = url.pathname.match(
+    ADMIN_SHOW_RSS_IMPORT_PODCAST_GUID_PATH
+  );
+  if (adminShowRssImportPodcastGuidMatch && method === "POST") {
+    return assignAdminRssImportPodcastGuid(
+      request,
+      env,
+      adminShowRssImportPodcastGuidMatch[1]
     );
   }
   const adminShowRssImportPlansMatch = url.pathname.match(

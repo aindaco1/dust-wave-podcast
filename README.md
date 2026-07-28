@@ -56,8 +56,11 @@ destination identity. A selected plan freezes the exact feed, source channel
 GUID or explicit absence, source episode identities, metadata, and
 query-stripped display URLs. Invalid, conflicting, or valid-but-unassigned
 channel identity fails closed; migration never silently replaces show
-identity. Review requires the exact source URL to be re-entered and re-fetches
-the feed before accepting byte-identical identity and content evidence.
+identity. For a future empty `coming_soon` show, a separate recent-super-admin
+action can re-fetch the exact preview and adopt a valid source UUIDv5 once,
+with immutable query-stripped provenance and a second irreversible-action
+confirmation. Review requires the exact source URL to be re-entered and
+re-fetches the feed before accepting byte-identical identity and content evidence.
 Preparing and reviewing remain zero-copy.
 
 Only `RSS_IMPORT_EXECUTION_MODE=staging_copy`, a dedicated

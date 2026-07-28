@@ -22,6 +22,7 @@ const csrfToken = "rss_import_plan_csrf";
 const signedFeedUrl =
   "https://podcast.example.org/feed.xml?token=source-feed-secret";
 const cancellationReason = "Provider contract still needs review";
+const sourcePodcastGuid = "917393e3-1b1e-5cef-ace4-edaa54e1f810";
 
 let harnesses = [];
 
@@ -318,6 +319,222 @@ describe("reviewed RSS import plans", () => {
     expect(harness.planCount()).toBe(0);
   });
 
+  it("assigns exact source identity once with immutable provenance and idempotent retry", async () => {
+    const harness = await createHarness();
+    insertUnassignedShow(harness.database, "show_imported", "imported-show");
+    const feed = withPodcastGuid(validPodcastFeed(), sourcePodcastGuid);
+    const preview = await parsePodcastRssImportPreview(feed, signedFeedUrl);
+    const providerFetch = vi.fn(async () => feedResponse(feed));
+    vi.stubGlobal("fetch", providerFetch);
+    const requestBody = {
+      feedUrl: signedFeedUrl,
+      ownershipConfirmed: true,
+      expectedFeedSha256: preview.feedSha256,
+      expectedPodcastGuid: sourcePodcastGuid,
+      assignmentConfirmed: true
+    };
+
+    const assigned = await handleRequest(
+      adminRequest(
+        "/v1/admin/shows/show_imported/rss-import/podcast-guid",
+        requestBody
+      ),
+      harness.env
+    );
+    expect(assigned.status).toBe(200);
+    expect(await assigned.json()).toMatchObject({
+      show: {
+        id: "show_imported",
+        podcastGuid: sourcePodcastGuid
+      },
+      assignment: {
+        podcastGuid: sourcePodcastGuid,
+        requestedFeedUrl: "https://podcast.example.org/feed.xml",
+        resolvedFeedUrl: "https://podcast.example.org/feed.xml",
+        feedSha256: preview.feedSha256
+      },
+      idempotent: false,
+      episodeMutationPerformed: false,
+      importMutationPerformed: false,
+      publicationMutationPerformed: false
+    });
+    expect(
+      harness.database.prepare(
+        "SELECT podcast_guid FROM shows WHERE id = 'show_imported'"
+      ).get()
+    ).toEqual({ podcast_guid: sourcePodcastGuid });
+    expect(
+      harness.database.prepare(
+        `SELECT podcast_guid, requested_feed_display_url
+         FROM rss_import_podcast_guid_assignments
+         WHERE show_id = 'show_imported'`
+      ).get()
+    ).toEqual({
+      podcast_guid: sourcePodcastGuid,
+      requested_feed_display_url:
+        "https://podcast.example.org/feed.xml"
+    });
+    expect(harness.auditActions()).toEqual([
+      "rss_import.podcast_guid_assigned"
+    ]);
+    expect(JSON.stringify(
+      harness.database.prepare(
+        "SELECT * FROM rss_import_podcast_guid_assignments"
+      ).all()
+    )).not.toContain("source-feed-secret");
+    expect(() =>
+      harness.database.prepare(
+        `UPDATE rss_import_podcast_guid_assignments
+         SET feed_sha256 = ?
+         WHERE show_id = 'show_imported'`
+      ).run("0".repeat(64))
+    ).toThrow(/rss_import_podcast_guid_assignments_immutable/u);
+    expect(() =>
+      harness.database.prepare(
+        `DELETE FROM rss_import_podcast_guid_assignments
+         WHERE show_id = 'show_imported'`
+      ).run()
+    ).toThrow(/rss_import_podcast_guid_assignments_undeletable/u);
+
+    const retried = await handleRequest(
+      adminRequest(
+        "/v1/admin/shows/show_imported/rss-import/podcast-guid",
+        requestBody
+      ),
+      harness.env
+    );
+    expect(retried.status).toBe(200);
+    expect(await retried.json()).toMatchObject({ idempotent: true });
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+    expect(harness.auditActions()).toEqual([
+      "rss_import.podcast_guid_assigned"
+    ]);
+  });
+
+  it("fails source identity assignment closed without mutating the show", async () => {
+    const harness = await createHarness();
+    insertUnassignedShow(harness.database, "show_imported", "imported-show");
+    const feed = withPodcastGuid(validPodcastFeed(), sourcePodcastGuid);
+    const preview = await parsePodcastRssImportPreview(feed, signedFeedUrl);
+    const providerFetch = vi.fn(async () => feedResponse(feed));
+    vi.stubGlobal("fetch", providerFetch);
+
+    const changed = await handleRequest(
+      adminRequest(
+        "/v1/admin/shows/show_imported/rss-import/podcast-guid",
+        {
+          feedUrl: signedFeedUrl,
+          ownershipConfirmed: true,
+          expectedFeedSha256: preview.feedSha256,
+          expectedPodcastGuid:
+            "d21642df-1816-55c8-b308-6209066e9ef6",
+          assignmentConfirmed: true
+        }
+      ),
+      harness.env
+    );
+    expect(changed.status).toBe(409);
+    expect(await changed.json()).toEqual({
+      error: "rss_import_podcast_guid_changed"
+    });
+    expect(
+      harness.database.prepare(
+        "SELECT podcast_guid FROM shows WHERE id = 'show_imported'"
+      ).get()
+    ).toEqual({ podcast_guid: null });
+    expect(harness.auditActions()).toEqual([]);
+
+    const existing = await handleRequest(
+      adminRequest(
+        "/v1/admin/shows/show_opera_en_la_selva/rss-import/podcast-guid",
+        {
+          feedUrl: signedFeedUrl,
+          ownershipConfirmed: true,
+          expectedFeedSha256: preview.feedSha256,
+          expectedPodcastGuid: sourcePodcastGuid,
+          assignmentConfirmed: true
+        }
+      ),
+      harness.env
+    );
+    expect(existing.status).toBe(409);
+    expect(await existing.json()).toEqual({
+      error: "rss_import_show_podcast_guid_already_assigned"
+    });
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back when source identity is already owned by another show", async () => {
+    const harness = await createHarness();
+    insertUnassignedShow(harness.database, "show_imported", "imported-show");
+    const operaGuid = "d21642df-1816-55c8-b308-6209066e9ef6";
+    const feed = withPodcastGuid(validPodcastFeed(), operaGuid);
+    const preview = await parsePodcastRssImportPreview(feed, signedFeedUrl);
+    vi.stubGlobal("fetch", vi.fn(async () => feedResponse(feed)));
+
+    const response = await handleRequest(
+      adminRequest(
+        "/v1/admin/shows/show_imported/rss-import/podcast-guid",
+        {
+          feedUrl: signedFeedUrl,
+          ownershipConfirmed: true,
+          expectedFeedSha256: preview.feedSha256,
+          expectedPodcastGuid: operaGuid,
+          assignmentConfirmed: true
+        }
+      ),
+      harness.env
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "rss_import_podcast_guid_in_use"
+    });
+    expect(
+      harness.database.prepare(
+        "SELECT podcast_guid FROM shows WHERE id = 'show_imported'"
+      ).get()
+    ).toEqual({ podcast_guid: null });
+    expect(
+      harness.database.prepare(
+        "SELECT COUNT(*) AS count FROM rss_import_podcast_guid_assignments"
+      ).get()
+    ).toEqual({ count: 0 });
+    expect(harness.auditActions()).toEqual([]);
+  });
+
+  it("requires recent super-admin authentication before identity source fetch", async () => {
+    const harness = await createHarness({ recentAuthentication: false });
+    insertUnassignedShow(harness.database, "show_imported", "imported-show");
+    const feed = withPodcastGuid(validPodcastFeed(), sourcePodcastGuid);
+    const preview = await parsePodcastRssImportPreview(feed, signedFeedUrl);
+    const providerFetch = vi.fn();
+    vi.stubGlobal("fetch", providerFetch);
+
+    const response = await handleRequest(
+      adminRequest(
+        "/v1/admin/shows/show_imported/rss-import/podcast-guid",
+        {
+          feedUrl: signedFeedUrl,
+          ownershipConfirmed: true,
+          expectedFeedSha256: preview.feedSha256,
+          expectedPodcastGuid: sourcePodcastGuid,
+          assignmentConfirmed: true
+        }
+      ),
+      harness.env
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "recent_authentication_required"
+    });
+    expect(providerFetch).not.toHaveBeenCalled();
+    expect(
+      harness.database.prepare(
+        "SELECT podcast_guid FROM shows WHERE id = 'show_imported'"
+      ).get()
+    ).toEqual({ podcast_guid: null });
+  });
+
   it("rejects a changed feed during review and preserves the draft", async () => {
     const harness = await createHarness();
     const feed = validPodcastFeed();
@@ -581,6 +798,20 @@ function withPodcastGuid(feed, guid) {
       "<channel>",
       `<channel><podcast:guid>${guid}</podcast:guid>`
     );
+}
+
+function insertUnassignedShow(database, id, slug) {
+  database.prepare(
+    `INSERT INTO shows (
+       id, slug, title, canonical_url, rss_slug, status
+     ) VALUES (?, ?, ?, ?, ?, 'coming_soon')`
+  ).run(
+    id,
+    slug,
+    slug,
+    `https://dustwave.xyz/podcasts/${slug}/`,
+    slug
+  );
 }
 
 function d1Database(database) {

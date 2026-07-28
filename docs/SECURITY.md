@@ -388,6 +388,22 @@ freezes the exact source GUID, or explicit absence, and a trigger prevents it
 from changing. No import route silently derives, assigns, or replaces show
 identity.
 
+An unassigned future show may adopt a previewed source channel GUID only
+through a separate recent-super-admin and same-origin-CSRF action. It requires
+the exact authorized feed URL, preview feed digest, UUIDv5, rights
+confirmation, and a second irreversible-action confirmation. Before any
+source fetch the destination must still be an empty `coming_soon` show without
+episodes or import plans. After re-fetch, changed, absent, malformed, reused,
+or conflicting identity fails closed.
+
+The conditional show update, immutable provenance insert, and hash-minimized
+audit insert execute in one D1 batch. Provenance retains SHA-256 values for the
+exact requested/resolved URLs and only query/fragment-free display URLs. It
+cannot be updated or deleted, and the assigned show GUID is already protected
+by the one-way show trigger. The response explicitly reports zero episode,
+import, and publication mutations; the route has no R2, Queue, redirect,
+directory, provider, YouTube, email, advertising, or billing path.
+
 Review requires the exact feed URL to be supplied again, explicit rights and
 selection confirmation, recent authentication, CSRF, and a fresh source
 fetch. A changed redirect target, feed byte, selected identity, or metadata
