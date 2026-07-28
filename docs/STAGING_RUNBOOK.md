@@ -294,6 +294,16 @@ gh workflow run process-transcription-chunks.yml \
   -f run_id="transcription_chunks_REPLACE_WITH_QUEUED_ID"
 ```
 
+GitHub accepts a manual dispatch only after the workflow file exists on the
+repository's default branch, even when `--ref` selects the reviewed release
+branch for the run. Before queueing a billable long-source rehearsal, verify
+that `process-transcription-chunks.yml` appears in the repository Actions
+workflow list. If the immutable staging job was already queued while the
+workflow still exists only on the release branch, leave that exact job queued,
+merge through the reviewed release process, and dispatch its displayed run ID
+afterward. Do not create a replacement job, copy an Actions environment secret
+into a local file, or write processor state directly into D1.
+
 Confirm the run used the exact signed manifest/source, retained no source or
 chunk audio artifact, selected the closest safe silence or documented
 deterministic duration fallback, and uploaded only checksum-verified chunks.
@@ -1050,6 +1060,17 @@ The enhanced-master approval remains intentionally pending because its
 acknowledgement requires a human to listen to the full derivative. Delivery
 audio stays blocked, and no News page, RSS item, directory job, YouTube job,
 or public media selection exists.
+
+On July 28, 2026, the workbench queued English transcription job
+`transcription_8243ef54973b9588cd453b23f55a0b99` and immutable chunk run
+`transcription_chunks_8243ef54973b9588cd453b23f55a0b99` against working-master
+revision 1. Both remain at attempt zero with no provider response, transcript,
+or public output. GitHub rejected the manual dispatch because the repository's
+default branch currently registers only CI; the chunk workflow still exists
+only on the reviewed release branch. Preserve and dispatch this exact run
+after the workflow lands on the default branch. An audited, assigned release
+blocker now keeps the full-listen requirement visible in the exact-revision
+production review; the refreshed shadow snapshot marks that review gate failed.
 
 The first local signed upload exposed a `curl` broken pipe on the default
 HTTP/2 transfer before either output existed. A replay with the same immutable
