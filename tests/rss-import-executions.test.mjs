@@ -428,6 +428,144 @@ describe("RSS import executions", () => {
        SET copied_bytes = copied_bytes + 1
        WHERE execution_id = 'rss_execution_fixture'`
     ).run()).toThrow("rss_import_execution_reconciled");
+    expect(redirectAttestationState.cutoverReadiness).toMatchObject({
+      activationAvailable: false,
+      evidenceReady: false,
+      readyForPacket: false,
+      importedEpisodeCount: 1,
+      publicEpisodeCount: 0,
+      requiredDestinationCount: 10,
+      packet: null
+    });
+    expect(
+      redirectAttestationState.cutoverReadiness.blockers
+    ).toEqual(expect.arrayContaining([
+      "rss_import_cutover_episode_not_public",
+      "rss_import_cutover_rss_not_published",
+      "rss_import_cutover_news_not_published",
+      "rss_import_cutover_feed_not_current",
+      "rss_import_cutover_directory_certification_required",
+      "rss_import_cutover_directory_reobservation_required"
+    ]));
+    const blockedCutover = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/cutover-packet`,
+        {
+          packetId: "rss_cutover_blocked",
+          expectedEvidenceSha256:
+            redirectAttestationState.cutoverReadiness.evidenceSha256,
+          ownerReviewConfirmed: true,
+          noActivationConfirmed: true
+        }
+      ),
+      harness.env
+    );
+    expect(blockedCutover.status).toBe(409);
+    expect(await blockedCutover.json()).toEqual({
+      error: "rss_import_cutover_not_ready"
+    });
+    makeCutoverReady(harness.database, episode.id);
+    const cutoverPreview = await handleRequest(
+      adminGet(
+        `/v1/admin/rss-import/plans/${plan.id}/reconciliation`
+      ),
+      harness.env
+    );
+    expect(cutoverPreview.status).toBe(200);
+    const cutoverState = await cutoverPreview.json();
+    expect(cutoverState.cutoverReadiness).toMatchObject({
+      activationAvailable: false,
+      evidenceReady: true,
+      readyForPacket: true,
+      importedEpisodeCount: 1,
+      publicEpisodeCount: 1,
+      feedItemCount: 1,
+      expectedFeedItemCount: 1,
+      certifiedDestinationCount: 10,
+      reobservedDestinationCount: 10,
+      requiredDestinationCount: 10,
+      blockers: [],
+      packet: null,
+      items: [{
+        episodeId: episode.id,
+        publicationRevision: 1,
+        public: true,
+        rssPublished: true,
+        newsPublished: true,
+        blockers: []
+      }]
+    });
+    const cutoverRequestBody = {
+      packetId: "rss_cutover_fixture",
+      expectedEvidenceSha256:
+        cutoverState.cutoverReadiness.evidenceSha256,
+      ownerReviewConfirmed: true,
+      noActivationConfirmed: true
+    };
+    const cutoverCreated = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/cutover-packet`,
+        cutoverRequestBody
+      ),
+      harness.env
+    );
+    expect(cutoverCreated.status).toBe(201);
+    expect(await cutoverCreated.json()).toMatchObject({
+      idempotent: false,
+      cutoverPacketMutationPerformed: true,
+      r2MutationPerformed: false,
+      episodeMutationPerformed: false,
+      publicationMutationPerformed: false,
+      redirectMutationPerformed: false,
+      providerContactPerformed: false,
+      cutoverReadiness: {
+        evidenceReady: true,
+        readyForPacket: false,
+        packet: {
+          id: "rss_cutover_fixture",
+          fresh: true,
+          importedEpisodeCount: 1,
+          reobservedDestinationCount: 10
+        }
+      }
+    });
+    const cutoverRetry = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/cutover-packet`,
+        cutoverRequestBody
+      ),
+      harness.env
+    );
+    expect(cutoverRetry.status).toBe(200);
+    expect(await cutoverRetry.json()).toMatchObject({
+      idempotent: true,
+      cutoverPacketMutationPerformed: false,
+      cutoverReadiness: {
+        packet: { id: "rss_cutover_fixture", fresh: true }
+      }
+    });
+    const cutoverConflict = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/cutover-packet`,
+        {
+          ...cutoverRequestBody,
+          packetId: "rss_cutover_conflict"
+        }
+      ),
+      harness.env
+    );
+    expect(cutoverConflict.status).toBe(409);
+    expect(await cutoverConflict.json()).toEqual({
+      error: "rss_import_cutover_packet_conflict"
+    });
+    expect(harness.database.prepare(
+      "SELECT COUNT(*) AS count FROM rss_import_cutover_packets"
+    ).get().count).toBe(1);
+    expect(() => harness.database.prepare(
+      `UPDATE rss_import_cutover_packets
+       SET certified_destination_count = 11
+       WHERE id = 'rss_cutover_fixture'`
+    ).run()).toThrow("rss_import_cutover_packet_immutable");
     const canceled = await handleRequest(
       adminRequest(
         `/v1/admin/rss-import/plans/${plan.id}/cancel`,
@@ -764,6 +902,32 @@ describe("RSS import executions", () => {
     expect(await attestationClosed.json()).toEqual({
       error: "rss_import_reconciliation_unavailable"
     });
+    const cutoverClosed = await handleRequest(
+      adminRequest(
+        "/v1/admin/rss-import/plans/plan_fixture/cutover-packet",
+        {}
+      ),
+      {
+        ENVIRONMENT: "production",
+        RSS_IMPORT_EXECUTION_MODE: "disabled",
+        ALLOWED_ORIGINS: siteOrigin,
+        DB: {
+          prepare() {
+            touched += 1;
+            throw new Error("D1 must stay closed");
+          }
+        },
+        MEDIA_BUCKET: {
+          async head() {
+            touched += 1;
+          }
+        }
+      }
+    );
+    expect(cutoverClosed.status).toBe(404);
+    expect(await cutoverClosed.json()).toEqual({
+      error: "rss_import_reconciliation_unavailable"
+    });
     expect(touched).toBe(0);
   });
 });
@@ -808,6 +972,124 @@ async function createReviewedPlan(harness) {
   );
   expect(reviewed.status).toBe(200);
   return (await reviewed.json()).plan;
+}
+
+function makeCutoverReady(database, episodeId) {
+  database.prepare(
+    `UPDATE episodes
+     SET
+       status = 'published',
+       public_at = '2026-07-28T08:00:00.000Z',
+       audio_key = 'podcasts/opera/episodes/imported/delivery.mp3',
+       audio_mime_type = 'audio/mpeg',
+       audio_bytes = 2048,
+       audio_etag = '"delivery-etag"',
+       audio_filename = 'episodio-importado.mp3',
+       media_status = 'ready',
+       publication_revision = 1,
+       updated_at = '2026-07-28T09:00:00.000Z'
+     WHERE id = ?`
+  ).run(episodeId);
+  for (const destination of ["rss", "news"]) {
+    database.prepare(
+      `INSERT INTO distribution_jobs (
+         id, episode_id, destination, status, scheduled_at,
+         started_at, completed_at, idempotency_key,
+         publication_revision
+       ) VALUES (?, ?, ?, 'succeeded', ?, ?, ?, ?, 1)`
+    ).run(
+      `cutover_job_${destination}`,
+      episodeId,
+      destination,
+      "2026-07-28T09:30:00.000Z",
+      "2026-07-28T09:31:00.000Z",
+      "2026-07-28T10:00:00.000Z",
+      `cutover:${destination}:${episodeId}:1`
+    );
+  }
+  const episode = database.prepare(
+    "SELECT show_id, canonical_url FROM episodes WHERE id = ?"
+  ).get(episodeId);
+  database.prepare(
+    `INSERT INTO site_publications (
+       id, show_id, episode_id, publication_revision,
+       canonical_url, status, idempotency_key, updated_at
+     ) VALUES (
+       'cutover_site_publication', ?, ?, 1, ?,
+       'succeeded', ?, '2026-07-28T10:00:00.000Z'
+     )`
+  ).run(
+    episode.show_id,
+    episodeId,
+    episode.canonical_url,
+    `news:${episodeId}:1`
+  );
+  const show = database.prepare(
+    "SELECT rss_slug FROM shows WHERE id = ?"
+  ).get(episode.show_id);
+  database.prepare(
+    `INSERT INTO show_feed_validations (
+       show_id, status, feed_url, validator_version,
+       feed_sha256, item_count, checked_at, validated_at
+     ) VALUES (
+       ?, 'valid', ?, 'rss-cutover-fixture-v1',
+       ?, 1, '2026-07-28T12:00:00.000Z',
+       '2026-07-28T12:00:00.000Z'
+     )`
+  ).run(
+    episode.show_id,
+    `${apiOrigin}/${show.rss_slug}/rss.xml`,
+    "f".repeat(64)
+  );
+  const destinations = database.prepare(
+    `SELECT destination_id
+     FROM show_distribution_destinations
+     WHERE show_id = ?
+     ORDER BY destination_id
+     LIMIT 10`
+  ).all(episode.show_id);
+  for (const [index, destination] of destinations.entries()) {
+    database.prepare(
+      `UPDATE show_distribution_destinations
+       SET
+         enabled = 1,
+         owner_setup_status = 'verified',
+         owner_verified_at = '2026-07-28T11:00:00.000Z',
+         updated_at = '2026-07-28T11:00:00.000Z'
+       WHERE show_id = ? AND destination_id = ?`
+    ).run(episode.show_id, destination.destination_id);
+    database.prepare(
+      `INSERT INTO distribution_observation_events (
+         id, show_id, episode_id, destination_id,
+         publication_revision, status, failure_detail,
+         evidence_source, recorded_at
+       ) VALUES (
+         ?, ?, ?, ?, 1, 'failed', 'Controlled recovery fixture',
+         'manual_review', '2026-07-28T11:30:00.000Z'
+       )`
+    ).run(
+      `cutover_failed_${index}`,
+      episode.show_id,
+      episodeId,
+      destination.destination_id
+    );
+    database.prepare(
+      `INSERT INTO distribution_observation_events (
+         id, show_id, episode_id, destination_id,
+         publication_revision, status, evidence_url,
+         evidence_source, recorded_at
+       ) VALUES (
+         ?, ?, ?, ?, 1, 'observed', ?,
+         'manual_review', '2026-07-28T13:00:00.000Z'
+       )`
+    ).run(
+      `cutover_observed_${index}`,
+      episode.show_id,
+      episodeId,
+      destination.destination_id,
+      `https://directory.example.org/${destination.destination_id}`
+    );
+  }
 }
 
 async function createHarness() {

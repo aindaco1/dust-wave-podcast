@@ -210,6 +210,14 @@ foreign-key checks are empty, and its table-scoped `PRAGMA quick_check` is
 `ok`. Retain a new pre-`0058` Time Travel bookmark. The migration is additive;
 do not apply it to production as part of a staging exercise.
 
+For migration `0059`, verify `rss_import_cutover_packets`, its show/prepared
+index, cross-evidence guard, immutable update/delete triggers, ten-directory
+minimums, exact confirmation flags, and semantic uniqueness over execution
+and cutover digest. Confirm the table is empty, foreign-key checks are empty,
+and its table-scoped `PRAGMA quick_check` is `ok`. Retain a new pre-`0059`
+Time Travel bookmark. The migration is additive; do not apply it to
+production as part of a staging exercise.
+
 For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
 the four `episode_chapter_*` review/history tables and indexes exist, any
 legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key
@@ -717,6 +725,24 @@ Before any existing-feed migration:
     idempotent, semantic duplication conflicts, and direct update/delete fail.
     Do not attest the current Ópera en la Selva negative fixture and do not
     activate a redirect in this staging exercise.
+18. On an isolated synthetic fixture only, make every imported current
+    revision publicly due with ready delivery audio, and record successful
+    current-revision RSS, canonical-News job, and site-publication evidence.
+    Validate the exact canonical feed afterward. Confirm any stale revision,
+    pending News/site state, mismatched feed URL, or older validation blocks
+    the cutover packet.
+19. Give ten enabled fixture destinations verified owner setup, immutable
+    failed-to-observed recovery evidence, and a new observed event after that
+    feed validation. Confirm nine re-observations remain blocked, an
+    observation before validation remains blocked, and the exact ten become
+    ready without contacting a directory.
+20. As a recently authenticated Super-admin, freeze the exact cutover digest.
+    Confirm exact replay is idempotent, another identifier conflicts, direct
+    update/delete fails, and a later show/episode evidence change marks the
+    packet stale. Confirm only the packet/audit rows change and all R2,
+    episode, publication, redirect, provider, email, ad, and billing mutation
+    flags remain false. Never configure a new-feed tag, HTTP 301, DNS, or
+    provider setting in this exercise.
 
 The authorized Ópera en la Selva Substack URL is useful as a negative preview
 fixture while it contains newsletter article/image enclosures; it must not be
@@ -1314,3 +1340,6 @@ For the full-episode YouTube test, use a separate fixture publication:
 - A Worker-code rollback after migration `0058` must leave the immutable
   redirect-attestation table and triggers in place. Older code ignores the
   hash-only evidence; it does not authorize activation.
+- A Worker-code rollback after migration `0059` must leave the immutable
+  cutover-packet table and triggers in place. Older code ignores the packet;
+  it cannot activate a redirect or authorize a provider action.

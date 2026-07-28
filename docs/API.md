@@ -302,6 +302,7 @@ including under concurrent requests.
 | `GET` | `/v1/admin/rss-import/plans/{id}/reconciliation` | analyst+ | Recompute content-free exact-copy, draft-identity, source-upload, private-R2, and zero-publication evidence plus a non-activating old-host checklist |
 | `POST` | `/v1/admin/rss-import/plans/{id}/reconciliation` | recently authenticated super-admin | Immutably approve one unchanged staging copy snapshot without publishing, modifying R2, or activating a redirect |
 | `POST` | `/v1/admin/rss-import/plans/{id}/redirect-attestation` | recently authenticated super-admin | Record immutable hash-only evidence of old-host control and the expected permanent redirect method without contacting or changing the host |
+| `POST` | `/v1/admin/rss-import/plans/{id}/cutover-packet` | recently authenticated super-admin | Freeze exact current-revision RSS/News, post-publication feed validation, 10-directory recovery/re-observation, and owner-control evidence without activating a redirect |
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
@@ -475,6 +476,27 @@ The response can mark the owner-control check current, but always includes
 `activationAvailable: false`, `ready: false`, and
 `rss_import_redirect_activation_unavailable`; it reports zero redirect and
 provider mutations.
+
+The cutover packet is the final staging-only evidence boundary before an
+owner/provider redirect action. The reconciliation response computes a
+deterministic `dustwave-rss-import-cutover-v1` digest over every imported
+episode's current publication/evidence revision, successful RSS job,
+successful canonical-News job and site publication, the exact canonical-feed
+validation, every enabled directory's owner/recovery/latest-observation
+evidence, and the current owner-control attestation. Feed validation must be
+newer than the imported publication work and its item count must equal the
+current public-feed-eligible episode count. At least ten fully certified
+directories must have a later observation.
+
+Creation accepts exactly `packetId`, `expectedEvidenceSha256`,
+`ownerReviewConfirmed: true`, and `noActivationConfirmed: true`. It requires
+recent Super-admin authentication and same-origin CSRF, guards the write with
+the current show and episode evidence versions, and stores only immutable
+hashes, counts, revisions, timestamps, and administrator identity. Exact
+retries are idempotent; semantic duplication conflicts; later publication,
+feed, or directory evidence makes the packet visibly stale. The packet
+performs no R2, episode, publication, redirect, directory, provider, email,
+advertising, or billing mutation and cannot configure the old host.
 
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |

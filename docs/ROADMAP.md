@@ -91,6 +91,13 @@ iHeartRadio, and Deezer.
   stores no credential, contacts no host, and cannot activate anything. Never
   activate a 301 redirect during preview, plan review, private copy,
   reconciliation approval, or owner attestation.
+  The next isolated-staging boundary now freezes one immutable cutover packet
+  only after every imported current revision completes RSS and canonical News,
+  the exact canonical feed validates afterward, at least ten directories
+  retain owner/ingestion/recovery certification and are observed again after
+  that validation, and the owner-control attestation remains current. The
+  packet is hash/count/version evidence only: it cannot contact the old host,
+  submit a directory, change DNS, or activate a new-feed tag or HTTP 301.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed

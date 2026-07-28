@@ -425,6 +425,20 @@ latest update, and renewed 10-directory certification are also mandatory.
 Working-master approval, publication, and old-host 301 activation remain
 separate gates.
 
+The immutable cutover packet makes those later checks exact without widening
+authority. It requires every imported current revision to be publicly due
+with ready delivery audio and successful RSS plus canonical-News/site work;
+the exact canonical feed must then validate; ten enabled destinations must
+retain owner, ingestion, and failed-to-observed recovery evidence; and those
+ten must be observed again after that feed validation. The existing
+owner-control attestation and private-copy reconciliation must still match.
+The packet stores hashes, counts, evidence versions, and timestamps only.
+Show/episode evidence-version predicates guard its conditional insert, all
+rows are append-only, and a later evidence change makes the prior packet
+stale. Production returns unavailable before D1/R2, and neither preview nor
+creation contacts a host, mutates publication, changes DNS, or activates a
+new-feed tag or HTTP 301.
+
 ## Before production
 
 - Re-run the private-feed threat model and rotation drill alongside real-time

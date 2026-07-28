@@ -138,6 +138,55 @@ describe("RSS import execution migration", () => {
       expect(attestationMigration).not.toMatch(
         /\bDROP\s+(?:TABLE|COLUMN)\b/iu
       );
+      const cutoverColumns = db.prepare(
+        "PRAGMA table_info(rss_import_cutover_packets)"
+      ).all().map(({ name }) => name);
+      expect(cutoverColumns).toEqual(expect.arrayContaining([
+        "reconciliation_id",
+        "redirect_attestation_id",
+        "execution_id",
+        "plan_id",
+        "show_id",
+        "reconciliation_evidence_sha256",
+        "imported_episode_state_sha256",
+        "feed_validation_evidence_sha256",
+        "directory_evidence_sha256",
+        "evidence_sha256",
+        "imported_episode_count",
+        "public_episode_count",
+        "certified_destination_count",
+        "reobserved_destination_count",
+        "feed_item_count",
+        "expected_feed_item_count",
+        "feed_validated_at",
+        "show_evidence_version",
+        "episode_evidence_version_total",
+        "owner_review_confirmed",
+        "no_activation_confirmed",
+        "prepared_by_admin_user_id",
+        "prepared_at"
+      ]));
+      expect(triggers).toEqual(expect.arrayContaining([
+        "rss_import_cutover_packet_evidence_guard",
+        "rss_import_cutover_packets_immutable_update",
+        "rss_import_cutover_packets_immutable_delete"
+      ]));
+      const cutoverMigration = readFileSync(
+        join(
+          migrationsDirectory,
+          "0059_rss_import_cutover_packets.sql"
+        ),
+        "utf8"
+      );
+      expect(cutoverMigration).toContain(
+        "rss_import_cutover_packet_immutable"
+      );
+      expect(cutoverMigration).toContain(
+        "reobserved_destination_count >= 10"
+      );
+      expect(cutoverMigration).not.toMatch(
+        /\bDROP\s+(?:TABLE|COLUMN)\b/iu
+      );
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"

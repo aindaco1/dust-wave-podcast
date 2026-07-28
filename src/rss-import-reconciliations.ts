@@ -5,9 +5,6 @@ import {
   requireRecentAdminAuthentication
 } from "./admin-auth";
 import { prepareAdminAuditAfterSingleChange } from "./audit";
-import {
-  loadDistributionLaunchCertification
-} from "./distribution-certification";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
@@ -26,6 +23,8 @@ import {
 
 const RECONCILIATION_SCHEMA =
   "dustwave-rss-import-reconciliation-v1";
+const CUTOVER_SCHEMA = "dustwave-rss-import-cutover-v1";
+const CUTOVER_REQUIRED_DESTINATIONS = 10;
 const R2_HEAD_CONCURRENCY = 5;
 const REDIRECT_METHODS = [
   "provider_managed_redirect",
@@ -38,6 +37,18 @@ const REDIRECT_ATTESTATION_COLUMNS = `
   new_feed_url_sha256, redirect_method, owner_control_confirmed,
   permanence_acknowledged, no_activation_confirmed,
   attested_by_admin_user_id, attested_at, created_at`;
+const CUTOVER_PACKET_COLUMNS = `
+  id, reconciliation_id, redirect_attestation_id, execution_id,
+  plan_id, show_id, reconciliation_evidence_sha256,
+  imported_episode_state_sha256,
+  feed_validation_evidence_sha256, directory_evidence_sha256,
+  evidence_sha256, imported_episode_count, public_episode_count,
+  certified_destination_count, reobserved_destination_count,
+  feed_item_count, expected_feed_item_count, feed_validated_at,
+  show_evidence_version,
+  episode_evidence_version_total, owner_review_confirmed,
+  no_activation_confirmed, prepared_by_admin_user_id,
+  prepared_at, created_at`;
 
 type ReconciliationRow = {
   id: string;
@@ -82,6 +93,34 @@ type RedirectAttestationRow = {
   created_at: string;
 };
 
+type CutoverPacketRow = {
+  id: string;
+  reconciliation_id: string;
+  redirect_attestation_id: string;
+  execution_id: string;
+  plan_id: string;
+  show_id: string;
+  reconciliation_evidence_sha256: string;
+  imported_episode_state_sha256: string;
+  feed_validation_evidence_sha256: string;
+  directory_evidence_sha256: string;
+  evidence_sha256: string;
+  imported_episode_count: number;
+  public_episode_count: number;
+  certified_destination_count: number;
+  reobserved_destination_count: number;
+  feed_item_count: number;
+  expected_feed_item_count: number;
+  feed_validated_at: string;
+  show_evidence_version: number;
+  episode_evidence_version_total: number;
+  owner_review_confirmed: number;
+  no_activation_confirmed: number;
+  prepared_by_admin_user_id: string | null;
+  prepared_at: string;
+  created_at: string;
+};
+
 type ReconciliationItemStateRow = RssImportExecutionItemRow & {
   metadata_sha256: string;
   episode_show_id: string | null;
@@ -92,8 +131,10 @@ type ReconciliationItemStateRow = RssImportExecutionItemRow & {
   episode_status: string | null;
   episode_media_status: string | null;
   episode_publication_revision: number | null;
+  episode_publication_evidence_version: number | null;
   episode_source_language: string | null;
   episode_canonical_url: string | null;
+  episode_public_at: string | null;
   episode_updated_at: string | null;
   upload_id: string | null;
   upload_object_key: string | null;
@@ -105,6 +146,12 @@ type ReconciliationItemStateRow = RssImportExecutionItemRow & {
   root_job_count: number;
   site_publication_count: number;
   directory_publication_count: number;
+  rss_job_status: string | null;
+  rss_job_completed_at: string | null;
+  news_job_status: string | null;
+  news_job_completed_at: string | null;
+  news_site_status: string | null;
+  news_site_updated_at: string | null;
 };
 
 type ReconciliationContext = {
@@ -140,6 +187,54 @@ type ReconciliationSnapshot = {
   prePublicationReady: boolean;
   blockers: string[];
   items: ItemSnapshot[];
+};
+
+type CutoverDestinationRow = {
+  destination_id: string;
+  enabled: number;
+  owner_setup_status: string;
+  failure_recovery_verified: number;
+  latest_observed_sequence: number | null;
+  latest_observed_at: string | null;
+};
+
+type CutoverFeedValidationRow = {
+  status: string;
+  feed_url: string;
+  validator_version: string;
+  feed_sha256: string | null;
+  item_count: number | null;
+  failure_code: string | null;
+  checked_at: string;
+  validated_at: string | null;
+};
+
+type CutoverSnapshot = {
+  evidenceSha256: string;
+  importedEpisodeStateSha256: string;
+  feedValidationEvidenceSha256: string;
+  directoryEvidenceSha256: string;
+  readyForPacket: boolean;
+  blockers: string[];
+  importedEpisodeCount: number;
+  publicEpisodeCount: number;
+  feedItemCount: number;
+  expectedFeedItemCount: number;
+  feedValidatedAt: string | null;
+  certifiedDestinationCount: number;
+  reobservedDestinationCount: number;
+  requiredDestinationCount: number;
+  showEvidenceVersion: number;
+  episodeEvidenceVersionTotal: number;
+  items: Array<{
+    episodeId: string;
+    slug: string;
+    publicationRevision: number;
+    public: boolean;
+    rssPublished: boolean;
+    newsPublished: boolean;
+    blockers: string[];
+  }>;
 };
 
 export async function getAdminRssImportReconciliation(
@@ -678,6 +773,269 @@ export async function createAdminRssImportRedirectAttestation(
   );
 }
 
+export async function createAdminRssImportCutoverPacket(
+  request: Request,
+  env: PodcastEnv,
+  planIdValue: string
+): Promise<Response> {
+  if (!rssImportExecutionEnabled(env)) {
+    return reconciliationUnavailable(request, env);
+  }
+  const planId = validIdentifier(planIdValue, "planId");
+  const execution = await loadRssImportExecutionEvidence(env.DB, planId);
+  if (!execution) return reconciliationNotFound(request, env);
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: ["super_admin"],
+    requireCsrf: true,
+    showId: execution.execution.show_id
+  });
+  if (!auth.ok) return auth.response;
+  const recent = await requireRecentAdminAuthentication(
+    request,
+    env,
+    auth.authorization.identity.id
+  );
+  if (recent) return recent;
+  const body = await readJsonObject(request, 8_000);
+  requireExactKeys(body, [
+    "packetId",
+    "expectedEvidenceSha256",
+    "ownerReviewConfirmed",
+    "noActivationConfirmed"
+  ]);
+  if (
+    body.ownerReviewConfirmed !== true
+    || body.noActivationConfirmed !== true
+  ) {
+    throw new RequestValidationError(
+      "Exact cutover evidence review and no activation must be confirmed.",
+      "rss_import_cutover_confirmation_required"
+    );
+  }
+  const packetId = validIdentifier(body.packetId, "packetId");
+  const expectedEvidenceSha256 = validSha256(
+    body.expectedEvidenceSha256,
+    "expectedEvidenceSha256"
+  );
+  const context = await loadReconciliationContext(
+    env.DB,
+    execution.execution,
+    execution.items
+  );
+  if (!context) return reconciliationNotFound(request, env);
+  const reconciliationSnapshot = await buildReconciliationSnapshot(
+    env,
+    context
+  );
+  const cutover = await buildCutoverSnapshot(
+    env,
+    context,
+    reconciliationSnapshot
+  );
+  if (cutover.evidenceSha256 !== expectedEvidenceSha256) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_cutover_evidence_changed"
+    );
+  }
+
+  const existingById = await loadCutoverPacketById(
+    env.DB,
+    packetId
+  );
+  if (existingById) {
+    if (!sameCutoverPacket(existingById, context, cutover)) {
+      return reconciliationConflict(
+        request,
+        env,
+        "rss_import_cutover_packet_conflict"
+      );
+    }
+    return reconciliationResponse(
+      request,
+      env,
+      context,
+      reconciliationSnapshot,
+      { idempotent: true }
+    );
+  }
+  if (
+    !cutover.readyForPacket
+    || !context.reconciliation
+    || !context.redirectAttestation
+  ) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_cutover_not_ready"
+    );
+  }
+  const matching = await loadMatchingCutoverPacket(
+    env.DB,
+    context.execution.id,
+    expectedEvidenceSha256
+  );
+  if (matching) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_cutover_packet_conflict"
+    );
+  }
+
+  let inserted: D1Result;
+  try {
+    [inserted] = await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO rss_import_cutover_packets (
+           id, reconciliation_id, redirect_attestation_id,
+           execution_id, plan_id, show_id,
+           reconciliation_evidence_sha256,
+           imported_episode_state_sha256,
+           feed_validation_evidence_sha256,
+           directory_evidence_sha256, evidence_sha256,
+           imported_episode_count, public_episode_count,
+           certified_destination_count,
+           reobserved_destination_count, feed_item_count,
+           expected_feed_item_count,
+           feed_validated_at, show_evidence_version,
+           episode_evidence_version_total,
+           owner_review_confirmed, no_activation_confirmed,
+           prepared_by_admin_user_id
+         )
+         SELECT
+           ?, reconciliation.id, attestation.id,
+           execution.id, execution.plan_id, execution.show_id,
+           reconciliation.evidence_sha256, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?
+         FROM rss_import_reconciliations reconciliation
+         JOIN rss_import_executions execution
+           ON execution.id = reconciliation.execution_id
+         JOIN rss_import_redirect_attestations attestation
+           ON attestation.reconciliation_id = reconciliation.id
+          AND attestation.execution_id = execution.id
+         WHERE execution.id = ?
+           AND execution.plan_id = ?
+           AND reconciliation.id = ?
+           AND reconciliation.evidence_sha256 = ?
+           AND attestation.id = ?
+           AND attestation.reconciliation_evidence_sha256 =
+             reconciliation.evidence_sha256
+           AND (
+             SELECT version
+             FROM publication_show_evidence_versions
+             WHERE show_id = execution.show_id
+           ) = ?
+           AND (
+             SELECT COALESCE(
+               SUM(episode.publication_evidence_version),
+               0
+             )
+             FROM rss_import_execution_items item
+             JOIN episodes episode
+               ON episode.id = item.target_episode_id
+             WHERE item.execution_id = execution.id
+           ) = ?`
+      ).bind(
+        packetId,
+        cutover.importedEpisodeStateSha256,
+        cutover.feedValidationEvidenceSha256,
+        cutover.directoryEvidenceSha256,
+        cutover.evidenceSha256,
+        cutover.importedEpisodeCount,
+        cutover.publicEpisodeCount,
+        cutover.certifiedDestinationCount,
+        cutover.reobservedDestinationCount,
+        cutover.feedItemCount,
+        cutover.expectedFeedItemCount,
+        cutover.feedValidatedAt,
+        cutover.showEvidenceVersion,
+        cutover.episodeEvidenceVersionTotal,
+        auth.authorization.identity.id,
+        context.execution.id,
+        planId,
+        context.reconciliation.id,
+        context.reconciliation.evidence_sha256,
+        context.redirectAttestation.id,
+        cutover.showEvidenceVersion,
+        cutover.episodeEvidenceVersionTotal
+      ),
+      prepareAdminAuditAfterSingleChange(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "rss_import.cutover_packet_prepared",
+        targetType: "rss_import_cutover_packet",
+        targetId: packetId,
+        metadata: {
+          reconciliationId: context.reconciliation.id,
+          redirectAttestationId: context.redirectAttestation.id,
+          executionId: context.execution.id,
+          planId,
+          showId: context.execution.show_id,
+          evidenceSha256: cutover.evidenceSha256,
+          importedEpisodeCount: cutover.importedEpisodeCount,
+          certifiedDestinationCount:
+            cutover.certifiedDestinationCount,
+          reobservedDestinationCount:
+            cutover.reobservedDestinationCount,
+          redirectMutationPerformed: false,
+          providerContactPerformed: false
+        }
+      })
+    ]);
+  } catch (error) {
+    const raced = await loadCutoverPacketById(env.DB, packetId);
+    if (raced && sameCutoverPacket(raced, context, cutover)) {
+      return reconciliationResponse(
+        request,
+        env,
+        context,
+        reconciliationSnapshot,
+        { idempotent: true }
+      );
+    }
+    const racedMatching = await loadMatchingCutoverPacket(
+      env.DB,
+      context.execution.id,
+      expectedEvidenceSha256
+    );
+    if (racedMatching) {
+      return reconciliationConflict(
+        request,
+        env,
+        "rss_import_cutover_packet_conflict"
+      );
+    }
+    throw error;
+  }
+  if (Number(inserted.meta.changes ?? 0) !== 1) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_cutover_not_ready"
+    );
+  }
+  const created = await loadCutoverPacketById(env.DB, packetId);
+  if (!created || !sameCutoverPacket(created, context, cutover)) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_cutover_packet_conflict"
+    );
+  }
+  return reconciliationResponse(
+    request,
+    env,
+    context,
+    reconciliationSnapshot,
+    {
+      idempotent: false,
+      status: 201,
+      cutoverPacketRecorded: true
+    }
+  );
+}
+
 async function loadReconciliationContext(
   db: D1Database,
   execution: RssImportExecutionRow,
@@ -719,8 +1077,11 @@ async function loadReconciliationContext(
          episode.status AS episode_status,
          episode.media_status AS episode_media_status,
          episode.publication_revision AS episode_publication_revision,
+         episode.publication_evidence_version
+           AS episode_publication_evidence_version,
          episode.source_language AS episode_source_language,
          episode.canonical_url AS episode_canonical_url,
+         episode.public_at AS episode_public_at,
          episode.updated_at AS episode_updated_at,
          upload.id AS upload_id,
          upload.object_key AS upload_object_key,
@@ -740,7 +1101,65 @@ async function loadReconciliationContext(
          (
            SELECT COUNT(*) FROM episode_publications publication
            WHERE publication.episode_id = item.target_episode_id
-         ) AS directory_publication_count
+         ) AS directory_publication_count,
+         (
+           SELECT job.status
+           FROM distribution_jobs job
+           WHERE job.episode_id = item.target_episode_id
+             AND job.destination = 'rss'
+             AND job.publication_revision =
+               episode.publication_revision
+           ORDER BY job.created_at DESC, job.id DESC
+           LIMIT 1
+         ) AS rss_job_status,
+         (
+           SELECT job.completed_at
+           FROM distribution_jobs job
+           WHERE job.episode_id = item.target_episode_id
+             AND job.destination = 'rss'
+             AND job.publication_revision =
+               episode.publication_revision
+           ORDER BY job.created_at DESC, job.id DESC
+           LIMIT 1
+         ) AS rss_job_completed_at,
+         (
+           SELECT job.status
+           FROM distribution_jobs job
+           WHERE job.episode_id = item.target_episode_id
+             AND job.destination = 'news'
+             AND job.publication_revision =
+               episode.publication_revision
+           ORDER BY job.created_at DESC, job.id DESC
+           LIMIT 1
+         ) AS news_job_status,
+         (
+           SELECT job.completed_at
+           FROM distribution_jobs job
+           WHERE job.episode_id = item.target_episode_id
+             AND job.destination = 'news'
+             AND job.publication_revision =
+               episode.publication_revision
+           ORDER BY job.created_at DESC, job.id DESC
+           LIMIT 1
+         ) AS news_job_completed_at,
+         (
+           SELECT publication.status
+           FROM site_publications publication
+           WHERE publication.episode_id = item.target_episode_id
+             AND publication.publication_revision =
+               episode.publication_revision
+           ORDER BY publication.updated_at DESC, publication.id DESC
+           LIMIT 1
+         ) AS news_site_status,
+         (
+           SELECT publication.updated_at
+           FROM site_publications publication
+           WHERE publication.episode_id = item.target_episode_id
+             AND publication.publication_revision =
+               episode.publication_revision
+           ORDER BY publication.updated_at DESC, publication.id DESC
+           LIMIT 1
+         ) AS news_site_updated_at
        FROM rss_import_execution_items item
        JOIN rss_import_plan_items plan_item
          ON plan_item.plan_id = item.plan_id
@@ -1074,6 +1493,410 @@ function sameRedirectAttestation(
     && row.no_activation_confirmed === 1;
 }
 
+async function loadLatestCutoverPacket(
+  db: D1Database,
+  executionId: string
+): Promise<CutoverPacketRow | null> {
+  return db.prepare(
+    `SELECT ${CUTOVER_PACKET_COLUMNS}
+     FROM rss_import_cutover_packets
+     WHERE execution_id = ?
+     ORDER BY prepared_at DESC, rowid DESC
+     LIMIT 1`
+  ).bind(executionId).first<CutoverPacketRow>();
+}
+
+async function loadCutoverPacketById(
+  db: D1Database,
+  id: string
+): Promise<CutoverPacketRow | null> {
+  return db.prepare(
+    `SELECT ${CUTOVER_PACKET_COLUMNS}
+     FROM rss_import_cutover_packets
+     WHERE id = ?`
+  ).bind(id).first<CutoverPacketRow>();
+}
+
+async function loadMatchingCutoverPacket(
+  db: D1Database,
+  executionId: string,
+  evidenceSha256: string
+): Promise<CutoverPacketRow | null> {
+  return db.prepare(
+    `SELECT ${CUTOVER_PACKET_COLUMNS}
+     FROM rss_import_cutover_packets
+     WHERE execution_id = ?
+       AND evidence_sha256 = ?`
+  ).bind(executionId, evidenceSha256).first<CutoverPacketRow>();
+}
+
+function sameCutoverPacket(
+  row: CutoverPacketRow,
+  context: ReconciliationContext,
+  snapshot: CutoverSnapshot
+): boolean {
+  return Boolean(
+    context.reconciliation
+    && context.redirectAttestation
+    && row.reconciliation_id === context.reconciliation.id
+    && row.redirect_attestation_id === context.redirectAttestation.id
+    && row.execution_id === context.execution.id
+    && row.plan_id === context.plan.id
+    && row.show_id === context.show.id
+    && row.reconciliation_evidence_sha256
+      === context.reconciliation.evidence_sha256
+    && row.imported_episode_state_sha256
+      === snapshot.importedEpisodeStateSha256
+    && row.feed_validation_evidence_sha256
+      === snapshot.feedValidationEvidenceSha256
+    && row.directory_evidence_sha256
+      === snapshot.directoryEvidenceSha256
+    && row.evidence_sha256 === snapshot.evidenceSha256
+    && row.imported_episode_count === snapshot.importedEpisodeCount
+    && row.public_episode_count === snapshot.publicEpisodeCount
+    && row.certified_destination_count
+      === snapshot.certifiedDestinationCount
+    && row.reobserved_destination_count
+      === snapshot.reobservedDestinationCount
+    && row.feed_item_count === snapshot.feedItemCount
+    && row.expected_feed_item_count === snapshot.expectedFeedItemCount
+    && row.feed_validated_at === snapshot.feedValidatedAt
+    && row.show_evidence_version === snapshot.showEvidenceVersion
+    && row.episode_evidence_version_total
+      === snapshot.episodeEvidenceVersionTotal
+    && row.owner_review_confirmed === 1
+    && row.no_activation_confirmed === 1
+  );
+}
+
+async function buildCutoverSnapshot(
+  env: PodcastEnv,
+  context: ReconciliationContext,
+  reconciliationSnapshot: ReconciliationSnapshot
+): Promise<CutoverSnapshot> {
+  const db = env.DB;
+  const [
+    feedValidation,
+    destinationResult,
+    showEvidence,
+    expectedFeed
+  ] =
+    await Promise.all([
+      db.prepare(
+        `SELECT
+           status, feed_url, validator_version, feed_sha256,
+           item_count, failure_code, checked_at, validated_at
+         FROM show_feed_validations
+         WHERE show_id = ?`
+      ).bind(context.show.id).first<CutoverFeedValidationRow>(),
+      db.prepare(
+        `WITH scoped_destinations AS (
+           SELECT
+             destination.id AS destination_id,
+             COALESCE(setup.enabled, destination.enabled) AS enabled,
+             COALESCE(
+               setup.owner_setup_status,
+               destination.owner_setup_status
+             ) AS owner_setup_status
+           FROM distribution_destinations destination
+           LEFT JOIN show_distribution_destinations setup
+             ON setup.destination_id = destination.id
+            AND setup.show_id = ?
+         )
+         SELECT
+           scoped.destination_id,
+           scoped.enabled,
+           scoped.owner_setup_status,
+           EXISTS (
+             SELECT 1
+             FROM distribution_observation_events failed
+             WHERE failed.show_id = ?
+               AND failed.destination_id = scoped.destination_id
+               AND failed.status = 'failed'
+               AND EXISTS (
+                 SELECT 1
+                 FROM distribution_observation_events recovered
+                 WHERE recovered.show_id = failed.show_id
+                   AND recovered.destination_id =
+                     failed.destination_id
+                   AND recovered.status = 'observed'
+                   AND recovered.sequence > failed.sequence
+               )
+           ) AS failure_recovery_verified,
+           (
+             SELECT MAX(observed.sequence)
+             FROM distribution_observation_events observed
+             WHERE observed.show_id = ?
+               AND observed.destination_id = scoped.destination_id
+               AND observed.status = 'observed'
+           ) AS latest_observed_sequence,
+           (
+             SELECT observed.recorded_at
+             FROM distribution_observation_events observed
+             WHERE observed.show_id = ?
+               AND observed.destination_id = scoped.destination_id
+               AND observed.status = 'observed'
+             ORDER BY observed.sequence DESC
+             LIMIT 1
+           ) AS latest_observed_at
+         FROM scoped_destinations scoped
+         ORDER BY scoped.destination_id`
+      ).bind(
+        context.show.id,
+        context.show.id,
+        context.show.id,
+        context.show.id
+      ).all<CutoverDestinationRow>(),
+      db.prepare(
+        `SELECT version
+         FROM publication_show_evidence_versions
+         WHERE show_id = ?`
+      ).bind(context.show.id).first<{ version: number }>(),
+      db.prepare(
+        `SELECT COUNT(*) AS item_count
+         FROM episodes
+         WHERE show_id = ?
+           AND status = 'published'
+           AND datetime(public_at) <= datetime('now')
+           AND access IN ('public', 'early_access', 'free_mini')
+           AND media_status = 'ready'
+           AND audio_key IS NOT NULL
+           AND guid IS NOT NULL`
+      ).bind(context.show.id).first<{ item_count: number }>()
+    ]);
+
+  const now = Date.now();
+  const items = context.items.map((item) => {
+    const publicReleaseReady = item.episode_status === "published"
+      && item.episode_media_status === "ready"
+      && Boolean(item.episode_audio_key)
+      && Number(item.episode_publication_revision) > 0
+      && timestamp(item.episode_public_at) > 0
+      && timestamp(item.episode_public_at) <= now;
+    const rssPublished = item.rss_job_status === "succeeded"
+      && timestamp(item.rss_job_completed_at) > 0;
+    const newsPublished = item.news_job_status === "succeeded"
+      && item.news_site_status === "succeeded"
+      && timestamp(item.news_job_completed_at) > 0
+      && timestamp(item.news_site_updated_at) > 0;
+    const blockers = unique([
+      ...(publicReleaseReady
+        ? []
+        : ["rss_import_cutover_episode_not_public"]),
+      ...(rssPublished
+        ? []
+        : ["rss_import_cutover_rss_not_published"]),
+      ...(newsPublished
+        ? []
+        : ["rss_import_cutover_news_not_published"])
+    ]);
+    return {
+      episodeId: item.target_episode_id,
+      slug: item.target_slug,
+      publicationRevision: Number(
+        item.episode_publication_revision ?? 0
+      ),
+      publicationEvidenceVersion: Number(
+        item.episode_publication_evidence_version ?? 0
+      ),
+      public: publicReleaseReady,
+      rssPublished,
+      newsPublished,
+      publicationEvidenceAt: Math.max(
+        timestamp(item.episode_updated_at),
+        timestamp(item.rss_job_completed_at),
+        timestamp(item.news_job_completed_at),
+        timestamp(item.news_site_updated_at)
+      ),
+      blockers
+    };
+  });
+  const publicEpisodeCount = items.filter((item) =>
+    item.public && item.rssPublished && item.newsPublished
+  ).length;
+  const importedEpisodeState = items.map((item) => ({
+    episodeId: item.episodeId,
+    slug: item.slug,
+    publicationRevision: item.publicationRevision,
+    publicationEvidenceVersion: item.publicationEvidenceVersion,
+    public: item.public,
+    rssPublished: item.rssPublished,
+    newsPublished: item.newsPublished,
+    publicationEvidenceAt: item.publicationEvidenceAt
+  }));
+  const importedEpisodeStateSha256 = await sha256Hex(
+    JSON.stringify(importedEpisodeState)
+  );
+  const latestPublicationEvidenceAt = items.reduce(
+    (latest, item) => Math.max(latest, item.publicationEvidenceAt),
+    0
+  );
+  const expectedFeedUrl = redirectNewFeedUrl(env, context.show);
+  const configuredFeedUrl = feedValidation?.feed_url ?? null;
+  const feedValidatedAt = feedValidation?.validated_at ?? null;
+  const expectedFeedItemCount = Number(
+    expectedFeed?.item_count ?? 0
+  );
+  const feedReady = Boolean(
+    feedValidation?.status === "valid"
+    && feedValidation.feed_sha256
+    && feedValidation.item_count !== null
+    && configuredFeedUrl === expectedFeedUrl
+    && feedValidatedAt
+    && timestamp(feedValidatedAt) >= latestPublicationEvidenceAt
+    && Number(feedValidation.item_count) === expectedFeedItemCount
+    && expectedFeedItemCount >= items.length
+  );
+  const feedValidationEvidence = {
+    status: feedValidation?.status ?? "not_checked",
+    feedUrl: configuredFeedUrl,
+    expectedFeedPath: `/${context.show.rss_slug}/rss.xml`,
+    validatorVersion: feedValidation?.validator_version ?? null,
+    feedSha256: feedValidation?.feed_sha256 ?? null,
+    itemCount: Number(feedValidation?.item_count ?? 0),
+    expectedItemCount: expectedFeedItemCount,
+    failureCode: feedValidation?.failure_code ?? null,
+    checkedAt: feedValidation?.checked_at ?? null,
+    validatedAt: feedValidatedAt,
+    currentAfterImportedPublication: feedReady
+  };
+  const feedValidationEvidenceSha256 = await sha256Hex(
+    JSON.stringify(feedValidationEvidence)
+  );
+  const validatedAtMs = timestamp(feedValidatedAt);
+  const destinations = destinationResult.results.map((row) => {
+    const enabled = row.enabled === 1;
+    const ownerVerified = ["verified", "not_required"].includes(
+      row.owner_setup_status
+    );
+    const failureRecoveryVerified =
+      row.failure_recovery_verified === 1;
+    const observed = Number(row.latest_observed_sequence ?? 0) > 0;
+    const certified = enabled
+      && ownerVerified
+      && feedReady
+      && observed
+      && failureRecoveryVerified;
+    const reobservedAfterFeedValidation = certified
+      && timestamp(row.latest_observed_at) >= validatedAtMs;
+    return {
+      destinationId: row.destination_id,
+      enabled,
+      ownerVerified,
+      failureRecoveryVerified,
+      latestObservedSequence: Number(
+        row.latest_observed_sequence ?? 0
+      ),
+      latestObservedAt: row.latest_observed_at,
+      certified,
+      reobservedAfterFeedValidation
+    };
+  });
+  const certifiedDestinationCount = destinations.filter(
+    (destination) => destination.certified
+  ).length;
+  const reobservedDestinationCount = destinations.filter(
+    (destination) => destination.reobservedAfterFeedValidation
+  ).length;
+  const directoryEvidenceSha256 = await sha256Hex(
+    JSON.stringify(destinations)
+  );
+  const approvalFresh = reconciliationApprovalFresh(
+    context,
+    reconciliationSnapshot
+  );
+  const newFeedUrlSha256 = await sha256Hex(
+    expectedFeedUrl
+  );
+  const redirectAttestationFresh = Boolean(
+    approvalFresh
+    && context.redirectAttestation
+    && context.reconciliation
+    && context.redirectAttestation.reconciliation_id
+      === context.reconciliation.id
+    && context.redirectAttestation.execution_id === context.execution.id
+    && context.redirectAttestation.plan_id === context.plan.id
+    && context.redirectAttestation.show_id === context.show.id
+    && context.redirectAttestation.reconciliation_evidence_sha256
+      === reconciliationSnapshot.evidenceSha256
+    && context.redirectAttestation.old_feed_url_sha256
+      === context.execution.feed_url_sha256
+    && context.redirectAttestation.new_feed_url_sha256
+      === newFeedUrlSha256
+    && context.redirectAttestation.owner_control_confirmed === 1
+    && context.redirectAttestation.permanence_acknowledged === 1
+    && context.redirectAttestation.no_activation_confirmed === 1
+  );
+  const blockers = unique([
+    ...(approvalFresh
+      ? []
+      : ["rss_import_owner_reconciliation_required"]),
+    ...items.flatMap((item) => item.blockers),
+    ...(feedReady
+      ? []
+      : ["rss_import_cutover_feed_not_current"]),
+    ...(certifiedDestinationCount >= CUTOVER_REQUIRED_DESTINATIONS
+      ? []
+      : ["rss_import_cutover_directory_certification_required"]),
+    ...(reobservedDestinationCount >= CUTOVER_REQUIRED_DESTINATIONS
+      ? []
+      : ["rss_import_cutover_directory_reobservation_required"]),
+    ...(redirectAttestationFresh
+      ? []
+      : ["rss_import_old_host_attestation_required"])
+  ]);
+  const evidence = {
+    schema: CUTOVER_SCHEMA,
+    executionId: context.execution.id,
+    planId: context.plan.id,
+    showId: context.show.id,
+    reconciliationId: context.reconciliation?.id ?? null,
+    reconciliationEvidenceSha256:
+      reconciliationSnapshot.evidenceSha256,
+    redirectAttestationId: context.redirectAttestation?.id ?? null,
+    redirectMethod:
+      context.redirectAttestation?.redirect_method ?? null,
+    importedEpisodeStateSha256,
+    feedValidationEvidenceSha256,
+    directoryEvidenceSha256,
+    showEvidenceVersion: Number(showEvidence?.version ?? 0),
+    episodeEvidenceVersionTotal: items.reduce(
+      (total, item) => total + item.publicationEvidenceVersion,
+      0
+    )
+  };
+  return {
+    evidenceSha256: await sha256Hex(JSON.stringify(evidence)),
+    importedEpisodeStateSha256,
+    feedValidationEvidenceSha256,
+    directoryEvidenceSha256,
+    readyForPacket: blockers.length === 0,
+    blockers,
+    importedEpisodeCount: items.length,
+    publicEpisodeCount,
+    feedItemCount: Number(feedValidation?.item_count ?? 0),
+    expectedFeedItemCount,
+    feedValidatedAt,
+    certifiedDestinationCount,
+    reobservedDestinationCount,
+    requiredDestinationCount: CUTOVER_REQUIRED_DESTINATIONS,
+    showEvidenceVersion: Number(showEvidence?.version ?? 0),
+    episodeEvidenceVersionTotal: items.reduce(
+      (total, item) => total + item.publicationEvidenceVersion,
+      0
+    ),
+    items: items.map((item) => ({
+      episodeId: item.episodeId,
+      slug: item.slug,
+      publicationRevision: item.publicationRevision,
+      public: item.public,
+      rssPublished: item.rssPublished,
+      newsPublished: item.newsPublished,
+      blockers: item.blockers
+    }))
+  };
+}
+
 function reconciliationApprovalFresh(
   context: ReconciliationContext,
   snapshot: ReconciliationSnapshot
@@ -1100,53 +1923,29 @@ async function reconciliationResponse(
     idempotent: boolean | null;
     status?: number;
     attestationRecorded?: boolean;
+    cutoverPacketRecorded?: boolean;
   }
 ): Promise<Response> {
-  const certification = await loadDistributionLaunchCertification(
-    env.DB,
-    context.execution.show_id
-  );
+  const [cutover, cutoverPacket] = await Promise.all([
+    buildCutoverSnapshot(env, context, snapshot),
+    loadLatestCutoverPacket(env.DB, context.execution.id)
+  ]);
   const approvalFresh = reconciliationApprovalFresh(context, snapshot);
-  const importedEpisodesPublic = context.items.every((item) =>
-    item.episode_status === "published"
-    && item.episode_media_status === "ready"
-    && Boolean(item.episode_audio_key)
-    && Number(item.episode_publication_revision) > 0
-  );
-  const latestEpisodeUpdate = context.items.reduce(
-    (latest, item) => Math.max(
-      latest,
-      timestamp(item.episode_updated_at)
-    ),
-    0
-  );
-  const feedValidatedAfterImport = Boolean(
-    certification.feedValidation.status === "valid"
-    && timestamp(certification.feedValidation.validatedAt)
-      >= latestEpisodeUpdate
+  const importedEpisodesPublic =
+    cutover.publicEpisodeCount === cutover.importedEpisodeCount;
+  const feedValidatedAfterImport = !cutover.blockers.includes(
+    "rss_import_cutover_feed_not_current"
   );
   const newFeedUrl = redirectNewFeedUrl(env, context.show);
-  const newFeedUrlSha256 = await sha256Hex(newFeedUrl);
-  const redirectAttestationFresh = Boolean(
-    approvalFresh
-    && context.redirectAttestation
-    && context.reconciliation
-    && context.redirectAttestation.reconciliation_id
-      === context.reconciliation.id
-    && context.redirectAttestation.execution_id === context.execution.id
-    && context.redirectAttestation.plan_id === context.plan.id
-    && context.redirectAttestation.show_id === context.show.id
-    && context.redirectAttestation.reconciliation_evidence_sha256
-      === snapshot.evidenceSha256
-    && context.redirectAttestation.old_feed_url_sha256
-      === context.execution.feed_url_sha256
-    && context.redirectAttestation.old_feed_url_sha256
-      === context.plan.requested_feed_url_sha256
-    && context.redirectAttestation.new_feed_url_sha256
-      === newFeedUrlSha256
-    && context.redirectAttestation.owner_control_confirmed === 1
-    && context.redirectAttestation.permanence_acknowledged === 1
-    && context.redirectAttestation.no_activation_confirmed === 1
+  const redirectAttestationFresh = !cutover.blockers.includes(
+    "rss_import_old_host_attestation_required"
+  );
+  const directoryReobservationReady =
+    cutover.reobservedDestinationCount
+      >= cutover.requiredDestinationCount;
+  const packetFresh = Boolean(
+    cutoverPacket
+    && sameCutoverPacket(cutoverPacket, context, cutover)
   );
   const redirectBlockers = unique([
     ...(approvalFresh
@@ -1158,7 +1957,7 @@ async function reconciliationResponse(
     ...(feedValidatedAfterImport
       ? []
       : ["rss_import_canonical_feed_not_revalidated"]),
-    ...(certification.launchClaim.ready
+    ...(directoryReobservationReady
       ? []
       : ["rss_import_directory_reobservation_required"]),
     ...(redirectAttestationFresh
@@ -1208,6 +2007,56 @@ async function reconciliationResponse(
           approvedAt: context.reconciliation.approved_at
         }
       : null,
+    cutoverReadiness: {
+      schema: CUTOVER_SCHEMA,
+      activationAvailable: false,
+      evidenceReady: cutover.readyForPacket,
+      readyForPacket: cutover.readyForPacket && !packetFresh,
+      evidenceSha256: cutover.evidenceSha256,
+      importedEpisodeStateSha256:
+        cutover.importedEpisodeStateSha256,
+      feedValidationEvidenceSha256:
+        cutover.feedValidationEvidenceSha256,
+      directoryEvidenceSha256:
+        cutover.directoryEvidenceSha256,
+      importedEpisodeCount: cutover.importedEpisodeCount,
+      publicEpisodeCount: cutover.publicEpisodeCount,
+      feedItemCount: cutover.feedItemCount,
+      expectedFeedItemCount: cutover.expectedFeedItemCount,
+      feedValidatedAt: cutover.feedValidatedAt,
+      certifiedDestinationCount:
+        cutover.certifiedDestinationCount,
+      reobservedDestinationCount:
+        cutover.reobservedDestinationCount,
+      requiredDestinationCount:
+        cutover.requiredDestinationCount,
+      blockers: cutover.blockers,
+      checks: {
+        ownerReconciliationApproved: approvalFresh,
+        importedEpisodeRevisionsPublished:
+          importedEpisodesPublic,
+        canonicalFeedCurrent: feedValidatedAfterImport,
+        directoryCertificationReady:
+          cutover.certifiedDestinationCount
+            >= cutover.requiredDestinationCount,
+        directoriesReobservedAfterFeed:
+          directoryReobservationReady,
+        ownerRedirectAttested: redirectAttestationFresh
+      },
+      items: cutover.items,
+      packet: cutoverPacket
+        ? {
+            id: cutoverPacket.id,
+            evidenceSha256: cutoverPacket.evidence_sha256,
+            fresh: packetFresh,
+            preparedAt: cutoverPacket.prepared_at,
+            importedEpisodeCount:
+              cutoverPacket.imported_episode_count,
+            reobservedDestinationCount:
+              cutoverPacket.reobserved_destination_count
+          }
+        : null
+    },
     oldHostRedirectChecklist: {
       activationAvailable: false,
       ready: false,
@@ -1228,13 +2077,15 @@ async function reconciliationResponse(
         ownerReconciliationApproved: approvalFresh,
         importedEpisodesPublic,
         canonicalFeedRevalidated: feedValidatedAfterImport,
-        directoryCertificationReady: certification.launchClaim.ready,
+        directoryCertificationReady: directoryReobservationReady,
         ownerRedirectAttested: redirectAttestationFresh
       }
     },
     idempotent: options.idempotent,
     redirectAttestationMutationPerformed:
       options.attestationRecorded === true,
+    cutoverPacketMutationPerformed:
+      options.cutoverPacketRecorded === true,
     r2MutationPerformed: false,
     episodeMutationPerformed: false,
     publicationMutationPerformed: false,
