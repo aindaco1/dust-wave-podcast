@@ -415,10 +415,15 @@ The immutable approval then prevents execution/item edits.
 Approval performs no R2, episode, publication, redirect, provider, email, ad,
 or billing mutation. Production fails closed before D1 or R2. The returned
 old-host checklist cannot activate a redirect and is always blocked on a
-separate owner attestation; public imported episodes, canonical-feed
-validation after their latest update, and renewed 10-directory certification
-are also mandatory. Working-master approval, publication, and old-host 301
-activation remain separate gates.
+separate owner attestation. That staging-only attestation requires exact
+old-feed re-entry, the current copy digest, recent Super-admin authentication,
+CSRF, three explicit confirmations, and one of two permanent redirect methods.
+It retains only purpose-bound old/new URL hashes and immutable evidence; no
+credential, signed URL, or provider payload is stored, and no host is
+contacted. Public imported episodes, canonical-feed validation after their
+latest update, and renewed 10-directory certification are also mandatory.
+Working-master approval, publication, and old-host 301 activation remain
+separate gates.
 
 ## Before production
 

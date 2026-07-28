@@ -316,6 +316,113 @@ describe("RSS import executions", () => {
       approval: { id: "rss_reconciliation_fixture", fresh: true },
       idempotent: true
     });
+    const wrongFeedAttestation = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/redirect-attestation`,
+        {
+          attestationId: "rss_redirect_attestation_wrong_feed",
+          feedUrl: "https://podcast.example.org/other.xml",
+          expectedReconciliationEvidenceSha256:
+            reconciliationState.readiness.evidenceSha256,
+          redirectMethod: "provider_managed_redirect",
+          ownerControlConfirmed: true,
+          permanenceAcknowledged: true,
+          noActivationConfirmed: true
+        }
+      ),
+      harness.env
+    );
+    expect(wrongFeedAttestation.status).toBe(409);
+    expect(await wrongFeedAttestation.json()).toEqual({
+      error: "rss_import_redirect_attestation_changed"
+    });
+    expect(harness.database.prepare(
+      "SELECT COUNT(*) AS count FROM rss_import_redirect_attestations"
+    ).get().count).toBe(0);
+    const redirectAttestationBody = {
+      attestationId: "rss_redirect_attestation_fixture",
+      feedUrl,
+      expectedReconciliationEvidenceSha256:
+        reconciliationState.readiness.evidenceSha256,
+      redirectMethod: "provider_managed_redirect",
+      ownerControlConfirmed: true,
+      permanenceAcknowledged: true,
+      noActivationConfirmed: true
+    };
+    const redirectAttestation = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/redirect-attestation`,
+        redirectAttestationBody
+      ),
+      harness.env
+    );
+    expect(redirectAttestation.status).toBe(201);
+    const redirectAttestationState = await redirectAttestation.json();
+    expect(redirectAttestationState).toMatchObject({
+      idempotent: false,
+      redirectAttestationMutationPerformed: true,
+      redirectMutationPerformed: false,
+      providerContactPerformed: false,
+      oldHostRedirectChecklist: {
+        activationAvailable: false,
+        ready: false,
+        attestationAvailable: true,
+        attestation: {
+          id: "rss_redirect_attestation_fixture",
+          redirectMethod: "provider_managed_redirect",
+          fresh: true
+        },
+        checks: {
+          ownerRedirectAttested: true
+        }
+      }
+    });
+    expect(
+      redirectAttestationState.oldHostRedirectChecklist.blockers
+    ).toContain("rss_import_redirect_activation_unavailable");
+    expect(
+      redirectAttestationState.oldHostRedirectChecklist.blockers
+    ).not.toContain("rss_import_old_host_attestation_required");
+    const redirectAttestationRetry = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/redirect-attestation`,
+        redirectAttestationBody
+      ),
+      harness.env
+    );
+    expect(redirectAttestationRetry.status).toBe(200);
+    expect(await redirectAttestationRetry.json()).toMatchObject({
+      idempotent: true,
+      redirectAttestationMutationPerformed: false,
+      oldHostRedirectChecklist: {
+        attestation: {
+          id: "rss_redirect_attestation_fixture",
+          fresh: true
+        }
+      }
+    });
+    const conflictingAttestation = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/redirect-attestation`,
+        {
+          ...redirectAttestationBody,
+          attestationId: "rss_redirect_attestation_conflict"
+        }
+      ),
+      harness.env
+    );
+    expect(conflictingAttestation.status).toBe(409);
+    expect(await conflictingAttestation.json()).toEqual({
+      error: "rss_import_redirect_attestation_conflict"
+    });
+    expect(harness.database.prepare(
+      "SELECT COUNT(*) AS count FROM rss_import_redirect_attestations"
+    ).get().count).toBe(1);
+    expect(() => harness.database.prepare(
+      `UPDATE rss_import_redirect_attestations
+       SET redirect_method = 'self_managed_http_301'
+       WHERE id = 'rss_redirect_attestation_fixture'`
+    ).run()).toThrow("rss_import_redirect_attestation_immutable");
     expect(() => harness.database.prepare(
       `UPDATE rss_import_execution_items
        SET copied_bytes = copied_bytes + 1
@@ -629,6 +736,32 @@ describe("RSS import executions", () => {
     );
     expect(reconciliationClosed.status).toBe(404);
     expect(await reconciliationClosed.json()).toEqual({
+      error: "rss_import_reconciliation_unavailable"
+    });
+    const attestationClosed = await handleRequest(
+      adminRequest(
+        "/v1/admin/rss-import/plans/plan_fixture/redirect-attestation",
+        {}
+      ),
+      {
+        ENVIRONMENT: "production",
+        RSS_IMPORT_EXECUTION_MODE: "disabled",
+        ALLOWED_ORIGINS: siteOrigin,
+        DB: {
+          prepare() {
+            touched += 1;
+            throw new Error("D1 must stay closed");
+          }
+        },
+        MEDIA_BUCKET: {
+          async head() {
+            touched += 1;
+          }
+        }
+      }
+    );
+    expect(attestationClosed.status).toBe(404);
+    expect(await attestationClosed.json()).toEqual({
       error: "rss_import_reconciliation_unavailable"
     });
     expect(touched).toBe(0);

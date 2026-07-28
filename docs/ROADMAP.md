@@ -85,8 +85,12 @@ iHeartRadio, and Deezer.
   and the old-host checklist is deliberately non-activating until imported
   episodes are public, the canonical feed is revalidated afterward, 10+
   directories are re-observed, and the owner separately attests the redirect.
-  Never activate a 301 redirect during preview, plan review, private copy, or
-  reconciliation approval.
+  The owner-control attestation is now implemented in isolated staging as an
+  immutable hash-only record tied to the old feed, new feed, copy digest, and
+  either a provider-managed permanent redirect or self-managed HTTP 301. It
+  stores no credential, contacts no host, and cannot activate anything. Never
+  activate a 301 redirect during preview, plan review, private copy,
+  reconciliation approval, or owner attestation.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed

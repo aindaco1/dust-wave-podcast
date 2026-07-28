@@ -301,6 +301,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/rss-import/plans/{id}/execution` | recently authenticated super-admin | Staging-only exact-feed reconciliation and immutable queueing of private source-audio copies plus unpublished draft episodes |
 | `GET` | `/v1/admin/rss-import/plans/{id}/reconciliation` | analyst+ | Recompute content-free exact-copy, draft-identity, source-upload, private-R2, and zero-publication evidence plus a non-activating old-host checklist |
 | `POST` | `/v1/admin/rss-import/plans/{id}/reconciliation` | recently authenticated super-admin | Immutably approve one unchanged staging copy snapshot without publishing, modifying R2, or activating a redirect |
+| `POST` | `/v1/admin/rss-import/plans/{id}/redirect-attestation` | recently authenticated super-admin | Record immutable hash-only evidence of old-host control and the expected permanent redirect method without contacting or changing the host |
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
@@ -455,6 +456,25 @@ and provider mutations. Its old-host checklist has
 imported episode, canonical-feed validation after those updates, renewed
 10-directory certification, and explicit owner redirect attestation all
 remain required.
+
+Redirect attestation is staging-only and fails closed before D1/R2 in
+production. It accepts exactly `attestationId`, the re-entered exact
+`feedUrl`, `expectedReconciliationEvidenceSha256`, `redirectMethod`, and three
+true confirmations: `ownerControlConfirmed`, `permanenceAcknowledged`, and
+`noActivationConfirmed`. The method is restricted to
+`provider_managed_redirect` or `self_managed_http_301`. The normalized old
+feed must hash to the reviewed plan/execution identity, and the copy
+reconciliation must still be current.
+
+Only old/new feed SHA-256 values, the reconciliation digest, method,
+administrator, and timestamps are persisted. Raw signed URLs, credentials,
+provider fields, and secrets are not stored or audited. Exact retries are
+idempotent; another identifier for the same immutable evidence conflicts.
+Attestations are append-only so a changed canonical feed requires new evidence.
+The response can mark the owner-control check current, but always includes
+`activationAvailable: false`, `ready: false`, and
+`rss_import_redirect_activation_unavailable`; it reports zero redirect and
+provider mutations.
 
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |

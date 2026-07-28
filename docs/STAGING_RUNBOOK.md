@@ -202,6 +202,14 @@ quick check exhausts remote SQLite memory, record that failure transparently
 and require both the complete local replay/global quick check and every new
 table's scoped staging check to pass.
 
+For migration `0058`, verify `rss_import_redirect_attestations`, its
+show/attested index, both immutable triggers, exact redirect-method constraint,
+three required confirmation flags, and semantic uniqueness over the
+execution/copy/old-feed/new-feed/method identity. Confirm the table is empty,
+foreign-key checks are empty, and its table-scoped `PRAGMA quick_check` is
+`ok`. Retain a new pre-`0058` Time Travel bookmark. The migration is additive;
+do not apply it to production as part of a staging exercise.
+
 For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
 the four `episode_chapter_*` review/history tables and indexes exist, any
 legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key
@@ -703,7 +711,11 @@ Before any existing-feed migration:
 17. Confirm the old-host checklist says activation is unavailable and remains
     blocked on imported episodes becoming public, canonical-feed validation
     after their latest update, renewed 10+ directory certification, and an
-    explicit owner redirect attestation. Do not create that attestation or
+    explicit owner redirect attestation. On an isolated rights-cleared fixture
+    only, re-enter the exact old feed, record the selected supported method,
+    and confirm raw signed URLs and credentials are absent, exact replay is
+    idempotent, semantic duplication conflicts, and direct update/delete fail.
+    Do not attest the current Ópera en la Selva negative fixture and do not
     activate a redirect in this staging exercise.
 
 The authorized Ópera en la Selva Substack URL is useful as a negative preview
@@ -1299,3 +1311,6 @@ For the full-episode YouTube test, use a separate fixture publication:
   table, immutable triggers, and execution/item locks in place. They preserve
   approved evidence; older code does not read it and must not try to rewrite
   reconciled execution rows.
+- A Worker-code rollback after migration `0058` must leave the immutable
+  redirect-attestation table and triggers in place. Older code ignores the
+  hash-only evidence; it does not authorize activation.

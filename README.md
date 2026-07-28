@@ -63,8 +63,10 @@ working-master review and publication stay separate. Staging can now hash and
 immutably approve a complete post-copy snapshot only after D1 draft identity,
 completed source-upload evidence, private R2 size/ETag/type/metadata, and
 zero-publication state all agree. The old-host checklist remains
-non-activating and always requires later public-episode, revalidated-feed,
-10-directory, and explicit owner-attestation evidence.
+non-activating. Staging can record an immutable, hash-only owner-control
+attestation after exact URL re-entry, but stores no old-host credential and
+contacts no provider. Later public-episode, revalidated-feed, 10-directory,
+and final activation approval evidence remain required.
 
 The delivery boundary now derives one fixed-profile MP3 and bounded player
 waveform from the exact approved working master through a staging-only,

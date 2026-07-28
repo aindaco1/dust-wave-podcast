@@ -99,6 +99,45 @@ describe("RSS import execution migration", () => {
       expect(reconciliationMigration).not.toMatch(
         /\bDROP\s+(?:TABLE|COLUMN)\b/iu
       );
+      const attestationColumns = db.prepare(
+        "PRAGMA table_info(rss_import_redirect_attestations)"
+      ).all().map(({ name }) => name);
+      expect(attestationColumns).toEqual(expect.arrayContaining([
+        "reconciliation_id",
+        "execution_id",
+        "plan_id",
+        "show_id",
+        "reconciliation_evidence_sha256",
+        "old_feed_url_sha256",
+        "new_feed_url_sha256",
+        "redirect_method",
+        "owner_control_confirmed",
+        "permanence_acknowledged",
+        "no_activation_confirmed",
+        "attested_by_admin_user_id",
+        "attested_at"
+      ]));
+      expect(triggers).toEqual(expect.arrayContaining([
+        "rss_import_redirect_attestation_evidence_guard",
+        "rss_import_redirect_attestations_immutable_update",
+        "rss_import_redirect_attestations_immutable_delete"
+      ]));
+      const attestationMigration = readFileSync(
+        join(
+          migrationsDirectory,
+          "0058_rss_import_redirect_attestations.sql"
+        ),
+        "utf8"
+      );
+      expect(attestationMigration).toContain(
+        "'provider_managed_redirect'"
+      );
+      expect(attestationMigration).toContain(
+        "rss_import_redirect_attestation_immutable"
+      );
+      expect(attestationMigration).not.toMatch(
+        /\bDROP\s+(?:TABLE|COLUMN)\b/iu
+      );
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"

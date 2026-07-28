@@ -16,6 +16,7 @@ import {
   type RssImportExecutionItemRow,
   type RssImportExecutionRow
 } from "./rss-import-executions";
+import { validatedImportFeedUrl } from "./rss-import-preview";
 import {
   readJsonObject,
   RequestValidationError,
@@ -26,6 +27,17 @@ import {
 const RECONCILIATION_SCHEMA =
   "dustwave-rss-import-reconciliation-v1";
 const R2_HEAD_CONCURRENCY = 5;
+const REDIRECT_METHODS = [
+  "provider_managed_redirect",
+  "self_managed_http_301"
+] as const;
+type RedirectMethod = typeof REDIRECT_METHODS[number];
+const REDIRECT_ATTESTATION_COLUMNS = `
+  id, reconciliation_id, execution_id, plan_id, show_id,
+  reconciliation_evidence_sha256, old_feed_url_sha256,
+  new_feed_url_sha256, redirect_method, owner_control_confirmed,
+  permanence_acknowledged, no_activation_confirmed,
+  attested_by_admin_user_id, attested_at, created_at`;
 
 type ReconciliationRow = {
   id: string;
@@ -44,6 +56,30 @@ type ShowRow = {
   id: string;
   slug: string;
   rss_slug: string;
+};
+
+type PlanRow = {
+  id: string;
+  requested_feed_url_sha256: string;
+  requested_feed_display_url: string;
+};
+
+type RedirectAttestationRow = {
+  id: string;
+  reconciliation_id: string;
+  execution_id: string;
+  plan_id: string;
+  show_id: string;
+  reconciliation_evidence_sha256: string;
+  old_feed_url_sha256: string;
+  new_feed_url_sha256: string;
+  redirect_method: RedirectMethod;
+  owner_control_confirmed: number;
+  permanence_acknowledged: number;
+  no_activation_confirmed: number;
+  attested_by_admin_user_id: string | null;
+  attested_at: string;
+  created_at: string;
 };
 
 type ReconciliationItemStateRow = RssImportExecutionItemRow & {
@@ -74,7 +110,9 @@ type ReconciliationItemStateRow = RssImportExecutionItemRow & {
 type ReconciliationContext = {
   execution: RssImportExecutionRow;
   items: ReconciliationItemStateRow[];
+  plan: PlanRow;
   reconciliation: ReconciliationRow | null;
+  redirectAttestation: RedirectAttestationRow | null;
   show: ShowRow;
 };
 
@@ -371,16 +409,298 @@ export async function createAdminRssImportReconciliation(
   );
 }
 
+export async function createAdminRssImportRedirectAttestation(
+  request: Request,
+  env: PodcastEnv,
+  planIdValue: string
+): Promise<Response> {
+  if (!rssImportExecutionEnabled(env)) {
+    return reconciliationUnavailable(request, env);
+  }
+  const planId = validIdentifier(planIdValue, "planId");
+  const execution = await loadRssImportExecutionEvidence(env.DB, planId);
+  if (!execution) return reconciliationNotFound(request, env);
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: ["super_admin"],
+    requireCsrf: true,
+    showId: execution.execution.show_id
+  });
+  if (!auth.ok) return auth.response;
+  const recent = await requireRecentAdminAuthentication(
+    request,
+    env,
+    auth.authorization.identity.id
+  );
+  if (recent) return recent;
+  const body = await readJsonObject(request, 8_000);
+  requireExactKeys(body, [
+    "attestationId",
+    "feedUrl",
+    "expectedReconciliationEvidenceSha256",
+    "redirectMethod",
+    "ownerControlConfirmed",
+    "permanenceAcknowledged",
+    "noActivationConfirmed"
+  ]);
+  if (
+    body.ownerControlConfirmed !== true
+    || body.permanenceAcknowledged !== true
+    || body.noActivationConfirmed !== true
+  ) {
+    throw new RequestValidationError(
+      "Old-host control, permanence, and no-activation must be confirmed.",
+      "rss_import_redirect_attestation_confirmation_required"
+    );
+  }
+  const attestationId = validIdentifier(
+    body.attestationId,
+    "attestationId"
+  );
+  const feedUrl = validatedImportFeedUrl(
+    requiredText(body.feedUrl, "feedUrl", 2_000)
+  );
+  const expectedEvidenceSha256 = validSha256(
+    body.expectedReconciliationEvidenceSha256,
+    "expectedReconciliationEvidenceSha256"
+  );
+  const redirectMethod = validRedirectMethod(body.redirectMethod);
+  const context = await loadReconciliationContext(
+    env.DB,
+    execution.execution,
+    execution.items
+  );
+  if (!context?.reconciliation) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_attestation_not_ready"
+    );
+  }
+  const snapshot = await buildReconciliationSnapshot(env, context);
+  const oldFeedUrlSha256 = await sha256Hex(feedUrl);
+  const newFeedUrl = redirectNewFeedUrl(env, context.show);
+  const newFeedUrlSha256 = await sha256Hex(newFeedUrl);
+  if (
+    expectedEvidenceSha256 !== snapshot.evidenceSha256
+    || context.reconciliation.evidence_sha256
+      !== expectedEvidenceSha256
+    || context.execution.feed_url_sha256 !== oldFeedUrlSha256
+    || context.plan.requested_feed_url_sha256 !== oldFeedUrlSha256
+  ) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_attestation_changed"
+    );
+  }
+
+  const existingById = await loadRedirectAttestationById(
+    env.DB,
+    attestationId
+  );
+  if (existingById) {
+    if (!sameRedirectAttestation(existingById, {
+      reconciliationId: context.reconciliation.id,
+      executionId: context.execution.id,
+      planId,
+      showId: context.execution.show_id,
+      evidenceSha256: expectedEvidenceSha256,
+      oldFeedUrlSha256,
+      newFeedUrlSha256,
+      redirectMethod
+    })) {
+      return reconciliationConflict(
+        request,
+        env,
+        "rss_import_redirect_attestation_conflict"
+      );
+    }
+    return reconciliationResponse(
+      request,
+      env,
+      { ...context, redirectAttestation: existingById },
+      snapshot,
+      { idempotent: true }
+    );
+  }
+  if (!reconciliationApprovalFresh(context, snapshot)) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_attestation_not_ready"
+    );
+  }
+  const matching = await loadMatchingRedirectAttestation(
+    env.DB,
+    context.execution.id,
+    expectedEvidenceSha256,
+    oldFeedUrlSha256,
+    newFeedUrlSha256,
+    redirectMethod
+  );
+  if (matching) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_attestation_conflict"
+    );
+  }
+
+  let inserted: D1Result;
+  try {
+    [inserted] = await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO rss_import_redirect_attestations (
+           id, reconciliation_id, execution_id, plan_id, show_id,
+           reconciliation_evidence_sha256, old_feed_url_sha256,
+           new_feed_url_sha256, redirect_method,
+           owner_control_confirmed, permanence_acknowledged,
+           no_activation_confirmed, attested_by_admin_user_id
+         )
+         SELECT
+           ?, reconciliation.id, execution.id, execution.plan_id,
+           execution.show_id, ?, ?, ?, ?, 1, 1, 1, ?
+         FROM rss_import_reconciliations reconciliation
+         JOIN rss_import_executions execution
+           ON execution.id = reconciliation.execution_id
+         JOIN rss_import_plans plan
+           ON plan.id = execution.plan_id
+         JOIN shows show_record
+           ON show_record.id = execution.show_id
+         WHERE execution.plan_id = ?
+           AND reconciliation.evidence_sha256 = ?
+           AND execution.feed_url_sha256 = ?
+           AND plan.requested_feed_url_sha256 = ?
+           AND show_record.rss_slug = ?`
+      ).bind(
+        attestationId,
+        expectedEvidenceSha256,
+        oldFeedUrlSha256,
+        newFeedUrlSha256,
+        redirectMethod,
+        auth.authorization.identity.id,
+        planId,
+        expectedEvidenceSha256,
+        oldFeedUrlSha256,
+        oldFeedUrlSha256,
+        context.show.rss_slug
+      ),
+      prepareAdminAuditAfterSingleChange(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "rss_import.redirect_control_attested",
+        targetType: "rss_import_redirect_attestation",
+        targetId: attestationId,
+        metadata: {
+          reconciliationId: context.reconciliation.id,
+          executionId: context.execution.id,
+          planId,
+          showId: context.execution.show_id,
+          reconciliationEvidenceSha256: expectedEvidenceSha256,
+          oldFeedUrlSha256,
+          newFeedUrlSha256,
+          redirectMethod,
+          redirectMutationPerformed: false,
+          providerContactPerformed: false
+        }
+      })
+    ]);
+  } catch (error) {
+    const raced = await loadRedirectAttestationById(
+      env.DB,
+      attestationId
+    );
+    if (
+      raced
+      && sameRedirectAttestation(raced, {
+        reconciliationId: context.reconciliation.id,
+        executionId: context.execution.id,
+        planId,
+        showId: context.execution.show_id,
+        evidenceSha256: expectedEvidenceSha256,
+        oldFeedUrlSha256,
+        newFeedUrlSha256,
+        redirectMethod
+      })
+    ) {
+      return reconciliationResponse(
+        request,
+        env,
+        { ...context, redirectAttestation: raced },
+        snapshot,
+        { idempotent: true }
+      );
+    }
+    const racedMatching = await loadMatchingRedirectAttestation(
+      env.DB,
+      context.execution.id,
+      expectedEvidenceSha256,
+      oldFeedUrlSha256,
+      newFeedUrlSha256,
+      redirectMethod
+    );
+    if (racedMatching) {
+      return reconciliationConflict(
+        request,
+        env,
+        "rss_import_redirect_attestation_conflict"
+      );
+    }
+    throw error;
+  }
+  if (Number(inserted.meta.changes ?? 0) !== 1) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_attestation_not_ready"
+    );
+  }
+  const created = await loadRedirectAttestationById(
+    env.DB,
+    attestationId
+  );
+  if (!created) {
+    return reconciliationConflict(
+      request,
+      env,
+      "rss_import_redirect_attestation_conflict"
+    );
+  }
+  return reconciliationResponse(
+    request,
+    env,
+    { ...context, redirectAttestation: created },
+    snapshot,
+    {
+      idempotent: false,
+      status: 201,
+      attestationRecorded: true
+    }
+  );
+}
+
 async function loadReconciliationContext(
   db: D1Database,
   execution: RssImportExecutionRow,
   executionItems: RssImportExecutionItemRow[]
 ): Promise<ReconciliationContext | null> {
-  const [show, reconciliation, itemResult] = await Promise.all([
+  const [
+    show,
+    plan,
+    reconciliation,
+    redirectAttestation,
+    itemResult
+  ] = await Promise.all([
     db.prepare(
       "SELECT id, slug, rss_slug FROM shows WHERE id = ?"
     ).bind(execution.show_id).first<ShowRow>(),
+    db.prepare(
+      `SELECT
+         id, requested_feed_url_sha256, requested_feed_display_url
+       FROM rss_import_plans
+       WHERE id = ?`
+    ).bind(execution.plan_id).first<PlanRow>(),
     loadReconciliation(db, execution.id),
+    loadLatestRedirectAttestation(db, execution.id),
     db.prepare(
       `SELECT
          item.execution_id, item.plan_id, item.source_identity_sha256,
@@ -438,6 +758,7 @@ async function loadReconciliationContext(
   ]);
   if (
     !show
+    || !plan
     || itemResult.results.length !== executionItems.length
   ) {
     return null;
@@ -445,7 +766,9 @@ async function loadReconciliationContext(
   return {
     execution,
     items: itemResult.results,
+    plan,
     reconciliation,
+    redirectAttestation,
     show
   };
 }
@@ -676,23 +999,114 @@ async function loadReconciliation(
   ).bind(executionId).first<ReconciliationRow>();
 }
 
-async function reconciliationResponse(
-  request: Request,
-  env: PodcastEnv,
+async function loadLatestRedirectAttestation(
+  db: D1Database,
+  executionId: string
+): Promise<RedirectAttestationRow | null> {
+  return db.prepare(
+    `SELECT ${REDIRECT_ATTESTATION_COLUMNS}
+     FROM rss_import_redirect_attestations
+     WHERE execution_id = ?
+     ORDER BY attested_at DESC, rowid DESC
+     LIMIT 1`
+  ).bind(executionId).first<RedirectAttestationRow>();
+}
+
+async function loadRedirectAttestationById(
+  db: D1Database,
+  id: string
+): Promise<RedirectAttestationRow | null> {
+  return db.prepare(
+    `SELECT ${REDIRECT_ATTESTATION_COLUMNS}
+     FROM rss_import_redirect_attestations
+     WHERE id = ?`
+  ).bind(id).first<RedirectAttestationRow>();
+}
+
+async function loadMatchingRedirectAttestation(
+  db: D1Database,
+  executionId: string,
+  evidenceSha256: string,
+  oldFeedUrlSha256: string,
+  newFeedUrlSha256: string,
+  redirectMethod: RedirectMethod
+): Promise<RedirectAttestationRow | null> {
+  return db.prepare(
+    `SELECT ${REDIRECT_ATTESTATION_COLUMNS}
+     FROM rss_import_redirect_attestations
+     WHERE execution_id = ?
+       AND reconciliation_evidence_sha256 = ?
+       AND old_feed_url_sha256 = ?
+       AND new_feed_url_sha256 = ?
+       AND redirect_method = ?`
+  ).bind(
+    executionId,
+    evidenceSha256,
+    oldFeedUrlSha256,
+    newFeedUrlSha256,
+    redirectMethod
+  ).first<RedirectAttestationRow>();
+}
+
+function sameRedirectAttestation(
+  row: RedirectAttestationRow,
+  expected: {
+    reconciliationId: string;
+    executionId: string;
+    planId: string;
+    showId: string;
+    evidenceSha256: string;
+    oldFeedUrlSha256: string;
+    newFeedUrlSha256: string;
+    redirectMethod: RedirectMethod;
+  }
+): boolean {
+  return row.reconciliation_id === expected.reconciliationId
+    && row.execution_id === expected.executionId
+    && row.plan_id === expected.planId
+    && row.show_id === expected.showId
+    && row.reconciliation_evidence_sha256 === expected.evidenceSha256
+    && row.old_feed_url_sha256 === expected.oldFeedUrlSha256
+    && row.new_feed_url_sha256 === expected.newFeedUrlSha256
+    && row.redirect_method === expected.redirectMethod
+    && row.owner_control_confirmed === 1
+    && row.permanence_acknowledged === 1
+    && row.no_activation_confirmed === 1;
+}
+
+function reconciliationApprovalFresh(
   context: ReconciliationContext,
-  snapshot: ReconciliationSnapshot,
-  options: { idempotent: boolean | null; status?: number }
-): Promise<Response> {
-  const certification = await loadDistributionLaunchCertification(
-    env.DB,
-    context.execution.show_id
-  );
-  const approvalFresh = Boolean(
+  snapshot: ReconciliationSnapshot
+): boolean {
+  return Boolean(
     context.reconciliation
     && context.reconciliation.evidence_sha256
       === snapshot.evidenceSha256
     && snapshot.copyReady
   );
+}
+
+function redirectNewFeedUrl(env: PodcastEnv, show: ShowRow): string {
+  return `${env.FEED_ORIGIN.replace(/\/$/u, "")}/`
+    + `${show.rss_slug}/rss.xml`;
+}
+
+async function reconciliationResponse(
+  request: Request,
+  env: PodcastEnv,
+  context: ReconciliationContext,
+  snapshot: ReconciliationSnapshot,
+  options: {
+    idempotent: boolean | null;
+    status?: number;
+    attestationRecorded?: boolean;
+  }
+): Promise<Response> {
+  const certification = await loadDistributionLaunchCertification(
+    env.DB,
+    context.execution.show_id
+  );
+  const approvalFresh = reconciliationApprovalFresh(context, snapshot);
   const importedEpisodesPublic = context.items.every((item) =>
     item.episode_status === "published"
     && item.episode_media_status === "ready"
@@ -711,6 +1125,29 @@ async function reconciliationResponse(
     && timestamp(certification.feedValidation.validatedAt)
       >= latestEpisodeUpdate
   );
+  const newFeedUrl = redirectNewFeedUrl(env, context.show);
+  const newFeedUrlSha256 = await sha256Hex(newFeedUrl);
+  const redirectAttestationFresh = Boolean(
+    approvalFresh
+    && context.redirectAttestation
+    && context.reconciliation
+    && context.redirectAttestation.reconciliation_id
+      === context.reconciliation.id
+    && context.redirectAttestation.execution_id === context.execution.id
+    && context.redirectAttestation.plan_id === context.plan.id
+    && context.redirectAttestation.show_id === context.show.id
+    && context.redirectAttestation.reconciliation_evidence_sha256
+      === snapshot.evidenceSha256
+    && context.redirectAttestation.old_feed_url_sha256
+      === context.execution.feed_url_sha256
+    && context.redirectAttestation.old_feed_url_sha256
+      === context.plan.requested_feed_url_sha256
+    && context.redirectAttestation.new_feed_url_sha256
+      === newFeedUrlSha256
+    && context.redirectAttestation.owner_control_confirmed === 1
+    && context.redirectAttestation.permanence_acknowledged === 1
+    && context.redirectAttestation.no_activation_confirmed === 1
+  );
   const redirectBlockers = unique([
     ...(approvalFresh
       ? []
@@ -724,7 +1161,10 @@ async function reconciliationResponse(
     ...(certification.launchClaim.ready
       ? []
       : ["rss_import_directory_reobservation_required"]),
-    "rss_import_old_host_attestation_required"
+    ...(redirectAttestationFresh
+      ? []
+      : ["rss_import_old_host_attestation_required"]),
+    "rss_import_redirect_activation_unavailable"
   ]);
   return privateJson(request, env.ALLOWED_ORIGINS, {
     reconciliationAvailable: true,
@@ -771,19 +1211,30 @@ async function reconciliationResponse(
     oldHostRedirectChecklist: {
       activationAvailable: false,
       ready: false,
-      newFeedUrl:
-        `${env.FEED_ORIGIN.replace(/\/$/u, "")}/`
-        + `${context.show.rss_slug}/rss.xml`,
+      attestationAvailable: approvalFresh,
+      oldFeedDisplayUrl: context.plan.requested_feed_display_url,
+      newFeedUrl,
+      attestation: context.redirectAttestation
+        ? {
+            id: context.redirectAttestation.id,
+            redirectMethod:
+              context.redirectAttestation.redirect_method,
+            fresh: redirectAttestationFresh,
+            attestedAt: context.redirectAttestation.attested_at
+          }
+        : null,
       blockers: redirectBlockers,
       checks: {
         ownerReconciliationApproved: approvalFresh,
         importedEpisodesPublic,
         canonicalFeedRevalidated: feedValidatedAfterImport,
         directoryCertificationReady: certification.launchClaim.ready,
-        ownerRedirectAttested: false
+        ownerRedirectAttested: redirectAttestationFresh
       }
     },
     idempotent: options.idempotent,
+    redirectAttestationMutationPerformed:
+      options.attestationRecorded === true,
     r2MutationPerformed: false,
     episodeMutationPerformed: false,
     publicationMutationPerformed: false,
@@ -832,6 +1283,17 @@ function validSha256(value: unknown, field: string): string {
     throw new RequestValidationError(`${field} must be a SHA-256 digest`);
   }
   return digest;
+}
+
+function validRedirectMethod(value: unknown): RedirectMethod {
+  const method = requiredText(value, "redirectMethod", 80);
+  if (!REDIRECT_METHODS.includes(method as RedirectMethod)) {
+    throw new RequestValidationError(
+      "redirectMethod must be provider_managed_redirect or "
+      + "self_managed_http_301"
+    );
+  }
+  return method as RedirectMethod;
 }
 
 function requireExactKeys(

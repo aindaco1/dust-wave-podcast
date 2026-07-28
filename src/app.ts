@@ -250,6 +250,7 @@ import {
 } from "./rss-import-executions";
 import {
   createAdminRssImportReconciliation,
+  createAdminRssImportRedirectAttestation,
   getAdminRssImportReconciliation
 } from "./rss-import-reconciliations";
 import {
@@ -312,6 +313,8 @@ const ADMIN_RSS_IMPORT_PLAN_EXECUTION_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/execution$/;
 const ADMIN_RSS_IMPORT_PLAN_RECONCILIATION_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/reconciliation$/;
+const ADMIN_RSS_IMPORT_REDIRECT_ATTESTATION_PATH =
+  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/redirect-attestation$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
 const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
@@ -991,6 +994,19 @@ async function routeRequest(
         adminRssImportPlanReconciliationMatch[1]
       );
     }
+  }
+  const adminRssImportRedirectAttestationMatch = url.pathname.match(
+    ADMIN_RSS_IMPORT_REDIRECT_ATTESTATION_PATH
+  );
+  if (
+    adminRssImportRedirectAttestationMatch
+    && method === "POST"
+  ) {
+    return createAdminRssImportRedirectAttestation(
+      request,
+      env,
+      adminRssImportRedirectAttestationMatch[1]
+    );
   }
   const adminShowMarketingDryRunMatch = url.pathname.match(
     ADMIN_SHOW_MARKETING_DRY_RUN_PATH
