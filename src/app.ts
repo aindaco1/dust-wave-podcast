@@ -125,6 +125,13 @@ import {
   createAdminClipYouTubeDraft
 } from "./clip-youtube";
 import {
+  approveAdminClipPublication,
+  createAdminClipPublicationDraft,
+  listPublicEpisodeClips,
+  servePublicClipMedia,
+  withdrawAdminClipPublication
+} from "./clip-publications";
+import {
   approveAdminEpisodeYouTubePublication,
   createAdminEpisodeYouTubeDraft,
   reconcileAdminEpisodeYouTubePublication
@@ -248,6 +255,10 @@ const SHOW_EPISODE_TRANSCRIPTS_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts$/;
 const SHOW_EPISODE_CHAPTERS_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
+const SHOW_EPISODE_CLIPS_PATH =
+  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/clips$/;
+const SHOW_EPISODE_CLIP_MEDIA_PATH =
+  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/clips\/([a-z0-9]+(?:-[a-z0-9]+)*)\.mp4$/;
 const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
 const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
 const PUBLIC_EPISODE_PEAKS_PATH =
@@ -366,6 +377,12 @@ const ADMIN_CLIP_RENDER_MEDIA_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/media$/;
 const ADMIN_CLIP_RENDER_YOUTUBE_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/youtube$/;
+const ADMIN_CLIP_RENDER_PUBLICATION_PATH =
+  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/publication$/;
+const ADMIN_CLIP_PUBLICATION_APPROVE_PATH =
+  /^\/v1\/admin\/clip-publications\/([A-Za-z0-9_-]+)\/approve$/;
+const ADMIN_CLIP_PUBLICATION_WITHDRAW_PATH =
+  /^\/v1\/admin\/clip-publications\/([A-Za-z0-9_-]+)\/withdraw$/;
 const ADMIN_CLIP_YOUTUBE_APPROVE_PATH =
   /^\/v1\/admin\/clip-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_EPISODE_YOUTUBE_APPROVE_PATH =
@@ -577,6 +594,35 @@ async function routeRequest(
       env,
       showEpisodeChaptersMatch[1],
       showEpisodeChaptersMatch[2]
+    );
+  }
+  const showEpisodeClipMediaMatch = url.pathname.match(
+    SHOW_EPISODE_CLIP_MEDIA_PATH
+  );
+  if (
+    showEpisodeClipMediaMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return servePublicClipMedia(
+      request,
+      env,
+      showEpisodeClipMediaMatch[1],
+      showEpisodeClipMediaMatch[2],
+      showEpisodeClipMediaMatch[3]
+    );
+  }
+  const showEpisodeClipsMatch = url.pathname.match(
+    SHOW_EPISODE_CLIPS_PATH
+  );
+  if (
+    showEpisodeClipsMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return listPublicEpisodeClips(
+      request,
+      env,
+      showEpisodeClipsMatch[1],
+      showEpisodeClipsMatch[2]
     );
   }
   const showMatch = url.pathname.match(SHOW_PATH);
@@ -1448,6 +1494,36 @@ async function routeRequest(
       request,
       env,
       adminClipRenderYouTubeMatch[1]
+    );
+  }
+  const adminClipRenderPublicationMatch = url.pathname.match(
+    ADMIN_CLIP_RENDER_PUBLICATION_PATH
+  );
+  if (adminClipRenderPublicationMatch && method === "POST") {
+    return createAdminClipPublicationDraft(
+      request,
+      env,
+      adminClipRenderPublicationMatch[1]
+    );
+  }
+  const adminClipPublicationApproveMatch = url.pathname.match(
+    ADMIN_CLIP_PUBLICATION_APPROVE_PATH
+  );
+  if (adminClipPublicationApproveMatch && method === "POST") {
+    return approveAdminClipPublication(
+      request,
+      env,
+      adminClipPublicationApproveMatch[1]
+    );
+  }
+  const adminClipPublicationWithdrawMatch = url.pathname.match(
+    ADMIN_CLIP_PUBLICATION_WITHDRAW_PATH
+  );
+  if (adminClipPublicationWithdrawMatch && method === "POST") {
+    return withdrawAdminClipPublication(
+      request,
+      env,
+      adminClipPublicationWithdrawMatch[1]
     );
   }
   const adminClipYouTubeApproveMatch = url.pathname.match(

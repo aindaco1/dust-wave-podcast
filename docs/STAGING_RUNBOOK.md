@@ -528,6 +528,8 @@ wildcard CORS. Never put the token in shared evidence.
 - Seed at least two super-admin lookup HMACs using one newly generated staging
   pepper. Do not store raw email addresses in D1 or the repository.
 - Confirm eleven directory rows exist with truthful owner-setup states.
+- Keep `CLIP_PUBLICATION_MODE=staging_preview` in isolated staging and
+  `CLIP_PUBLICATION_MODE=disabled` in production.
 
 ## 4. Configure staging secrets
 
@@ -1112,6 +1114,25 @@ idempotent only when their stored checksum metadata matches exactly.
 
 Live GitHub publication targets only the release branch and requires a reviewed
 fixture.
+
+Before any external clip upload, exercise the first-party public clip preview:
+
+1. Prepare one current ready render with a lowercase public slug, bounded
+   title/description, and exact expected clip revision. Confirm the draft
+   stores no new R2 object and returns no object key, ETag, or digest.
+2. With the episode still scheduled, have a recently authenticated
+   super-admin approve it. Confirm metadata/media remain `404` before the
+   public release time.
+3. On an isolated published/due fixture, confirm the metadata ETag, wildcard
+   CORS, canonical News URL, responsive browser playback, `HEAD`, download,
+   valid single/suffix ranges, invalid multi-range `416`, and exact R2
+   checksum/manifest evidence.
+4. Change the clip revision and confirm the old selection becomes unavailable
+   before R2. Restore the fixture, create a new selection, then withdraw it
+   and confirm origin `404` plus CDN revalidation within the documented
+   one-minute bound.
+5. Restore/delete only the isolated fixture state. Do not change production
+   `CLIP_PUBLICATION_MODE`, DNS, routes, or media bindings.
 
 For the YouTube clip test:
 

@@ -139,6 +139,14 @@ iHeartRadio, and Deezer.
   verification and terminal duplicate prevention. A remote clip workflow run,
   installation of launch-channel OAuth secrets, and one tightly controlled
   unlisted production-channel test remain evidence gates.
+- The first public clip boundary now lets Producer+ prepare one exact current
+  ready render and requires recent Super-admin approval/withdrawal. Its
+  staging-preview metadata and range-safe MP4 routes repeat the canonical
+  episode visibility gate and exact D1/R2 checksum/manifest evidence, expose
+  no object identity, and point canonical ownership back to the episode News
+  page. Production remains disabled until the canonical page integration,
+  accessibility/responsive review, withdrawal-cache exercise, and owner
+  promotion decision pass.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
 - Publish audio-only or native-video episodes to the configurable YouTube

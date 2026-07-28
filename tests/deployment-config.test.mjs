@@ -106,4 +106,13 @@ describe("deployment configuration", () => {
       "false"
     );
   });
+
+  it("keeps public clip delivery isolated to staging preview", () => {
+    expect(config.env.staging.vars.CLIP_PUBLICATION_MODE).toBe(
+      "staging_preview"
+    );
+    expect(config.env.production.vars.CLIP_PUBLICATION_MODE).toBe(
+      "disabled"
+    );
+  });
 });

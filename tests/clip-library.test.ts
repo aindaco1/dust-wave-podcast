@@ -34,6 +34,13 @@ describe("show clip library", () => {
     expect(payload.clips[0].render.downloadPath).toBe(
       "/v1/admin/clip-renders/render_2/media?download=1"
     );
+    expect(payload.clips[0].publicPublication).toMatchObject({
+      id: "publication_clip_2",
+      renderId: "render_2",
+      publicSlug: "ready-clip",
+      status: "approved",
+      evidenceCurrent: true
+    });
     expect(payload.pagination).toEqual({
       limit: 1,
       nextCursor: "clip_2"
@@ -238,9 +245,22 @@ function clipRow(
     render_output_width: 1080,
     render_output_height: 1920,
     render_output_duration_ms: 5_000,
+    render_processor_manifest_sha256: "c".repeat(64),
     render_processor_version: "captioned-waveform-v1",
     render_failure_code: null,
     render_requested_at: "2026-07-25 00:00:00",
-    render_completed_at: "2026-07-25 00:01:00"
+    render_completed_at: "2026-07-25 00:01:00",
+    public_publication_id: `publication_${id}`,
+    public_publication_slug: "ready-clip",
+    public_publication_title: "Ready clip",
+    public_publication_description: "A captioned excerpt",
+    public_publication_status: "approved",
+    public_publication_clip_revision: 2,
+    public_publication_output_bytes: 10_000,
+    public_publication_output_sha256: "b".repeat(64),
+    public_publication_manifest_sha256: "c".repeat(64),
+    public_publication_requested_at: "2026-07-25 00:00:00",
+    public_publication_approved_at: "2026-07-25 00:02:00",
+    public_publication_withdrawn_at: null
   };
 }

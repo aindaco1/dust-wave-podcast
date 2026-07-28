@@ -35,8 +35,9 @@ alignment adapter's human-reviewed benchmark evidence remain gated. Checkout
 remains disabled pending accountant-approved tax/provider evidence. Dynamic
 audio now has a guarded public-enclosure runtime in code, but both deployed
 modes remain non-automatic until the real-client, load, fallback, and
-sponsor-reconciliation gates pass. Public clip distribution and
-production-live YouTube/GitHub publishing remain roadmap work.
+sponsor-reconciliation gates pass. Public clip selection and verified range
+delivery are implemented as a staging preview with production disabled;
+production-live YouTube/GitHub publishing remains roadmap work.
 
 An existing-show RSS migration preview is also implemented without a copy
 boundary. A recently authenticated super-admin must confirm import rights; the
@@ -74,7 +75,8 @@ latest immutable, hash-verified approved revision per language for published,
 due, public/free/early-access episodes with ready media. It emits plain timed
 text with wildcard read-only CORS, short cache validators, and no internal
 transcript/admin identity; premium bonuses and non-public episode states remain
-indistinguishable `404`s. Public clip distribution remains gated.
+indistinguishable `404`s. Public clip distribution remains staging-only and
+requires exact render approval plus the same episode visibility boundary.
 
 Source-language transcription accepts an explicit English/Spanish episode
 language and only the current approved working master. The job fingerprint
@@ -172,12 +174,17 @@ the local Worker+D1+R2 runtime gate; the remote GitHub workflow still requires
 the reviewed workflow to exist on the default branch and a queued staging
 render. Ready renders have authenticated range-safe preview/download plus a
 bounded, filterable cross-episode Marketing library; neither route exposes an
-R2 key. A separate staging-only Shorts boundary now lets Producer+ prepare one
+R2 key. A separate public-selection record now snapshots exact current
+render/R2 evidence, requires recent-super-admin approval or withdrawal, and
+serves only a due public episode through short-cache metadata and range-safe
+MP4 routes. Production keeps that mode disabled. A separate staging-only
+Shorts boundary now lets Producer+ prepare one
 immutable private/unlisted draft for the current ready render. Approval
 requires a recently authenticated super-admin. The committed mode records only
 a dry run; an actual upload additionally requires explicit `controlled_test`
 mode and launch-channel OAuth secrets, and public visibility is structurally
-rejected. No public clip route or production Shorts upload is enabled.
+rejected. No production public clip route or production Shorts upload is
+enabled.
 
 Full-episode video now has a parallel staging-only boundary. Its draft pins the
 current publication revision, YouTube root job, completed MP4 upload, private

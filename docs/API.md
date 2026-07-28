@@ -13,6 +13,8 @@ routes also require the `x-podcast-csrf` value returned at login exchange.
 | `GET`, `HEAD` | `/v1/shows/{slug}` | Show, internal price choices, global Checkout gate, and public episodes |
 | `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/transcripts` | Latest immutable approved English/Spanish transcript revisions for a due public episode |
 | `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/chapters.json` | Latest immutable approved Podcasting 2.0 chapter document for a due public episode |
+| `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/clips` | Approved current captioned-clip metadata for a due public episode when the environment gate is enabled |
+| `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/clips/{clip-slug}.mp4` | Checksum-verified public MP4 with one bounded byte range and optional `?download=1` |
 | `GET`, `HEAD` | `/{rss-slug}/rss.xml` | Canonical public RSS |
 | `GET`, `HEAD` | `/v1/feeds/{rss-slug}/rss.xml` | RSS alias for staging and diagnostics |
 | `GET`, `HEAD` | `/episodes/{episode-id}/audio` | Public R2-backed audio with byte ranges |
@@ -58,6 +60,22 @@ and optional silent `toc: false` markers. Missing, malformed, tampered, or
 unapproved data returns the same no-store `404`. Successful public responses
 use content-derived ETags, short shared caching, wildcard read-only CORS,
 noindex/nosniff, and body-free `HEAD`.
+
+Public clip projection is independently fail-closed behind
+`CLIP_PUBLICATION_MODE`. The committed staging value is `staging_preview`;
+production is `disabled`. Producer+ may prepare only a current ready render,
+and a recently authenticated super-admin must approve its exact clip revision,
+render ID, object key/bytes/ETag/SHA-256/MIME/dimensions/duration, and processor
+manifest digest. The public routes additionally require the episode to be
+published, due, public/free-mini/early-access, and backed by ready media.
+Premium bonuses, future releases, stale recipes/renders, withdrawn approvals,
+disabled environments, and object mismatches all return the same no-store
+`404`. Metadata omits internal IDs, R2 keys, and digests. MP4 responses reuse
+the private render transport's single-range, conditional-R2, checksum, and
+manifest verification, add wildcard read-only CORS and a canonical link to the
+episode News page, and revalidate after 60 seconds so withdrawal remains
+bounded. Metadata returns at most 24 clips and reports when that result is
+truncated. The MP4 itself is noindex; the News page remains canonical.
 
 Subscription tax quotes accept a configured `priceId` and a billing
 `destination`. The Worker normalizes the destination with the same shared
@@ -333,6 +351,9 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
 | `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
 | `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
+| `POST` | `/v1/admin/clip-renders/{renderId}/publication` | producer+ | Prepare one staging-preview public selection from exact current render/R2 evidence |
+| `POST` | `/v1/admin/clip-publications/{id}/approve` | recently authenticated super-admin | Approve one exact selection without bypassing episode release visibility |
+| `POST` | `/v1/admin/clip-publications/{id}/withdraw` | recently authenticated super-admin | Terminally withdraw the selection and audit the action |
 | `POST` | `/v1/admin/clip-renders/{renderId}/youtube` | producer+ | Staging-only immutable private/unlisted YouTube test draft for a current ready render |
 | `POST` | `/v1/admin/clip-youtube-publications/{id}/approve` | recently authenticated super-admin | Record the default dry run or queue the explicitly enabled controlled test |
 | `GET` | `/v1/admin/distribution` | analyst+ | Directory registry |
@@ -786,6 +807,12 @@ episode, `9:16|1:1|16:9`, and the current revision's
 `queued|rendering|ready|failed` render state. The opaque next cursor is a
 show-scoped clip ID. Returned ready actions reuse the private media route
 above; no object key or public media URL is included.
+
+The same library row exposes only bounded public-selection state
+(ID/slug/title/status/timestamps and whether its immutable evidence is still
+current). Draft creation verifies R2 before storing an exact private snapshot.
+Approval and withdrawal require a fresh super-admin session and are audited.
+There is at most one selection per render and one slug per show/episode.
 
 ### Controlled YouTube clip test
 

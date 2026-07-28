@@ -134,6 +134,7 @@ type ClipRow = {
   render_output_width: number | null;
   render_output_height: number | null;
   render_output_duration_ms: number | null;
+  render_processor_manifest_sha256: string | null;
   render_processor_version: string | null;
   render_failure_code: string | null;
   render_requested_at: string | null;
@@ -149,6 +150,18 @@ type ClipRow = {
   youtube_failure_code: string | null;
   youtube_requested_at: string | null;
   youtube_completed_at: string | null;
+  public_publication_id: string | null;
+  public_publication_slug: string | null;
+  public_publication_title: string | null;
+  public_publication_description: string | null;
+  public_publication_status: string | null;
+  public_publication_clip_revision: number | null;
+  public_publication_output_bytes: number | null;
+  public_publication_output_sha256: string | null;
+  public_publication_manifest_sha256: string | null;
+  public_publication_requested_at: string | null;
+  public_publication_approved_at: string | null;
+  public_publication_withdrawn_at: string | null;
 };
 
 type ClipRevisionRow = {
@@ -196,9 +209,10 @@ type ClipRenderRow = {
   completed_at: string | null;
 };
 
-type ClipRenderMediaRow = ClipRenderRow & {
+export type ClipRenderMediaEvidence = ClipRenderRow & {
   show_id: string;
   clip_title: string;
+  expected_object_etag?: string | null;
 };
 
 type ApprovedTranscriptRow = {
@@ -760,29 +774,79 @@ export async function serveAdminClipRenderMedia(
       { status: 404 }
     );
   }
-  const objectHead = await env.MEDIA_BUCKET.head(render.output_object_key);
+  const response = await serveVerifiedClipRenderMedia(
+    request,
+    env,
+    render,
+    {
+      visibility: "private",
+      filename: `${render.clip_title}-${render.id}.mp4`
+    }
+  );
+  return response
+    ?? clipConflict(request, env, "clip_render_object_mismatch");
+}
+
+export async function verifyClipRenderObject(
+  env: PodcastEnv,
+  render: ClipRenderMediaEvidence
+): Promise<R2Object | null> {
   if (
-    !objectHead
-    || objectHead.size !== render.output_object_bytes
-    || objectHead.httpMetadata?.contentType !== "video/mp4"
-    || objectHead.checksums.toJSON().sha256 !== render.output_sha256
-    || objectHead.customMetadata?.sha256 !== render.output_sha256
-    || objectHead.customMetadata?.["render-manifest-sha256"]
+    render.status !== "ready"
+    || render.output_mime_type !== "video/mp4"
+    || !render.output_object_bytes
+    || !render.output_sha256
+  ) {
+    return null;
+  }
+  const object = await env.MEDIA_BUCKET.head(render.output_object_key);
+  if (
+    !object
+    || object.size !== render.output_object_bytes
+    || (
+      render.expected_object_etag
+      && object.httpEtag !== render.expected_object_etag
+    )
+    || object.httpMetadata?.contentType !== "video/mp4"
+    || object.checksums.toJSON().sha256 !== render.output_sha256
+    || object.customMetadata?.sha256 !== render.output_sha256
+    || object.customMetadata?.["render-manifest-sha256"]
       !== render.processor_manifest_sha256
   ) {
-    return clipConflict(request, env, "clip_render_object_mismatch");
+    return null;
   }
+  return object;
+}
+
+export async function serveVerifiedClipRenderMedia(
+  request: Request,
+  env: PodcastEnv,
+  render: ClipRenderMediaEvidence,
+  {
+    visibility,
+    filename,
+    canonicalUrl
+  }: {
+    visibility: "private" | "public";
+    filename: string;
+    canonicalUrl?: string;
+  }
+): Promise<Response | null> {
+  const objectHead = await verifyClipRenderObject(env, render);
+  if (!objectHead) return null;
   const headers = clipMediaHeaders(
     request,
     env,
-    objectHead.httpEtag
+    objectHead.httpEtag,
+    visibility
   );
+  if (canonicalUrl) {
+    headers.set("link", `<${canonicalUrl}>; rel="canonical"`);
+  }
   if (new URL(request.url).searchParams.get("download") === "1") {
     headers.set(
       "content-disposition",
-      `attachment; filename="${safeDownloadFilename(
-        `${render.clip_title}-${render.id}.mp4`
-      )}"`
+      `attachment; filename="${safeDownloadFilename(filename)}"`
     );
   } else {
     headers.set("content-disposition", "inline");
@@ -796,7 +860,7 @@ export async function serveAdminClipRenderMedia(
   }
   const range = requestedMediaRange(
     request,
-    render.output_object_bytes,
+    render.output_object_bytes as number,
     objectHead.httpEtag
   );
   if (range === "invalid") {
@@ -813,7 +877,7 @@ export async function serveAdminClipRenderMedia(
     || object.size !== render.output_object_bytes
     || object.httpEtag !== objectHead.httpEtag
   ) {
-    return clipConflict(request, env, "clip_render_object_mismatch");
+    return null;
   }
   if (range && object.range && "offset" in object.range) {
     const offset = object.range.offset ?? 0;
@@ -1651,6 +1715,7 @@ function clipSelect(where: string): string {
       r.output_width AS render_output_width,
       r.output_height AS render_output_height,
       r.output_duration_ms AS render_output_duration_ms,
+      r.processor_manifest_sha256 AS render_processor_manifest_sha256,
       r.processor_version AS render_processor_version,
       r.failure_code AS render_failure_code,
       r.requested_at AS render_requested_at,
@@ -1665,7 +1730,20 @@ function clipSelect(where: string): string {
       yp.provider_video_id AS youtube_provider_video_id,
       yp.failure_code AS youtube_failure_code,
       yp.requested_at AS youtube_requested_at,
-      yp.completed_at AS youtube_completed_at
+      yp.completed_at AS youtube_completed_at,
+      publication.id AS public_publication_id,
+      publication.public_slug AS public_publication_slug,
+      publication.title AS public_publication_title,
+      publication.description AS public_publication_description,
+      publication.status AS public_publication_status,
+      publication.clip_revision AS public_publication_clip_revision,
+      publication.output_object_bytes AS public_publication_output_bytes,
+      publication.output_sha256 AS public_publication_output_sha256,
+      publication.processor_manifest_sha256
+        AS public_publication_manifest_sha256,
+      publication.requested_at AS public_publication_requested_at,
+      publication.approved_at AS public_publication_approved_at,
+      publication.withdrawn_at AS public_publication_withdrawn_at
     FROM clips c
     JOIN episodes e ON e.id = c.episode_id
     LEFT JOIN clip_renders r
@@ -1677,6 +1755,7 @@ function clipSelect(where: string): string {
         LIMIT 1
       )
     LEFT JOIN clip_youtube_publications yp ON yp.render_id = r.id
+    LEFT JOIN clip_publications publication ON publication.render_id = r.id
     ${where}`;
 }
 
@@ -1739,7 +1818,7 @@ async function loadClipRender(
 async function loadClipRenderMedia(
   db: D1Database,
   renderId: string
-): Promise<ClipRenderMediaRow | null> {
+): Promise<ClipRenderMediaEvidence | null> {
   return db.prepare(
     `SELECT
        r.id, r.clip_id, r.clip_revision, r.recipe_sha256,
@@ -1747,30 +1826,42 @@ async function loadClipRenderMedia(
        r.output_object_bytes, r.output_sha256, r.output_mime_type,
        r.output_width, r.output_height, r.output_duration_ms,
        r.processor_version, r.failure_code, r.requested_at, r.completed_at,
-       e.show_id, c.title AS clip_title
+       e.show_id, c.title AS clip_title,
+       NULL AS expected_object_etag
      FROM clip_renders r
      JOIN clips c ON c.id = r.clip_id
      JOIN episodes e ON e.id = c.episode_id
      WHERE r.id = ?`
-  ).bind(renderId).first<ClipRenderMediaRow>();
+  ).bind(renderId).first<ClipRenderMediaEvidence>();
 }
 
 function clipMediaHeaders(
   request: Request,
   env: PodcastEnv,
-  etag: string
+  etag: string,
+  visibility: "private" | "public"
 ): Headers {
   const headers = new Headers({
-    ...privateCorsHeaders(request, env.ALLOWED_ORIGINS),
+    ...(visibility === "private"
+      ? privateCorsHeaders(request, env.ALLOWED_ORIGINS)
+      : {
+          "access-control-allow-origin": "*"
+        }),
     "content-type": "video/mp4",
     "accept-ranges": "bytes",
-    "cache-control": "private, no-store, max-age=0",
+    "cache-control": visibility === "private"
+      ? "private, no-store, max-age=0"
+      : "public, max-age=60, must-revalidate",
     "content-security-policy": "default-src 'none'; sandbox",
-    "cross-origin-resource-policy": "same-site",
+    "cross-origin-resource-policy": visibility === "private"
+      ? "same-site"
+      : "cross-origin",
     etag,
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
-    "x-robots-tag": "noindex, nofollow, noarchive"
+    "x-robots-tag": visibility === "private"
+      ? "noindex, nofollow, noarchive"
+      : "noindex, noarchive"
   });
   headers.set(
     "access-control-expose-headers",
@@ -2020,6 +2111,31 @@ function presentClip(row: ClipRow): Record<string, unknown> {
           failureCode: row.youtube_failure_code,
           requestedAt: row.youtube_requested_at,
           completedAt: row.youtube_completed_at
+        }
+      : null,
+    publicPublication: row.public_publication_id
+      ? {
+          id: row.public_publication_id,
+          renderId: row.render_id,
+          clipRevision: row.public_publication_clip_revision,
+          publicSlug: row.public_publication_slug,
+          title: row.public_publication_title,
+          description: row.public_publication_description,
+          status: row.public_publication_status,
+          evidenceCurrent: Boolean(
+            row.public_publication_clip_revision === row.revision
+            && row.render_clip_revision === row.revision
+            && row.render_status === "ready"
+            && row.public_publication_output_bytes
+              === row.render_output_bytes
+            && row.public_publication_output_sha256
+              === row.render_output_sha256
+            && row.public_publication_manifest_sha256
+              === row.render_processor_manifest_sha256
+          ),
+          requestedAt: row.public_publication_requested_at,
+          approvedAt: row.public_publication_approved_at,
+          withdrawnAt: row.public_publication_withdrawn_at
         }
       : null,
     createdAt: row.created_at,

@@ -113,7 +113,8 @@
   Admin responses are private/no-store and marked noindex.
 - Ready clip preview/download remains under the path-scoped admin session.
   The Marketing library returns only bounded show-scoped metadata and those
-  same ready media paths; it never returns an R2 object key or public URL.
+  same ready media paths plus bounded public-selection state; it never returns
+  an R2 object key, digest, ETag, or public media URL.
   Every request rechecks show-scoped Analyst-or-higher access and exact D1/R2
   byte, MIME, native checksum, custom checksum, and manifest evidence before
   serving one bounded MP4 range. The response exposes no private object key,
@@ -521,8 +522,19 @@ commit SHAs and the processor secret is scoped only to signing steps.
 The completion callback is replay-safe. Ready state re-heads R2 and requires
 exact MP4 dimensions/duration, byte count, native checksum, and custom metadata
 matching both output and manifest digests. A callback for a stale revision may
-preserve historical evidence but cannot change the current clip. There is no
-public clip route.
+preserve historical evidence but cannot change the current clip.
+
+Public clip selection remains separate from render readiness. Producer+ may
+prepare one current render, but only a recently authenticated super-admin may
+approve or terminally withdraw it. The approval snapshots exact D1 and R2
+identity and repeats the current revision/object checks. Public metadata and
+range delivery require an enabled environment mode plus a published, due,
+public-eligible, ready-media episode; stale, premium-only, future, withdrawn,
+disabled, and tampered records are concealed as the same no-store `404`.
+Responses never reveal the private key or evidence digests. Media uses the
+same conditional-R2 transport and exact checksum/manifest checks as Admin,
+wildcard read-only CORS, one-minute revalidation, a canonical News-page link,
+and noindex. Production keeps the mode disabled.
 
 ## Source-audio QC boundary
 

@@ -2,10 +2,12 @@
 
 The clip processor turns one approved, versioned transcript selection and one
 immutable delivery MP3 into a private captioned-waveform MP4. It is
-staging-only. Passing this gate does not publish a clip, expose an object URL,
-or itself upload a YouTube Short. A separate recent-super-admin controlled-test
-boundary may consume only a current `ready` result after repeating D1/R2
-evidence checks.
+staging-only. Passing this render gate alone does not publish a clip, expose an
+object URL, or itself upload a YouTube Short. Separate recent-Super-admin
+boundaries may consume only a current `ready` result after repeating D1/R2
+evidence checks: immutable public selection enables the staging News-page
+preview, while the controlled YouTube test stays private/unlisted. Production
+public delivery remains disabled.
 
 ## Implemented boundary
 
