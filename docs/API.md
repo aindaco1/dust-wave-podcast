@@ -16,6 +16,7 @@ representation in D1.
 | `GET`, `HEAD` | `/v1/shows` | Non-archived shows, including coming-soon shows |
 | `GET`, `HEAD` | `/v1/shows/{slug}` | Show, internal price choices, global Checkout gate, and public episodes |
 | `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/transcripts` | Latest immutable approved English/Spanish transcript revisions for a due public episode |
+| `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/transcripts/{en\|es}.vtt` | Checksum-verified WebVTT projection of one approved public transcript language |
 | `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/chapters.json` | Latest immutable approved Podcasting 2.0 chapter document for a due public episode |
 | `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/clips` | Approved current captioned-clip metadata for a due public episode when the environment gate is enabled |
 | `GET`, `HEAD` | `/v1/shows/{show-slug}/episodes/{episode-slug}/clips/{clip-slug}.mp4` | Checksum-verified public MP4 with one bounded byte range and optional `?download=1` |
@@ -54,6 +55,18 @@ responses use a content-derived ETag and a 60-second public cache with
 stale-while-revalidate; errors are no-store. Read-only CORS is `*`, API
 responses are noindex, `HEAD` is body-free, and weak/list conditional ETags are
 accepted.
+
+The public WebVTT route projects the same immutable cue revision used by the
+JSON and canonical News views. It strips restricted editor markup, escapes
+WebVTT payload and voice text, preserves confirmed speaker names with bounded
+voice spans, and exposes no internal cue or database IDs. Successful responses
+use content-derived ETags, short public caching, wildcard read-only CORS,
+noindex/nosniff, and body-free `HEAD`; missing or tampered evidence returns the
+same no-store `404`. Public RSS emits one HTTPS
+`<podcast:transcript type="text/vtt" language="…">` tag per approved English
+or Spanish revision. The launch validator rejects malformed, non-HTTPS,
+unsupported-type, unsupported-language, or duplicate-language transcript
+metadata.
 
 The public chapter route uses the same episode visibility boundary, then reads
 the latest immutable approval/revision pair, revalidates ordered integer
@@ -139,6 +152,7 @@ customer/subscription ID, or private-feed token.
 | `POST` | `/v1/member/shows/{show-slug}/billing/portal` | Create a scoped Stripe Customer Portal session |
 | `POST` | `/v1/member/redemptions/pool` | Redeem one email-bound Pool benefit code |
 | `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/rss.xml` | Entitlement-gated premium RSS |
+| `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/episodes/{episode-slug}/transcripts/{en\|es}.vtt` | Entitlement-gated approved WebVTT transcript |
 | `GET`, `HEAD` | `/v1/private/{token}/{rss-slug}/episodes/{episode-slug}/chapters.json` | Entitlement-gated approved chapter document |
 | `GET`, `HEAD` | `/v1/private/{token}/episodes/{episode-id}/audio` | Entitlement-gated byte-range audio |
 
@@ -149,10 +163,12 @@ already exists. Rotate revokes the old URL immediately and atomically installs
 one replacement.
 
 The private feed includes due public/free-mini episodes, due early-access
-episodes, and due premium bonuses. A current active subscription is rechecked
-for every RSS and media request. Invalid, revoked, mismatched, expired, and
-unconfigured bearer URLs all return the same `404` shape. Private responses
-are `private, no-store`, omit wildcard CORS, and are marked noindex. Append
+episodes, and due premium bonuses. Its transcript tags use the same tokenized
+feed path and never substitute the public URL for private-only content. A
+current active subscription is rechecked for every RSS, transcript, chapter,
+and media request. Invalid, revoked, mismatched, expired, and unconfigured
+bearer URLs all return the same `404` shape. Private responses are
+`private, no-store`, omit wildcard CORS, and are marked noindex. Append
 `?download=1` to a private media URL for attachment disposition.
 
 The billing-portal endpoint requires the listener cookie, same-origin CSRF,

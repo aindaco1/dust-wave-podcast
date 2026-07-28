@@ -646,7 +646,7 @@ async function distributionFixture({
               status: "valid",
               feed_url:
                 "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
-              validator_version: "dustwave-rss-launch-v1",
+              validator_version: "dustwave-rss-launch-v2",
               feed_sha256: "a".repeat(64),
               item_count: 1,
               failure_code: null,

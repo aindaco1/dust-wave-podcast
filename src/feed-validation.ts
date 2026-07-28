@@ -3,7 +3,8 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 import type { PodcastEnv } from "./env";
 import { servePublicFeed } from "./feed";
 
-const FEED_VALIDATOR_VERSION = "dustwave-rss-launch-v1";
+export const PUBLIC_FEED_VALIDATOR_VERSION =
+  "dustwave-rss-launch-v2";
 const MAXIMUM_FEED_BYTES = 5 * 1024 * 1024;
 
 type FeedValidationShow = {
@@ -79,7 +80,7 @@ export async function validateAndRecordPublicFeed(
     const evidence: PublicFeedValidationEvidence = {
       showId: show.id,
       feedUrl,
-      validatorVersion: FEED_VALIDATOR_VERSION,
+      validatorVersion: PUBLIC_FEED_VALIDATOR_VERSION,
       feedSha256,
       itemCount: validation.itemCount,
       checkedAt,
@@ -98,7 +99,7 @@ export async function validateAndRecordPublicFeed(
     await recordFeedValidation(env.DB, {
       showId: show.id,
       feedUrl,
-      validatorVersion: FEED_VALIDATOR_VERSION,
+      validatorVersion: PUBLIC_FEED_VALIDATOR_VERSION,
       feedSha256: null,
       itemCount: null,
       checkedAt,
@@ -198,6 +199,20 @@ export function validatePublicPodcastFeed(
       throw new PublicFeedValidationError(
         "A canonical feed item is incomplete.",
         "feed_item_metadata_incomplete"
+      );
+    }
+    const transcriptTags = [...item.matchAll(
+      /<podcast:transcript url="(https:\/\/[^"]+)" type="text\/vtt" language="(en|es)"\/>/gu
+    )];
+    if (
+      transcriptTags.length
+      !== countMatches(item, /<podcast:transcript\b/gu)
+      || new Set(transcriptTags.map((match) => match[2])).size
+        !== transcriptTags.length
+    ) {
+      throw new PublicFeedValidationError(
+        "A canonical feed transcript link is invalid.",
+        "feed_transcript_metadata_invalid"
       );
     }
     const guid = item.match(

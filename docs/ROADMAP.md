@@ -106,6 +106,11 @@ iHeartRadio, and Deezer.
   per language, render it as safe plain timed text, and seek the shared Digest
   player from accessible timestamps. Draft/future/premium-only content stays
   outside the public projection; word-linked controls remain alignment-gated.
+  The same approval now projects speaker-aware WebVTT and one Podcasting 2.0
+  discovery tag per approved English/Spanish language, with tokenized
+  entitlement-checked VTT for private early/bonus feeds. The v2 feed validator
+  rejects malformed transcript metadata and deliberately makes older valid
+  evidence stale before launch or RSS cutover.
 - The first source-audio QC slice now snapshots a completed private source and
   show policy, fully decodes it in the pinned staging FFmpeg workflow, and
   records normalized codec/duration/sample/channel/bitrate, LUFS/LRA,

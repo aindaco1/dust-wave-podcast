@@ -484,6 +484,18 @@ returns internal transcript/admin IDs or word records. Public JSON uses
 content-derived ETags, bounded cache freshness, wildcard read-only CORS,
 noindex, nosniff, and a deny-all document CSP.
 
+The same immutable approval projects a bounded speaker-aware WebVTT document
+for each approved language and its Podcasting 2.0 RSS discovery tag. Public
+VTT keeps the JSON visibility, checksum, cache, CORS, noindex, nosniff, and
+conditional-request boundaries. Private VTT HMACs the bearer before D1,
+rechecks active unexpired show entitlement and release eligibility on every
+request, uses tokenized RSS URLs, and is private/no-store without wildcard
+CORS. Neither projection logs or returns the raw bearer, internal cue IDs,
+editor markup, revision metadata, or word-alignment rows. Launch/cutover
+evidence accepts only the current `dustwave-rss-launch-v2` validator contract,
+so a previously valid v1 result becomes visibly stale and cannot certify
+publication.
+
 ## Chapter boundary
 
 Chapter editing reuses the original normalized episode rows and adds a

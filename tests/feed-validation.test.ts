@@ -20,7 +20,7 @@ describe("canonical feed launch validation", () => {
       showId: "show_opera",
       feedUrl:
         "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
-      validatorVersion: "dustwave-rss-launch-v1",
+      validatorVersion: "dustwave-rss-launch-v2",
       itemCount: 1
     });
     expect(evidence.feedSha256).toMatch(/^[a-f0-9]{64}$/u);
@@ -50,6 +50,9 @@ describe("canonical feed launch validation", () => {
     expect(validatePublicPodcastFeed(xml, feedUrl)).toEqual({
       itemCount: 1
     });
+    expect(xml).toContain(
+      'type="text/vtt" language="es"/>'
+    );
     expect(() =>
       validatePublicPodcastFeed(
         xml.replace("<itunes:owner>", ""),
@@ -76,6 +79,17 @@ describe("canonical feed launch validation", () => {
       )
     ).toThrowError(expect.objectContaining({
       code: "feed_guid_invalid"
+    }));
+    expect(() =>
+      validatePublicPodcastFeed(
+        xml.replace(
+          'type="text/vtt" language="es"/>',
+          'type="text/html" language="es"/>'
+        ),
+        feedUrl
+      )
+    ).toThrowError(expect.objectContaining({
+      code: "feed_transcript_metadata_invalid"
     }));
   });
 
@@ -185,7 +199,8 @@ function feedFixture({
                 explicit: 0,
                 season_number: 1,
                 episode_number: 1,
-                has_approved_chapters: 0
+                has_approved_chapters: 0,
+                approved_transcript_languages: "es"
               }]
             };
           }

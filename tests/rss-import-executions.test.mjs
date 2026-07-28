@@ -139,7 +139,7 @@ describe("RSS import executions", () => {
     });
     const episode = harness.database.prepare(
       `SELECT
-         id, slug, title, summary, status, access, public_at,
+         id, show_id, slug, title, summary, status, access, public_at,
          audio_key, source_audio_key, media_status, source_language
        FROM episodes
        WHERE slug = 'episodio-importado'`
@@ -465,6 +465,32 @@ describe("RSS import executions", () => {
       error: "rss_import_cutover_not_ready"
     });
     makeCutoverReady(harness.database, episode.id);
+    harness.database.prepare(
+      `UPDATE show_feed_validations
+       SET validator_version = 'dustwave-rss-launch-v1'
+       WHERE show_id = ?`
+    ).run(episode.show_id);
+    const staleValidatorPreview = await handleRequest(
+      adminGet(
+        `/v1/admin/rss-import/plans/${plan.id}/reconciliation`
+      ),
+      harness.env
+    );
+    expect(staleValidatorPreview.status).toBe(200);
+    expect(
+      (await staleValidatorPreview.json()).cutoverReadiness
+    ).toMatchObject({
+      evidenceReady: false,
+      readyForPacket: false,
+      blockers: expect.arrayContaining([
+        "rss_import_cutover_feed_not_current"
+      ])
+    });
+    harness.database.prepare(
+      `UPDATE show_feed_validations
+       SET validator_version = 'dustwave-rss-launch-v2'
+       WHERE show_id = ?`
+    ).run(episode.show_id);
     const cutoverPreview = await handleRequest(
       adminGet(
         `/v1/admin/rss-import/plans/${plan.id}/reconciliation`
@@ -1032,7 +1058,7 @@ function makeCutoverReady(database, episodeId) {
        show_id, status, feed_url, validator_version,
        feed_sha256, item_count, checked_at, validated_at
      ) VALUES (
-       ?, 'valid', ?, 'rss-cutover-fixture-v1',
+       ?, 'valid', ?, 'dustwave-rss-launch-v2',
        ?, 1, '2026-07-28T12:00:00.000Z',
        '2026-07-28T12:00:00.000Z'
      )`

@@ -235,6 +235,8 @@ import {
   approveAdminEpisodeTranscript,
   listAdminEpisodeTranscripts,
   saveAdminEpisodeTranscript,
+  servePrivateEpisodeTranscriptVtt,
+  servePublicEpisodeTranscriptVtt,
   servePublicEpisodeTranscripts
 } from "./transcripts";
 import { previewAdminRssImport } from "./rss-import-preview";
@@ -269,6 +271,8 @@ const SHOW_CHECKOUT_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/checkout$/;
 const SHOW_EPISODE_TRANSCRIPTS_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts$/;
+const SHOW_EPISODE_TRANSCRIPT_VTT_PATH =
+  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts\/(en|es)\.vtt$/;
 const SHOW_EPISODE_CHAPTERS_PATH =
   /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
 const SHOW_EPISODE_CLIPS_PATH =
@@ -285,6 +289,8 @@ const PRIVATE_MEDIA_PATH =
   /^\/v1\/private\/([A-Za-z0-9_-]{43})\/episodes\/([A-Za-z0-9_-]+)\/audio$/;
 const PRIVATE_CHAPTERS_PATH =
   /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
+const PRIVATE_TRANSCRIPT_VTT_PATH =
+  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts\/(en|es)\.vtt$/;
 const MEMBER_SHOW_FEED_PATH =
   /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed$/;
 const MEMBER_SHOW_FEED_ROTATE_PATH =
@@ -612,6 +618,21 @@ async function routeRequest(
       showEpisodeTranscriptsMatch[2]
     );
   }
+  const showEpisodeTranscriptVttMatch = url.pathname.match(
+    SHOW_EPISODE_TRANSCRIPT_VTT_PATH
+  );
+  if (
+    showEpisodeTranscriptVttMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return servePublicEpisodeTranscriptVtt(
+      request,
+      env,
+      showEpisodeTranscriptVttMatch[1],
+      showEpisodeTranscriptVttMatch[2],
+      showEpisodeTranscriptVttMatch[3]
+    );
+  }
   const showEpisodeChaptersMatch = url.pathname.match(
     SHOW_EPISODE_CHAPTERS_PATH
   );
@@ -697,6 +718,22 @@ async function routeRequest(
       privateChaptersMatch[1],
       privateChaptersMatch[2],
       privateChaptersMatch[3]
+    );
+  }
+  const privateTranscriptVttMatch = url.pathname.match(
+    PRIVATE_TRANSCRIPT_VTT_PATH
+  );
+  if (
+    privateTranscriptVttMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return servePrivateEpisodeTranscriptVtt(
+      request,
+      env,
+      privateTranscriptVttMatch[1],
+      privateTranscriptVttMatch[2],
+      privateTranscriptVttMatch[3],
+      privateTranscriptVttMatch[4]
     );
   }
   const privateMediaMatch = url.pathname.match(PRIVATE_MEDIA_PATH);

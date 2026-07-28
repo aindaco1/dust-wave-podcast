@@ -6,6 +6,11 @@ import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import {
+  hashPrivateFeedToken,
+  privateFeedTokenNeedsTouch,
+  touchPrivateFeedToken
+} from "./private-feeds";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   readJsonObject,
@@ -27,6 +32,7 @@ const MAXIMUM_CUES = 10_000;
 const MAXIMUM_CUE_DURATION_MS = 120_000;
 const MAXIMUM_CAPTION_LENGTH = 2_000;
 const MAXIMUM_TRANSCRIPT_BYTES = 1_000_000;
+type TranscriptLanguage = "en" | "es";
 
 export type TranscriptCue = {
   id: string;
@@ -63,6 +69,10 @@ type PublicEpisodeRow = {
   canonical_url: string;
 };
 
+type PrivateEpisodeRow = PublicEpisodeRow & {
+  last_used_at: string | null;
+};
+
 type PublicTranscriptRevisionRow = {
   language: string;
   revision: number;
@@ -71,28 +81,31 @@ type PublicTranscriptRevisionRow = {
   approved_at: string;
 };
 
+type VerifiedPublicTranscript = {
+  language: TranscriptLanguage;
+  revision: number;
+  approvedAt: string;
+  contentSha256: string;
+  cues: Array<{
+    id: string;
+    startsAtMs: number;
+    endsAtMs: number;
+    speakerLabel: string;
+    text: string;
+  }>;
+};
+
 export async function servePublicEpisodeTranscripts(
   request: Request,
   env: PodcastEnv,
   showSlug: string,
   episodeSlug: string
 ): Promise<Response> {
-  const episode = await env.DB
-    .prepare(
-      `SELECT e.id, e.canonical_url
-       FROM episodes e
-       JOIN shows s ON s.id = e.show_id
-       WHERE s.slug = ?
-         AND s.status != 'archived'
-         AND e.slug = ?
-         AND e.status = 'published'
-         AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
-         AND e.access IN ('public', 'early_access', 'free_mini')
-         AND e.media_status = 'ready'
-       LIMIT 1`
-    )
-    .bind(showSlug, episodeSlug)
-    .first<PublicEpisodeRow>();
+  const episode = await loadPublicTranscriptEpisode(
+    env.DB,
+    showSlug,
+    episodeSlug
+  );
   if (!episode) {
     return publicTranscriptJson(
       request,
@@ -101,66 +114,10 @@ export async function servePublicEpisodeTranscripts(
     );
   }
 
-  const revisions = await env.DB
-    .prepare(
-      `SELECT
-         t.language,
-         r.revision,
-         r.content_json,
-         r.content_sha256,
-         a.created_at AS approved_at
-       FROM transcripts t
-       JOIN transcript_approvals a
-         ON a.transcript_id = t.id
-        AND a.revision = (
-          SELECT MAX(latest.revision)
-          FROM transcript_approvals latest
-          WHERE latest.transcript_id = t.id
-        )
-       JOIN transcript_revisions r
-         ON r.transcript_id = t.id
-        AND r.revision = a.revision
-       WHERE t.episode_id = ?
-         AND t.language IN ('en', 'es')
-         AND r.speaker_labels_confirmed = 1
-       ORDER BY t.language`
-    )
-    .bind(episode.id)
-    .all<PublicTranscriptRevisionRow>();
-
-  const transcripts: Array<Record<string, unknown>> = [];
-  for (const revision of revisions.results) {
-    const content = parseTranscriptContent(
-      revision.content_json,
-      revision.language
-    );
-    if (
-      content.cues.length < 1
-      || content.cues.some(
-        ({ speakerLabel, speakerConfirmed }) =>
-          Boolean(speakerLabel) && !speakerConfirmed
-      )
-    ) {
-      continue;
-    }
-    const canonicalJson = serializeTranscriptContent(content);
-    if (await sha256Hex(canonicalJson) !== revision.content_sha256) {
-      continue;
-    }
-    transcripts.push({
-      language: revision.language,
-      revision: revision.revision,
-      approvedAt: revision.approved_at,
-      contentSha256: revision.content_sha256,
-      cues: content.cues.map((cue) => ({
-        id: cue.id,
-        startsAtMs: cue.startsAtMs,
-        endsAtMs: cue.endsAtMs,
-        speakerLabel: cue.speakerLabel,
-        text: publicTimedText(cue.textMarkdown)
-      }))
-    });
-  }
+  const transcripts = await loadVerifiedPublicTranscripts(
+    env.DB,
+    episode.id
+  );
 
   const body = {
     schemaVersion: 1,
@@ -184,6 +141,195 @@ export async function servePublicEpisodeTranscripts(
     status: 200,
     headers
   });
+}
+
+export async function servePublicEpisodeTranscriptVtt(
+  request: Request,
+  env: PodcastEnv,
+  showSlug: string,
+  episodeSlug: string,
+  languageValue: string
+): Promise<Response> {
+  const language = validTranscriptLanguage(languageValue);
+  const episode = await loadPublicTranscriptEpisode(
+    env.DB,
+    showSlug,
+    episodeSlug
+  );
+  if (!episode) return transcriptVttNotFound(request, "public");
+  const transcript = (
+    await loadVerifiedPublicTranscripts(env.DB, episode.id)
+  ).find((candidate) => candidate.language === language);
+  if (!transcript) return transcriptVttNotFound(request, "public");
+  return transcriptVttResponse(
+    request,
+    renderTranscriptWebVtt(transcript),
+    transcript.language,
+    "public"
+  );
+}
+
+export async function servePrivateEpisodeTranscriptVtt(
+  request: Request,
+  env: PodcastEnv,
+  rawToken: string,
+  rssSlug: string,
+  episodeSlug: string,
+  languageValue: string
+): Promise<Response> {
+  if (!env.FEED_TOKEN_PEPPER) {
+    return transcriptVttNotFound(request, "private");
+  }
+  const language = validTranscriptLanguage(languageValue);
+  const tokenHash = await hashPrivateFeedToken(
+    rawToken,
+    env.FEED_TOKEN_PEPPER
+  );
+  const episode = await env.DB
+    .prepare(
+      `SELECT e.id, e.canonical_url, f.last_used_at
+       FROM private_feed_tokens f
+       JOIN subscriptions subscription
+         ON subscription.listener_id = f.listener_id
+        AND subscription.show_id = f.show_id
+       JOIN shows s ON s.id = f.show_id
+       JOIN episodes e ON e.show_id = s.id
+       WHERE f.token_hash = ?
+         AND f.revoked_at IS NULL
+         AND s.rss_slug = ?
+         AND s.status != 'archived'
+         AND subscription.status = 'active'
+         AND (
+           subscription.current_period_end IS NULL
+           OR subscription.current_period_end > ${SQL_UTC_NOW_RFC3339}
+         )
+         AND e.slug = ?
+         AND e.status IN ('scheduled', 'published')
+         AND e.media_status = 'ready'
+         AND (
+           (
+             e.access IN ('public', 'free_mini')
+             AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
+           )
+           OR (
+             e.access = 'early_access'
+             AND COALESCE(e.premium_at, e.public_at)
+               <= ${SQL_UTC_NOW_RFC3339}
+           )
+           OR (
+             e.access = 'premium_bonus'
+             AND e.premium_at <= ${SQL_UTC_NOW_RFC3339}
+           )
+         )
+       LIMIT 1`
+    )
+    .bind(tokenHash, rssSlug, episodeSlug)
+    .first<PrivateEpisodeRow>();
+  if (!episode) return transcriptVttNotFound(request, "private");
+  const transcript = (
+    await loadVerifiedPublicTranscripts(env.DB, episode.id)
+  ).find((candidate) => candidate.language === language);
+  if (!transcript) return transcriptVttNotFound(request, "private");
+  if (privateFeedTokenNeedsTouch(episode.last_used_at)) {
+    await touchPrivateFeedToken(env.DB, tokenHash);
+  }
+  return transcriptVttResponse(
+    request,
+    renderTranscriptWebVtt(transcript),
+    transcript.language,
+    "private"
+  );
+}
+
+async function loadPublicTranscriptEpisode(
+  db: D1Database,
+  showSlug: string,
+  episodeSlug: string
+): Promise<PublicEpisodeRow | null> {
+  return db
+    .prepare(
+      `SELECT e.id, e.canonical_url
+       FROM episodes e
+       JOIN shows s ON s.id = e.show_id
+       WHERE s.slug = ?
+         AND s.status != 'archived'
+         AND e.slug = ?
+         AND e.status = 'published'
+         AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
+         AND e.access IN ('public', 'early_access', 'free_mini')
+         AND e.media_status = 'ready'
+       LIMIT 1`
+    )
+    .bind(showSlug, episodeSlug)
+    .first<PublicEpisodeRow>();
+}
+
+async function loadVerifiedPublicTranscripts(
+  db: D1Database,
+  episodeId: string
+): Promise<VerifiedPublicTranscript[]> {
+  const revisions = await db
+    .prepare(
+      `SELECT
+         t.language,
+         r.revision,
+         r.content_json,
+         r.content_sha256,
+         a.created_at AS approved_at
+       FROM transcripts t
+       JOIN transcript_approvals a
+         ON a.transcript_id = t.id
+        AND a.revision = (
+          SELECT MAX(latest.revision)
+          FROM transcript_approvals latest
+          WHERE latest.transcript_id = t.id
+        )
+       JOIN transcript_revisions r
+         ON r.transcript_id = t.id
+        AND r.revision = a.revision
+       WHERE t.episode_id = ?
+         AND t.language IN ('en', 'es')
+         AND r.speaker_labels_confirmed = 1
+       ORDER BY t.language`
+    )
+    .bind(episodeId)
+    .all<PublicTranscriptRevisionRow>();
+
+  const transcripts: VerifiedPublicTranscript[] = [];
+  for (const revision of revisions.results) {
+    const content = parseTranscriptContent(
+      revision.content_json,
+      revision.language
+    );
+    if (
+      !LANGUAGES.has(revision.language)
+      || content.cues.length < 1
+      || content.cues.some(
+        ({ speakerLabel, speakerConfirmed }) =>
+          Boolean(speakerLabel) && !speakerConfirmed
+      )
+    ) {
+      continue;
+    }
+    const canonicalJson = serializeTranscriptContent(content);
+    if (await sha256Hex(canonicalJson) !== revision.content_sha256) {
+      continue;
+    }
+    transcripts.push({
+      language: revision.language as TranscriptLanguage,
+      revision: revision.revision,
+      approvedAt: revision.approved_at,
+      contentSha256: revision.content_sha256,
+      cues: content.cues.map((cue) => ({
+        id: cue.id,
+        startsAtMs: cue.startsAtMs,
+        endsAtMs: cue.endsAtMs,
+        speakerLabel: cue.speakerLabel,
+        text: publicTimedText(cue.textMarkdown)
+      }))
+    });
+  }
+  return transcripts;
 }
 
 export async function listAdminEpisodeTranscripts(
@@ -755,6 +901,100 @@ function publicTimedText(textMarkdown: string): string {
     .trim();
 }
 
+function renderTranscriptWebVtt(
+  transcript: VerifiedPublicTranscript
+): string {
+  const cues = transcript.cues.map((cue, index) => {
+    const text = escapeWebVttText(cue.text);
+    const payload = cue.speakerLabel
+      ? `<v ${escapeWebVttText(cue.speakerLabel)}>${text}</v>`
+      : text;
+    return [
+      String(index + 1),
+      `${webVttTimestamp(cue.startsAtMs)} --> ${webVttTimestamp(cue.endsAtMs)}`,
+      payload
+    ].join("\n");
+  });
+  return `WEBVTT\n\n${cues.join("\n\n")}\n`;
+}
+
+function webVttTimestamp(milliseconds: number): string {
+  const hours = Math.floor(milliseconds / 3_600_000);
+  const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
+  const seconds = Math.floor((milliseconds % 60_000) / 1_000);
+  const remainder = milliseconds % 1_000;
+  return [
+    String(hours).padStart(2, "0"),
+    String(minutes).padStart(2, "0"),
+    `${String(seconds).padStart(2, "0")}.${
+      String(remainder).padStart(3, "0")
+    }`
+  ].join(":");
+}
+
+function escapeWebVttText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function transcriptVttResponse(
+  request: Request,
+  body: string,
+  language: TranscriptLanguage,
+  visibility: "public" | "private"
+): Promise<Response> {
+  const etag = `"${await sha256Hex(body)}"`;
+  const headers = transcriptVttHeaders(language, visibility);
+  headers.set("etag", etag);
+  if (etagMatches(request.headers.get("if-none-match"), etag)) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 200,
+    headers
+  });
+}
+
+function transcriptVttNotFound(
+  request: Request,
+  visibility: "public" | "private"
+): Response {
+  const headers = transcriptVttHeaders(null, visibility);
+  headers.set("content-type", "text/plain; charset=utf-8");
+  headers.set("cache-control", "private, no-store, max-age=0");
+  return new Response(
+    request.method === "HEAD" ? null : "transcript_not_found\n",
+    { status: 404, headers }
+  );
+}
+
+function transcriptVttHeaders(
+  language: TranscriptLanguage | null,
+  visibility: "public" | "private"
+): Headers {
+  const headers = new Headers({
+    "content-type": "text/vtt; charset=utf-8",
+    "cache-control": visibility === "public"
+      ? "public, max-age=60, stale-while-revalidate=300"
+      : "private, no-store, max-age=0",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "x-content-type-options": "nosniff",
+    "x-robots-tag": "noindex, nofollow, noarchive",
+    "referrer-policy": "no-referrer"
+  });
+  if (language) headers.set("content-language", language);
+  if (visibility === "public") {
+    headers.set("access-control-allow-origin", "*");
+    headers.set("access-control-expose-headers", "etag");
+    headers.set("cross-origin-resource-policy", "cross-origin");
+  } else {
+    headers.set("cross-origin-resource-policy", "same-origin");
+  }
+  return headers;
+}
+
 function publicTranscriptJson(
   request: Request,
   body: unknown,
@@ -858,12 +1098,12 @@ async function currentTranscriptRevision(
   return row?.revision ?? null;
 }
 
-function validTranscriptLanguage(value: unknown): string {
+function validTranscriptLanguage(value: unknown): TranscriptLanguage {
   const language = requiredText(value, "language", 2).toLowerCase();
   if (!LANGUAGES.has(language)) {
     throw new RequestValidationError("language must be en or es");
   }
-  return language;
+  return language as TranscriptLanguage;
 }
 
 function validateTimedTextMarkdown(value: unknown, field: string): string {

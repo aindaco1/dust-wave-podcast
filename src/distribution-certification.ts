@@ -1,3 +1,5 @@
+import { PUBLIC_FEED_VALIDATOR_VERSION } from "./feed-validation";
+
 export const LAUNCH_CLAIM_REQUIRED_DESTINATIONS = 10;
 
 type ShowFeedValidationRow = {
@@ -28,6 +30,7 @@ export type DistributionFeedValidationEvidence = {
   failureCode: string | null;
   checkedAt: string | null;
   validatedAt: string | null;
+  currentValidator: boolean;
 };
 
 export type DestinationLaunchCertification = {
@@ -119,7 +122,8 @@ export async function loadDistributionLaunchCertification(
   ]);
 
   const feedValidation = presentFeedValidation(feedRow);
-  const feedValidated = feedValidation.status === "valid";
+  const feedValidated = feedValidation.status === "valid"
+    && feedValidation.currentValidator;
   const byDestinationId = new Map<string, DestinationLaunchCertification>();
   let enabled = 0;
   let setupComplete = 0;
@@ -198,7 +202,9 @@ function presentFeedValidation(
           : Math.max(0, Number(row.item_count) || 0),
         failureCode: boundedEvidence(row.failure_code, 160),
         checkedAt: row.checked_at,
-        validatedAt: row.validated_at
+        validatedAt: row.validated_at,
+        currentValidator:
+          row.validator_version === PUBLIC_FEED_VALIDATOR_VERSION
       }
     : {
         status: "not_checked",
@@ -208,7 +214,8 @@ function presentFeedValidation(
         itemCount: null,
         failureCode: null,
         checkedAt: null,
-        validatedAt: null
+        validatedAt: null,
+        currentValidator: false
       };
 }
 

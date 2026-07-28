@@ -45,6 +45,10 @@ describe("public feed and media delivery", () => {
             };
           },
           async all() {
+            expect(query).toContain("FROM transcript_approvals latest");
+            expect(query).toContain(
+              "revision.speaker_labels_confirmed = 1"
+            );
             return {
               results: [{
                 id: "episode_fixture",
@@ -61,7 +65,8 @@ describe("public feed and media delivery", () => {
                 explicit: 0,
                 season_number: null,
                 episode_number: 1,
-                has_approved_chapters: 1
+                has_approved_chapters: 1,
+                approved_transcript_languages: "en,es"
               }]
             };
           }
@@ -84,6 +89,16 @@ describe("public feed and media delivery", () => {
       '<podcast:chapters url="https://feeds.dustwave.xyz/v1/shows/'
       + 'show-fixture/episodes/episode-fixture/chapters.json" '
       + 'type="application/json+chapters"/>'
+    );
+    expect(xml).toContain(
+      '<podcast:transcript url="https://feeds.dustwave.xyz/v1/shows/'
+      + 'show-fixture/episodes/episode-fixture/transcripts/en.vtt" '
+      + 'type="text/vtt" language="en"/>'
+    );
+    expect(xml).toContain(
+      '<podcast:transcript url="https://feeds.dustwave.xyz/v1/shows/'
+      + 'show-fixture/episodes/episode-fixture/transcripts/es.vtt" '
+      + 'type="text/vtt" language="es"/>'
     );
     expect(xml).not.toContain("premium_bonus");
   });
@@ -164,6 +179,10 @@ describe("public feed and media delivery", () => {
             };
           },
           async all() {
+            expect(query).toContain("FROM transcript_approvals latest");
+            expect(query).toContain(
+              "revision.speaker_labels_confirmed = 1"
+            );
             return {
               results: [{
                 id: "episode_bonus",
@@ -181,7 +200,8 @@ describe("public feed and media delivery", () => {
                 explicit: 0,
                 season_number: null,
                 episode_number: 2,
-                has_approved_chapters: 1
+                has_approved_chapters: 1,
+                approved_transcript_languages: "es"
               }]
             };
           },
@@ -216,6 +236,11 @@ describe("public feed and media delivery", () => {
     expect(xml).toContain(
       `https://feeds.dustwave.xyz/v1/private/${rawToken}/show-fixture/`
       + "episodes/bonus/chapters.json"
+    );
+    expect(xml).toContain(
+      `<podcast:transcript url="https://feeds.dustwave.xyz/v1/private/`
+      + `${rawToken}/show-fixture/episodes/bonus/transcripts/es.vtt" `
+      + 'type="text/vtt" language="es"/>'
     );
     expect(boundValues.flat()).not.toContain(rawToken);
     expect(boundValues[0][0]).toMatch(/^[a-f0-9]{64}$/);

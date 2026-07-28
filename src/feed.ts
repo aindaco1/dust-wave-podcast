@@ -38,11 +38,32 @@ type FeedEpisode = {
   season_number: number | null;
   episode_number: number | null;
   has_approved_chapters: number;
+  approved_transcript_languages: string | null;
 };
 
 type PrivateFeedShow = FeedShow & {
   last_used_at: string | null;
 };
+
+const APPROVED_TRANSCRIPT_LANGUAGES_SQL = `
+  (
+    SELECT group_concat(DISTINCT transcript.language)
+    FROM transcripts transcript
+    JOIN transcript_approvals approval
+      ON approval.transcript_id = transcript.id
+     AND approval.revision = (
+       SELECT MAX(latest.revision)
+       FROM transcript_approvals latest
+       WHERE latest.transcript_id = transcript.id
+     )
+    JOIN transcript_revisions revision
+      ON revision.transcript_id = transcript.id
+     AND revision.revision = approval.revision
+    WHERE transcript.episode_id = episode.id
+      AND transcript.language IN ('en', 'es')
+      AND revision.speaker_labels_confirmed = 1
+  ) AS approved_transcript_languages
+`;
 
 export async function servePublicFeed(
   request: Request,
@@ -72,7 +93,8 @@ export async function servePublicFeed(
            SELECT 1
            FROM episode_chapter_approvals approval
            WHERE approval.episode_id = episode.id
-         ) AS has_approved_chapters
+         ) AS has_approved_chapters,
+         ${APPROVED_TRANSCRIPT_LANGUAGES_SQL}
        FROM episodes episode
        WHERE episode.show_id = ?
          AND episode.status = 'published'
@@ -98,7 +120,10 @@ export async function servePublicFeed(
       (episode) => episode.has_approved_chapters === 1
         ? `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/${show.slug}`
           + `/episodes/${episode.slug}/chapters.json`
-        : null
+        : null,
+      (episode, language) =>
+        `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/shows/${show.slug}`
+          + `/episodes/${episode.slug}/transcripts/${language}.vtt`
     ),
     "public"
   );
@@ -157,7 +182,8 @@ export async function servePrivateFeed(
            SELECT 1
            FROM episode_chapter_approvals approval
            WHERE approval.episode_id = episode.id
-         ) AS has_approved_chapters
+         ) AS has_approved_chapters,
+         ${APPROVED_TRANSCRIPT_LANGUAGES_SQL}
        FROM episodes episode
        WHERE episode.show_id = ?
          AND episode.status IN ('scheduled', 'published')
@@ -204,7 +230,11 @@ export async function servePrivateFeed(
       (episode) => episode.has_approved_chapters === 1
         ? `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/private/${rawToken}/`
           + `${show.rss_slug}/episodes/${episode.slug}/chapters.json`
-        : null
+        : null,
+      (episode, language) =>
+        `${env.FEED_ORIGIN.replace(/\/$/, "")}/v1/private/${rawToken}/`
+          + `${show.rss_slug}/episodes/${episode.slug}/transcripts/`
+          + `${language}.vtt`
     ),
     "private"
   );
@@ -216,7 +246,11 @@ function renderFeed(
   feedUrl: string,
   env: PodcastEnv,
   enclosureUrl: (episode: FeedEpisode) => string,
-  chapterUrl: (episode: FeedEpisode) => string | null
+  chapterUrl: (episode: FeedEpisode) => string | null,
+  transcriptUrl: (
+    episode: FeedEpisode,
+    language: "en" | "es"
+  ) => string
 ): string {
   const ownerEmail = env.PODCAST_OWNER_EMAIL || "podcasts@dustwave.xyz";
   const authorName = env.PODCAST_AUTHOR_NAME || show.author_name;
@@ -225,7 +259,8 @@ function renderFeed(
       renderEpisode(
         episode,
         enclosureUrl(episode),
-        chapterUrl(episode)
+        chapterUrl(episode),
+        transcriptUrl
       )
     )
     .join("");
@@ -278,8 +313,19 @@ async function feedResponse(
 function renderEpisode(
   episode: FeedEpisode,
   enclosureUrl: string,
-  chapterUrl: string | null
+  chapterUrl: string | null,
+  transcriptUrl: (
+    episode: FeedEpisode,
+    language: "en" | "es"
+  ) => string
 ): string {
+  const transcriptTags = approvedTranscriptLanguages(episode)
+    .map((language) =>
+      `<podcast:transcript url="${
+        escapeXml(transcriptUrl(episode, language))
+      }" type="text/vtt" language="${language}"/>`
+    )
+    .join("\n      ");
   return `<item>
       <title>${escapeXml(episode.title)}</title>
       <description>${escapeXml(episode.summary)}</description>
@@ -293,7 +339,21 @@ function renderEpisode(
       ${episode.season_number ? `<itunes:season>${episode.season_number}</itunes:season>` : ""}
       ${episode.episode_number ? `<itunes:episode>${episode.episode_number}</itunes:episode>` : ""}
       ${chapterUrl ? `<podcast:chapters url="${escapeXml(chapterUrl)}" type="application/json+chapters"/>` : ""}
+      ${transcriptTags}
     </item>`;
+}
+
+function approvedTranscriptLanguages(
+  episode: FeedEpisode
+): Array<"en" | "es"> {
+  const available = new Set(
+    String(episode.approved_transcript_languages ?? "")
+      .split(",")
+      .map((language) => language.trim())
+  );
+  return (["en", "es"] as const).filter((language) =>
+    available.has(language)
+  );
 }
 
 function feedHeaders(

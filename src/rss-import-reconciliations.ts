@@ -6,6 +6,7 @@ import {
 } from "./admin-auth";
 import { prepareAdminAuditAfterSingleChange } from "./audit";
 import type { PodcastEnv } from "./env";
+import { PUBLIC_FEED_VALIDATOR_VERSION } from "./feed-validation";
 import { privateJson } from "./http";
 import {
   loadRssImportExecutionEvidence,
@@ -1740,6 +1741,7 @@ async function buildCutoverSnapshot(
   );
   const feedReady = Boolean(
     feedValidation?.status === "valid"
+    && feedValidation.validator_version === PUBLIC_FEED_VALIDATOR_VERSION
     && feedValidation.feed_sha256
     && feedValidation.item_count !== null
     && configuredFeedUrl === expectedFeedUrl

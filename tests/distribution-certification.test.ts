@@ -18,7 +18,7 @@ describe("shared distribution launch certification", () => {
             return {
               status: "valid",
               feed_url: "https://feeds.dustwave.xyz/opera/rss.xml",
-              validator_version: "dustwave-rss-launch-v1",
+              validator_version: "dustwave-rss-launch-v2",
               feed_sha256: "a".repeat(64),
               item_count: 1,
               failure_code: null,
@@ -81,6 +81,46 @@ describe("shared distribution launch certification", () => {
         query.includes("recovered.sequence > failed.sequence")
       )
     ).toBe(true);
+  });
+
+  it("does not certify a feed validated under an older contract", async () => {
+    const db = {
+      prepare(query: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            return {
+              status: "valid",
+              feed_url: "https://feeds.dustwave.xyz/opera/rss.xml",
+              validator_version: "dustwave-rss-launch-v1",
+              feed_sha256: "a".repeat(64),
+              item_count: 1,
+              failure_code: null,
+              checked_at: "2026-07-27T12:00:00.000Z",
+              validated_at: "2026-07-27T12:00:00.000Z"
+            };
+          },
+          async all() {
+            if (!query.includes("scoped_destinations")) {
+              throw new Error("Unexpected certification query");
+            }
+            return { results: [destination()] };
+          }
+        };
+      }
+    } as unknown as D1Database;
+
+    const result = await loadDistributionLaunchCertification(
+      db,
+      "show_opera"
+    );
+
+    expect(result.feedValidation.status).toBe("valid");
+    expect(result.summary.feedValidated).toBe(false);
+    expect(result.summary.certified).toBe(0);
+    expect(result.launchClaim.ready).toBe(false);
   });
 });
 

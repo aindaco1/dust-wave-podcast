@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { handleRequest } from "../src/app";
 import type { PodcastEnv } from "../src/env";
 import {
   canonicalTranscriptContent,
   normalizeTranscriptCues,
   serializeTranscriptContent,
+  servePrivateEpisodeTranscriptVtt,
+  servePublicEpisodeTranscriptVtt,
   servePublicEpisodeTranscripts
 } from "../src/transcripts";
 
@@ -175,6 +178,129 @@ describe("public approved transcript projection", () => {
     expect(await notModified.text()).toBe("");
     expect(notModified.headers.get("etag")).toBe(etag);
   });
+
+  it("projects approved cues as speaker-aware, cacheable WebVTT", async () => {
+    const revision = await revisionFixture(
+      "en",
+      "**Beauty** & *joy* in the jungle.",
+      "Jay & Guest"
+    );
+    const env = publicEnv(transcriptDatabase([revision]));
+    const url =
+      "https://feeds.dustwave.xyz/v1/shows/opera-en-la-selva/"
+      + "episodes/belleza-y-alegria/transcripts/en.vtt";
+    const initial = await servePublicEpisodeTranscriptVtt(
+      new Request(url),
+      env,
+      "opera-en-la-selva",
+      "belleza-y-alegria",
+      "en"
+    );
+    const etag = initial.headers.get("etag") as string;
+    const body = await initial.text();
+    const head = await servePublicEpisodeTranscriptVtt(
+      new Request(url, { method: "HEAD" }),
+      env,
+      "opera-en-la-selva",
+      "belleza-y-alegria",
+      "en"
+    );
+    const notModified = await servePublicEpisodeTranscriptVtt(
+      new Request(url, { headers: { "if-none-match": `W/${etag}` } }),
+      env,
+      "opera-en-la-selva",
+      "belleza-y-alegria",
+      "en"
+    );
+
+    expect(initial.status).toBe(200);
+    expect(initial.headers.get("content-type")).toContain("text/vtt");
+    expect(initial.headers.get("content-language")).toBe("en");
+    expect(initial.headers.get("cache-control")).toContain("public");
+    expect(initial.headers.get("access-control-allow-origin")).toBe("*");
+    expect(body).toBe(
+      "WEBVTT\n\n"
+      + "1\n"
+      + "00:00:01.000 --> 00:00:03.000\n"
+      + "<v Jay &amp; Guest>Beauty &amp; joy in the jungle.</v>\n"
+    );
+    expect(body).not.toContain("cue_en_001");
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect(head.headers.get("etag")).toBe(etag);
+    expect(notModified.status).toBe(304);
+    expect(await notModified.text()).toBe("");
+  });
+
+  it("routes the canonical WebVTT path through the public Worker API", async () => {
+    const revision = await revisionFixture("es", "Texto aprobado.", "");
+    const response = await handleRequest(
+      new Request(
+        "https://feeds.dustwave.xyz/v1/shows/opera-en-la-selva/"
+        + "episodes/belleza-y-alegria/transcripts/es.vtt"
+      ),
+      publicEnv(transcriptDatabase([revision]))
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-language")).toBe("es");
+    expect(await response.text()).toContain("WEBVTT");
+  });
+
+  it("fails closed when a WebVTT approval is missing or tampered", async () => {
+    const tampered = await revisionFixture("es", "Texto aprobado.", "");
+    tampered.content_sha256 = "0".repeat(64);
+    const response = await servePublicEpisodeTranscriptVtt(
+      new Request(
+        "https://feeds.dustwave.xyz/v1/shows/opera-en-la-selva/"
+        + "episodes/belleza-y-alegria/transcripts/es.vtt"
+      ),
+      publicEnv(transcriptDatabase([tampered])),
+      "opera-en-la-selva",
+      "belleza-y-alegria",
+      "es"
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.text()).toBe("transcript_not_found\n");
+  });
+
+  it("serves entitled private WebVTT without exposing the bearer to D1", async () => {
+    const rawToken = "t".repeat(43);
+    const revision = await revisionFixture(
+      "es",
+      "Belleza y alegría.",
+      "Jay"
+    );
+    const boundValues: unknown[][] = [];
+    const db = privateTranscriptDatabase([revision], boundValues);
+    const response = await servePrivateEpisodeTranscriptVtt(
+      new Request(
+        `https://feeds.dustwave.xyz/v1/private/${rawToken}/`
+        + "opera-en-la-selva/episodes/bonus/transcripts/es.vtt"
+      ),
+      {
+        ...publicEnv(db),
+        FEED_TOKEN_PEPPER: "private_feed_pepper_fixture"
+      } as PodcastEnv,
+      rawToken,
+      "opera-en-la-selva",
+      "bonus",
+      "es"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(response.headers.has("access-control-allow-origin")).toBe(false);
+    expect(response.headers.get("x-robots-tag")).toContain("noindex");
+    expect(await response.text()).toContain(
+      "<v Jay>Belleza y alegría.</v>"
+    );
+    expect(boundValues.flat()).not.toContain(rawToken);
+    expect(boundValues[0][0]).toMatch(/^[a-f0-9]{64}$/u);
+  });
 });
 
 async function revisionFixture(
@@ -234,6 +360,48 @@ function transcriptDatabase(
           }
           onTranscriptRead();
           return { results: revisions };
+        }
+      };
+    }
+  } as unknown as D1Database;
+}
+
+function privateTranscriptDatabase(
+  revisions: RevisionFixture[],
+  boundValues: unknown[][]
+): D1Database {
+  return {
+    prepare(query: string) {
+      return {
+        bind(...values: unknown[]) {
+          boundValues.push(values);
+          return this;
+        },
+        async first() {
+          if (!query.includes("FROM private_feed_tokens")) {
+            throw new Error("Unexpected private transcript first query");
+          }
+          if (
+            !query.includes("subscription.current_period_end")
+            || !query.includes("e.premium_at")
+          ) {
+            throw new Error("Private transcript visibility must be rechecked");
+          }
+          return {
+            id: "episode_bonus",
+            canonical_url:
+              "https://dustwave.xyz/news/podcasts/opera-en-la-selva/bonus/",
+            last_used_at: "2099-01-01T00:00:00.000Z"
+          };
+        },
+        async all() {
+          if (!query.includes("FROM transcripts t")) {
+            throw new Error("Unexpected private transcript list query");
+          }
+          return { results: revisions };
+        },
+        async run() {
+          throw new Error("A fresh private-feed token must not be touched");
         }
       };
     }
