@@ -203,6 +203,30 @@ export function createStagingMediaProcessorClient({
     return completed;
   }
 
+  function signedBinaryPut({
+    url,
+    bytes,
+    signedMessage,
+    headers = {},
+    timeoutMs = 10 * 60_000
+  }) {
+    if (
+      !Buffer.isBuffer(bytes)
+      || bytes.byteLength < 1
+      || typeof signedMessage !== "string"
+      || signedMessage.length < 1
+    ) {
+      throw new Error("The signed binary upload input is invalid.");
+    }
+    return curlSignedBinaryPut(
+      url,
+      bytes,
+      signedMessage,
+      headers,
+      timeoutMs
+    );
+  }
+
   function curlSignedBinaryPut(
     url,
     bytes,
@@ -257,6 +281,7 @@ export function createStagingMediaProcessorClient({
 
   return {
     downloadSignedSource,
+    signedBinaryPut,
     signedJsonRequest,
     uploadMultipartFile
   };

@@ -1064,13 +1064,32 @@ or public media selection exists.
 On July 28, 2026, the workbench queued English transcription job
 `transcription_8243ef54973b9588cd453b23f55a0b99` and immutable chunk run
 `transcription_chunks_8243ef54973b9588cd453b23f55a0b99` against working-master
-revision 1. Both remain at attempt zero with no provider response, transcript,
-or public output. GitHub rejected the manual dispatch because the repository's
+revision 1. GitHub rejected the manual dispatch because the repository's
 default branch currently registers only CI; the chunk workflow still exists
-only on the reviewed release branch. Preserve and dispatch this exact run
-after the workflow lands on the default branch. An audited, assigned release
-blocker now keeps the full-listen requirement visible in the exact-revision
-production review; the refreshed shadow snapshot marks that review gate failed.
+only on the reviewed release branch. The same signed processor contract then
+ran locally against isolated staging without changing the immutable run.
+
+Chunk run attempt one fully decoded the 3,745.355-second source and produced
+five private 16 kHz mono MP3 chunks totaling 30,063,969 bytes. The accepted
+plan digest is
+`602ec618bd236a78b5535fcfe357e829a096f2c784d81ba5b3e441b7c73e5a19`;
+the accepted report digest is
+`8ec8d85ea89a9352f6628fa4553c42c7d479f476b5e9d989dcd1b30d62a5b704`.
+Every chunk passed its checksum-bound upload and Workers AI transcription on
+exactly one provider attempt. The merged transcription job completed on
+attempt one as private English transcript
+`transcript_c2ac7cb65a71e9ed68c193f22cb914de`, revision one, with status
+`needs_review`. It has no approval, no word-alignment rows, and no public
+projection.
+
+Do not approve or align this transcript as launch evidence yet. A human must
+first review its exact content and speaker labels, and promotion of the
+enhanced derivative would intentionally stale this source-bound revision.
+Word alignment can be queued only after the final working master and exact
+transcript revision are approved; its separate H1 benchmark, result review,
+and approval gates still apply. An audited, assigned release blocker keeps the
+full-listen requirement visible in the exact-revision production review; the
+refreshed shadow snapshot marks that review gate failed.
 
 The first local signed upload exposed a `curl` broken pipe on the default
 HTTP/2 transfer before either output existed. A replay with the same immutable
@@ -1081,6 +1100,13 @@ uses that transport for derivative, delivery-audio, and YouTube-audio parts.
 R2 multipart completion is verified through a strongly consistent post-write
 `head`, and a failed exact derivative can reopen only the same immutable job
 with a fresh multipart upload ID and an append-only retry audit event.
+The transcription chunk uploader also exposed an Undici socket close after
+writing the first 5.8 MiB chunk. It now reuses the same shared hardened client
+instead of maintaining a second fetch transport. Chunk PUTs use HTTP/1.1,
+disable `Expect: 100-continue`, retry all transport errors, validate the
+bounded JSON response, and require the returned index, byte count, MIME type,
+and SHA-256 to match before completion. Existing partial uploads remain
+idempotent only when their stored checksum metadata matches exactly.
 
 ## 6. Controlled external tests
 

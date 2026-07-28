@@ -3,11 +3,16 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { hmacSha256 } from "@dustwave/worker-core/crypto";
 import {
   validateTranscriptionChunkProcessorManifest
 } from "@dustwave/timed-text/chunking";
 
+import {
+  createStagingMediaProcessorClient
+} from "./lib/staging-media-processor-client.mjs";
+
+const STAGING_ORIGIN =
+  "https://dust-wave-podcast-staging.jogo.workers.dev";
 const manifestPath = process.argv[2];
 const inventoryPath = process.argv[3];
 const secret = process.env.MEDIA_PROCESSOR_CALLBACK_SECRET;
@@ -18,8 +23,12 @@ if (!manifestPath || !inventoryPath || !secret) {
 }
 const manifest = await validateTranscriptionChunkProcessorManifest(
   JSON.parse(await readFile(path.resolve(manifestPath), "utf8")),
-  { expectedHost: "dust-wave-podcast-staging.jogo.workers.dev" }
+  { expectedHost: new URL(STAGING_ORIGIN).host }
 );
+const client = createStagingMediaProcessorClient({
+  origin: STAGING_ORIGIN,
+  secret
+});
 const inventory = JSON.parse(
   await readFile(path.resolve(inventoryPath), "utf8")
 );
@@ -54,37 +63,29 @@ for (let index = 0; index < inventory.chunks.length; index += 1) {
     JSON.stringify(payload),
     "utf8"
   ).toString("base64url");
-  const timestamp = Math.floor(Date.now() / 1_000);
-  const signature = await hmacSha256(
-    `${timestamp}.${encodedPayload}`,
-    secret,
-    "hex"
-  );
   const bytes = await readFile(path.resolve(chunk.localPath));
-  let response;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    response = await fetch(
-      manifest.output.uploadUrlTemplate.replace("{index}", String(index)),
-      {
-        method: "PUT",
-        headers: {
-          "content-type": "audio/mpeg",
-          "content-length": String(bytes.byteLength),
-          "x-podcast-processor-payload": encodedPayload,
-          "x-podcast-processor-timestamp": String(timestamp),
-          "x-podcast-processor-signature": signature
-        },
-        body: bytes
-      }
-    );
-    if (response.ok) break;
-    if (attempt === 3 || response.status < 500) break;
-  }
-  if (!response?.ok) {
-    const message = await response?.text().catch(() => "");
+  const result = client.signedBinaryPut({
+    url: manifest.output.uploadUrlTemplate.replace(
+      "{index}",
+      String(index)
+    ),
+    bytes,
+    signedMessage: encodedPayload,
+    headers: {
+      "content-type": "audio/mpeg",
+      "content-length": String(bytes.byteLength),
+      "x-podcast-processor-payload": encodedPayload
+    }
+  });
+  if (
+    result.checksumVerified !== true
+    || result.object?.chunkIndex !== index
+    || result.object?.objectBytes !== bytes.byteLength
+    || result.object?.sha256 !== chunk.sha256
+    || result.object?.mimeType !== "audio/mpeg"
+  ) {
     throw new Error(
-      `Chunk ${index} upload failed with ${response?.status}: `
-      + message.slice(0, 300)
+      `Chunk ${index} upload evidence did not match its checksum contract.`
     );
   }
 }

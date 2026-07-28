@@ -12,6 +12,8 @@ const WORKFLOWS = [
 ];
 const STAGING_MEDIA_CLIENT =
   "scripts/lib/staging-media-processor-client.mjs";
+const TRANSCRIPTION_CHUNK_UPLOADER =
+  "scripts/upload-transcription-chunks.mjs";
 
 describe("signed workflow media uploads", () => {
   for (const workflowPath of WORKFLOWS) {
@@ -39,6 +41,14 @@ describe("signed workflow media uploads", () => {
     expect(client).toContain('"--retry-all-errors"');
     expect(client).toContain('"--header", "Expect:"');
     expect(client).toContain('"--data-binary", "@-"');
+  });
+
+  it("routes transcription chunks through the resilient client", async () => {
+    const uploader = await readFile(TRANSCRIPTION_CHUNK_UPLOADER, "utf8");
+
+    expect(uploader).toContain("createStagingMediaProcessorClient");
+    expect(uploader).toContain("client.signedBinaryPut");
+    expect(uploader).not.toContain("await fetch(");
   });
 });
 
