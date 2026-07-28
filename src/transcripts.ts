@@ -32,6 +32,7 @@ const MAXIMUM_CUES = 10_000;
 const MAXIMUM_CUE_DURATION_MS = 120_000;
 const MAXIMUM_CAPTION_LENGTH = 2_000;
 const MAXIMUM_TRANSCRIPT_BYTES = 1_000_000;
+const FEED_TRANSCRIPT_VERIFY_EPISODE_BATCH_SIZE = 10;
 type TranscriptLanguage = "en" | "es";
 
 export type TranscriptCue = {
@@ -74,6 +75,7 @@ type PrivateEpisodeRow = PublicEpisodeRow & {
 };
 
 type PublicTranscriptRevisionRow = {
+  episode_id: string;
   language: string;
   revision: number;
   content_json: string;
@@ -93,6 +95,10 @@ type VerifiedPublicTranscript = {
     speakerLabel: string;
     text: string;
   }>;
+};
+
+type VerifiedPublicTranscriptRow = VerifiedPublicTranscript & {
+  episodeId: string;
 };
 
 export async function servePublicEpisodeTranscripts(
@@ -271,6 +277,7 @@ async function loadVerifiedPublicTranscripts(
   const revisions = await db
     .prepare(
       `SELECT
+         t.episode_id,
          t.language,
          r.revision,
          r.content_json,
@@ -295,15 +302,85 @@ async function loadVerifiedPublicTranscripts(
     .bind(episodeId)
     .all<PublicTranscriptRevisionRow>();
 
-  const transcripts: VerifiedPublicTranscript[] = [];
-  for (const revision of revisions.results) {
+  return (await verifyPublicTranscriptRevisions(revisions.results))
+    .map(({ episodeId: _episodeId, ...transcript }) => transcript);
+}
+
+export async function loadVerifiedApprovedTranscriptLanguagesByEpisode(
+  db: D1Database,
+  episodeIds: string[]
+): Promise<Map<string, TranscriptLanguage[]>> {
+  const result = new Map<string, TranscriptLanguage[]>();
+  const uniqueEpisodeIds = [...new Set(episodeIds.filter(Boolean))];
+  for (
+    let offset = 0;
+    offset < uniqueEpisodeIds.length;
+    offset += FEED_TRANSCRIPT_VERIFY_EPISODE_BATCH_SIZE
+  ) {
+    const chunk = uniqueEpisodeIds.slice(
+      offset,
+      offset + FEED_TRANSCRIPT_VERIFY_EPISODE_BATCH_SIZE
+    );
+    const revisions = await db.prepare(
+      `SELECT
+         t.episode_id,
+         t.language,
+         r.revision,
+         r.content_json,
+         r.content_sha256,
+         r.speaker_labels_confirmed,
+         a.created_at AS approved_at
+       FROM transcripts t
+       JOIN transcript_approvals a
+         ON a.transcript_id = t.id
+        AND a.revision = (
+          SELECT MAX(latest.revision)
+          FROM transcript_approvals latest
+          WHERE latest.transcript_id = t.id
+        )
+       JOIN transcript_revisions r
+         ON r.transcript_id = t.id
+        AND r.revision = a.revision
+       WHERE t.episode_id IN (${chunk.map(() => "?").join(", ")})
+         AND t.language IN ('en', 'es')
+         AND r.speaker_labels_confirmed = 1
+         AND length(CAST(r.content_json AS BLOB)) <= ?
+       ORDER BY t.episode_id, t.language`
+    ).bind(...chunk, MAXIMUM_TRANSCRIPT_BYTES)
+      .all<PublicTranscriptRevisionRow>();
+    const verified = await verifyPublicTranscriptRevisions(
+      revisions.results
+    );
+    for (const transcript of verified) {
+      const languages = result.get(transcript.episodeId) ?? [];
+      if (!languages.includes(transcript.language)) {
+        languages.push(transcript.language);
+        languages.sort();
+      }
+      result.set(transcript.episodeId, languages);
+    }
+  }
+  return result;
+}
+
+async function verifyPublicTranscriptRevisions(
+  revisions: PublicTranscriptRevisionRow[]
+): Promise<VerifiedPublicTranscriptRow[]> {
+  const transcripts: VerifiedPublicTranscriptRow[] = [];
+  for (const revision of revisions) {
+    if (
+      !LANGUAGES.has(revision.language)
+      || new TextEncoder().encode(revision.content_json).byteLength
+        > MAXIMUM_TRANSCRIPT_BYTES
+    ) {
+      continue;
+    }
     const content = parseTranscriptContent(
       revision.content_json,
       revision.language
     );
     if (
-      !LANGUAGES.has(revision.language)
-      || content.cues.length < 1
+      content.cues.length < 1
       || content.cues.some(
         ({ speakerLabel, speakerConfirmed }) =>
           Boolean(speakerLabel) && !speakerConfirmed
@@ -316,6 +393,7 @@ async function loadVerifiedPublicTranscripts(
       continue;
     }
     transcripts.push({
+      episodeId: revision.episode_id,
       language: revision.language as TranscriptLanguage,
       revision: revision.revision,
       approvedAt: revision.approved_at,

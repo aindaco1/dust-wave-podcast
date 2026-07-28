@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { PodcastEnv } from "../src/env";
 import {
@@ -7,10 +8,14 @@ import {
   validatePublicPodcastFeed
 } from "../src/feed-validation";
 import { servePublicFeed } from "../src/feed";
+import {
+  canonicalTranscriptContent,
+  serializeTranscriptContent
+} from "../src/transcripts";
 
 describe("canonical feed launch validation", () => {
   it("validates and records the exact generated RSS body during Publish", async () => {
-    const fixture = feedFixture();
+    const fixture = await feedFixture();
     const evidence = await validateAndRecordPublicFeed(
       fixture.env,
       "show_opera"
@@ -37,7 +42,7 @@ describe("canonical feed launch validation", () => {
   });
 
   it("rejects missing launch metadata and a mismatched canonical self URL", async () => {
-    const fixture = feedFixture();
+    const fixture = await feedFixture();
     const feedUrl =
       "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml";
     const response = await servePublicFeed(
@@ -94,7 +99,7 @@ describe("canonical feed launch validation", () => {
   });
 
   it("records a closed failure without persisting feed content", async () => {
-    const fixture = feedFixture({ category: "" });
+    const fixture = await feedFixture({ category: "" });
 
     await expect(
       validateAndRecordPublicFeed(fixture.env, "show_opera")
@@ -131,15 +136,34 @@ describe("canonical feed launch validation", () => {
   });
 });
 
-function feedFixture({
+async function feedFixture({
   category = "Arts"
 }: {
   category?: string;
-} = {}): {
+} = {}): Promise<{
   env: PodcastEnv;
   statements: Array<{ query: string; values: unknown[] }>;
-} {
+}> {
   const statements: Array<{ query: string; values: unknown[] }> = [];
+  const contentJson = serializeTranscriptContent(
+    canonicalTranscriptContent("es", [{
+      id: "cue_episode_opera_1_es",
+      startsAtMs: 0,
+      endsAtMs: 2_000,
+      speakerLabel: "",
+      speakerConfirmed: false,
+      textMarkdown: "Texto aprobado."
+    }])
+  );
+  const transcriptRow = {
+    episode_id: "episode_opera_1",
+    language: "es",
+    revision: 1,
+    content_json: contentJson,
+    content_sha256: await sha256Hex(contentJson),
+    speaker_labels_confirmed: 1,
+    approved_at: "2026-07-25T12:00:00.000Z"
+  };
   const db = {
     prepare(query: string) {
       let values: unknown[] = [];
@@ -181,6 +205,9 @@ function feedFixture({
           return null;
         },
         async all() {
+          if (query.includes("FROM transcripts t")) {
+            return { results: [transcriptRow] };
+          }
           if (query.includes("FROM episodes episode")) {
             return {
               results: [{
@@ -199,8 +226,7 @@ function feedFixture({
                 explicit: 0,
                 season_number: 1,
                 episode_number: 1,
-                has_approved_chapters: 0,
-                approved_transcript_languages: "es"
+                has_approved_chapters: 0
               }]
             };
           }

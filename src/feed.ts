@@ -7,6 +7,9 @@ import {
   touchPrivateFeedToken
 } from "./private-feeds";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
+import {
+  loadVerifiedApprovedTranscriptLanguagesByEpisode
+} from "./transcripts";
 
 type FeedShow = {
   id: string;
@@ -38,32 +41,14 @@ type FeedEpisode = {
   season_number: number | null;
   episode_number: number | null;
   has_approved_chapters: number;
-  approved_transcript_languages: string | null;
+  approvedTranscriptLanguages: Array<"en" | "es">;
 };
+
+type FeedEpisodeRow = Omit<FeedEpisode, "approvedTranscriptLanguages">;
 
 type PrivateFeedShow = FeedShow & {
   last_used_at: string | null;
 };
-
-const APPROVED_TRANSCRIPT_LANGUAGES_SQL = `
-  (
-    SELECT group_concat(DISTINCT transcript.language)
-    FROM transcripts transcript
-    JOIN transcript_approvals approval
-      ON approval.transcript_id = transcript.id
-     AND approval.revision = (
-       SELECT MAX(latest.revision)
-       FROM transcript_approvals latest
-       WHERE latest.transcript_id = transcript.id
-     )
-    JOIN transcript_revisions revision
-      ON revision.transcript_id = transcript.id
-     AND revision.revision = approval.revision
-    WHERE transcript.episode_id = episode.id
-      AND transcript.language IN ('en', 'es')
-      AND revision.speaker_labels_confirmed = 1
-  ) AS approved_transcript_languages
-`;
 
 export async function servePublicFeed(
   request: Request,
@@ -93,8 +78,7 @@ export async function servePublicFeed(
            SELECT 1
            FROM episode_chapter_approvals approval
            WHERE approval.episode_id = episode.id
-         ) AS has_approved_chapters,
-         ${APPROVED_TRANSCRIPT_LANGUAGES_SQL}
+         ) AS has_approved_chapters
        FROM episodes episode
        WHERE episode.show_id = ?
          AND episode.status = 'published'
@@ -106,13 +90,17 @@ export async function servePublicFeed(
        ORDER BY episode.public_at DESC, episode.created_at DESC`
     )
     .bind(show.id)
-    .all<FeedEpisode>();
+    .all<FeedEpisodeRow>();
+  const feedEpisodes = await attachVerifiedTranscriptLanguages(
+    env.DB,
+    episodes.results
+  );
   const feedUrl = `${env.FEED_ORIGIN.replace(/\/$/, "")}/${show.rss_slug}/rss.xml`;
   return feedResponse(
     request,
     renderFeed(
       show,
-      episodes.results,
+      feedEpisodes,
       feedUrl,
       env,
       (episode) =>
@@ -182,8 +170,7 @@ export async function servePrivateFeed(
            SELECT 1
            FROM episode_chapter_approvals approval
            WHERE approval.episode_id = episode.id
-         ) AS has_approved_chapters,
-         ${APPROVED_TRANSCRIPT_LANGUAGES_SQL}
+         ) AS has_approved_chapters
        FROM episodes episode
        WHERE episode.show_id = ?
          AND episode.status IN ('scheduled', 'published')
@@ -208,7 +195,11 @@ export async function servePrivateFeed(
        ORDER BY release_at DESC, episode.created_at DESC`
     )
     .bind(show.id)
-    .all<FeedEpisode>();
+    .all<FeedEpisodeRow>();
+  const feedEpisodes = await attachVerifiedTranscriptLanguages(
+    env.DB,
+    episodes.results
+  );
   if (privateFeedTokenNeedsTouch(show.last_used_at)) {
     await touchPrivateFeedToken(env.DB, tokenHash);
   }
@@ -220,7 +211,7 @@ export async function servePrivateFeed(
     request,
     renderFeed(
       show,
-      episodes.results,
+      feedEpisodes,
       feedUrl,
       env,
       (episode) =>
@@ -346,14 +337,24 @@ function renderEpisode(
 function approvedTranscriptLanguages(
   episode: FeedEpisode
 ): Array<"en" | "es"> {
-  const available = new Set(
-    String(episode.approved_transcript_languages ?? "")
-      .split(",")
-      .map((language) => language.trim())
-  );
+  const available = new Set(episode.approvedTranscriptLanguages);
   return (["en", "es"] as const).filter((language) =>
     available.has(language)
   );
+}
+
+async function attachVerifiedTranscriptLanguages(
+  db: D1Database,
+  episodes: FeedEpisodeRow[]
+): Promise<FeedEpisode[]> {
+  const languages = await loadVerifiedApprovedTranscriptLanguagesByEpisode(
+    db,
+    episodes.map(({ id }) => id)
+  );
+  return episodes.map((episode) => ({
+    ...episode,
+    approvedTranscriptLanguages: languages.get(episode.id) ?? []
+  }));
 }
 
 function feedHeaders(

@@ -64,9 +64,13 @@ use content-derived ETags, short public caching, wildcard read-only CORS,
 noindex/nosniff, and body-free `HEAD`; missing or tampered evidence returns the
 same no-store `404`. Public RSS emits one HTTPS
 `<podcast:transcript type="text/vtt" language="…">` tag per approved English
-or Spanish revision. The launch validator rejects malformed, non-HTTPS,
-unsupported-type, unsupported-language, or duplicate-language transcript
-metadata.
+or Spanish revision only after the same bounded canonical parse, speaker
+confirmation, and SHA-256 verification used by the VTT endpoint. Feed
+generation omits malformed, oversized, or tampered approvals instead of
+advertising a dead transcript URL. Verification reads are deduplicated and
+processed in small episode batches. The launch validator rejects malformed,
+non-HTTPS, unsupported-type, unsupported-language, or duplicate-language
+transcript metadata.
 
 Stored validation evidence applies to one exact RSS body. Feed-affecting
 show/episode edits and transcript/chapter approval changes delete that

@@ -173,7 +173,9 @@ player—there is no second audio runtime.
 The same immutable transcript approval now projects checksum-verified,
 speaker-aware WebVTT for public and entitled private feeds. RSS emits one
 Podcasting 2.0 `<podcast:transcript>` tag per approved English/Spanish
-language; private-only episodes keep tokenized transcript URLs and recheck
+language only after the same bounded canonical parse and SHA-256 check used by
+the VTT route; malformed or tampered rows are omitted instead of advertising a
+dead URL. Private-only episodes keep tokenized transcript URLs and recheck
 entitlement on every request. Feed validator v2 rejects unsafe transcript
 metadata and treats older validation evidence as stale before launch/cutover.
 

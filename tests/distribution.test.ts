@@ -845,8 +845,7 @@ async function distributionFixture({
                 explicit: 0,
                 season_number: 1,
                 episode_number: 1,
-                has_approved_chapters: 0,
-                approved_transcript_languages: "es"
+                has_approved_chapters: 0
               }]
             };
           }

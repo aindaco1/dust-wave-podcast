@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { PodcastEnv } from "../src/env";
 import { servePrivateFeed, servePublicFeed } from "../src/feed";
@@ -6,6 +7,11 @@ import {
   servePrivateEpisodeAudio,
   servePublicEpisodeAudio
 } from "../src/media";
+import {
+  canonicalTranscriptContent,
+  loadVerifiedApprovedTranscriptLanguagesByEpisode,
+  serializeTranscriptContent
+} from "../src/transcripts";
 
 function baseEnv(overrides: Partial<PodcastEnv>): PodcastEnv {
   return {
@@ -22,6 +28,10 @@ function baseEnv(overrides: Partial<PodcastEnv>): PodcastEnv {
 
 describe("public feed and media delivery", () => {
   it("renders a stable RSS enclosure from canonical episode state", async () => {
+    const transcriptRows = await Promise.all([
+      approvedTranscriptRow("episode_fixture", "en"),
+      approvedTranscriptRow("episode_fixture", "es")
+    ]);
     const db = {
       prepare(query: string) {
         return {
@@ -45,10 +55,13 @@ describe("public feed and media delivery", () => {
             };
           },
           async all() {
-            expect(query).toContain("FROM transcript_approvals latest");
-            expect(query).toContain(
-              "revision.speaker_labels_confirmed = 1"
-            );
+            if (query.includes("FROM transcripts t")) {
+              expect(query).toContain("FROM transcript_approvals latest");
+              expect(query).toContain(
+                "r.speaker_labels_confirmed = 1"
+              );
+              return { results: transcriptRows };
+            }
             return {
               results: [{
                 id: "episode_fixture",
@@ -65,8 +78,7 @@ describe("public feed and media delivery", () => {
                 explicit: 0,
                 season_number: null,
                 episode_number: 1,
-                has_approved_chapters: 1,
-                approved_transcript_languages: "en,es"
+                has_approved_chapters: 1
               }]
             };
           }
@@ -101,6 +113,58 @@ describe("public feed and media delivery", () => {
       + 'type="text/vtt" language="es"/>'
     );
     expect(xml).not.toContain("premium_bonus");
+
+    transcriptRows[0].content_sha256 = "0".repeat(64);
+    const responseAfterTamper = await servePublicFeed(
+      new Request("https://feeds.dustwave.xyz/show-fixture/rss.xml"),
+      baseEnv({ DB: db }),
+      "show-fixture"
+    );
+    const xmlAfterTamper = await responseAfterTamper.text();
+    expect(xmlAfterTamper).not.toContain(
+      "/episodes/episode-fixture/transcripts/en.vtt"
+    );
+    expect(xmlAfterTamper).toContain(
+      "/episodes/episode-fixture/transcripts/es.vtt"
+    );
+  });
+
+  it("keeps identical verified transcript payloads scoped to each episode", async () => {
+    const first = await approvedTranscriptRow("episode_first", "en");
+    const second = {
+      ...first,
+      episode_id: "episode_second"
+    };
+    const boundValues: unknown[][] = [];
+    const db = {
+      prepare(query: string) {
+        expect(query).toContain(
+          "length(CAST(r.content_json AS BLOB)) <= ?"
+        );
+        return {
+          bind(...values: unknown[]) {
+            boundValues.push(values);
+            return this;
+          },
+          async all() {
+            return { results: [first, second] };
+          }
+        };
+      }
+    } as unknown as D1Database;
+
+    const languages = await loadVerifiedApprovedTranscriptLanguagesByEpisode(
+      db,
+      ["episode_first", "episode_second", "episode_first"]
+    );
+
+    expect(languages.get("episode_first")).toEqual(["en"]);
+    expect(languages.get("episode_second")).toEqual(["en"]);
+    expect(boundValues).toEqual([[
+      "episode_first",
+      "episode_second",
+      1_000_000
+    ]]);
   });
 
   it("streams a valid byte range without buffering the full object", async () => {
@@ -154,6 +218,9 @@ describe("public feed and media delivery", () => {
   it("serves entitled private RSS without exposing its bearer token to D1", async () => {
     const rawToken = "a".repeat(43);
     const boundValues: unknown[][] = [];
+    const transcriptRows = [
+      await approvedTranscriptRow("episode_bonus", "es")
+    ];
     const db = {
       prepare(query: string) {
         return {
@@ -179,10 +246,13 @@ describe("public feed and media delivery", () => {
             };
           },
           async all() {
-            expect(query).toContain("FROM transcript_approvals latest");
-            expect(query).toContain(
-              "revision.speaker_labels_confirmed = 1"
-            );
+            if (query.includes("FROM transcripts t")) {
+              expect(query).toContain("FROM transcript_approvals latest");
+              expect(query).toContain(
+                "r.speaker_labels_confirmed = 1"
+              );
+              return { results: transcriptRows };
+            }
             return {
               results: [{
                 id: "episode_bonus",
@@ -200,8 +270,7 @@ describe("public feed and media delivery", () => {
                 explicit: 0,
                 season_number: null,
                 episode_number: 2,
-                has_approved_chapters: 1,
-                approved_transcript_languages: "es"
+                has_approved_chapters: 1
               }]
             };
           },
@@ -361,3 +430,30 @@ describe("public feed and media delivery", () => {
     expect(r2Reads).toBe(0);
   });
 });
+
+async function approvedTranscriptRow(
+  episodeId: string,
+  language: "en" | "es"
+): Promise<Record<string, unknown>> {
+  const contentJson = serializeTranscriptContent(
+    canonicalTranscriptContent(language, [{
+      id: `cue_${episodeId}_${language}`,
+      startsAtMs: 0,
+      endsAtMs: 2_000,
+      speakerLabel: "",
+      speakerConfirmed: false,
+      textMarkdown: language === "es"
+        ? "Texto aprobado."
+        : "Approved text."
+    }])
+  );
+  return {
+    episode_id: episodeId,
+    language,
+    revision: 1,
+    content_json: contentJson,
+    content_sha256: await sha256Hex(contentJson),
+    speaker_labels_confirmed: 1,
+    approved_at: "2026-07-25T12:00:00.000Z"
+  };
+}

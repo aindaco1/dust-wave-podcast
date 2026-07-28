@@ -494,7 +494,11 @@ CORS. Neither projection logs or returns the raw bearer, internal cue IDs,
 editor markup, revision metadata, or word-alignment rows. Launch/cutover
 evidence accepts only the current `dustwave-rss-launch-v2` validator contract,
 so a previously valid v1 result becomes visibly stale and cannot certify
-publication.
+publication. RSS discovery does not trust approval metadata alone: public and
+private feeds reuse the projection parser, speaker-confirmation checks, and
+SHA-256 verification before emitting a transcript tag. Oversized or invalid
+rows fail closed, and database reads are byte-capped and processed in bounded
+episode batches.
 
 The validation row fingerprints one exact public RSS body. D1 removes it when
 a show/channel field, public-feed episode field, transcript approval, or
