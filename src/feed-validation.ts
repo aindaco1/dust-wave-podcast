@@ -1,7 +1,11 @@
 import { sha256Hex } from "@dustwave/worker-core/crypto";
 
+import { requireAdmin } from "./admin-auth";
+import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { servePublicFeed } from "./feed";
+import { privateJson } from "./http";
+import { validIdentifier } from "./validation";
 
 export const PUBLIC_FEED_VALIDATOR_VERSION =
   "dustwave-rss-launch-v2";
@@ -11,6 +15,12 @@ type FeedValidationShow = {
   id: string;
   rss_slug: string;
 };
+
+const FEED_VALIDATION_ROLES = [
+  "super_admin",
+  "admin",
+  "producer"
+] as const;
 
 export type PublicFeedValidationEvidence = {
   showId: string;
@@ -32,9 +42,48 @@ export class PublicFeedValidationError extends Error {
   }
 }
 
+export async function retryAdminPublicFeedValidation(
+  request: Request,
+  env: PodcastEnv,
+  showIdValue: string
+): Promise<Response> {
+  const showId = validIdentifier(showIdValue, "showId");
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: [...FEED_VALIDATION_ROLES],
+    requireCsrf: true,
+    showId
+  });
+  if (!auth.ok) return auth.response;
+  try {
+    const evidence = await validateAndRecordPublicFeed(
+      env,
+      showId,
+      { adminUserId: auth.authorization.identity.id }
+    );
+    return privateJson(request, env.ALLOWED_ORIGINS, {
+      valid: true,
+      validatorVersion: evidence.validatorVersion,
+      itemCount: evidence.itemCount,
+      checkedAt: evidence.checkedAt,
+      validatedAt: evidence.validatedAt
+    });
+  } catch (error) {
+    const code = error instanceof PublicFeedValidationError
+      ? error.code
+      : "feed_validation_failed";
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: code },
+      { status: code === "feed_show_not_found" ? 404 : 409 }
+    );
+  }
+}
+
 export async function validateAndRecordPublicFeed(
   env: PodcastEnv,
-  showId: string
+  showId: string,
+  audit?: { adminUserId: string }
 ): Promise<PublicFeedValidationEvidence> {
   const show = await env.DB.prepare(
     `SELECT id, rss_slug
@@ -90,7 +139,7 @@ export async function validateAndRecordPublicFeed(
       ...evidence,
       status: "valid",
       failureCode: null
-    });
+    }, audit);
     return evidence;
   } catch (error) {
     const failureCode = error instanceof PublicFeedValidationError
@@ -106,7 +155,7 @@ export async function validateAndRecordPublicFeed(
       validatedAt: null,
       status: "failed",
       failureCode
-    });
+    }, audit);
     if (error instanceof PublicFeedValidationError) throw error;
     throw new PublicFeedValidationError(
       "The canonical feed could not be validated.",
@@ -241,9 +290,10 @@ async function recordFeedValidation(
     failureCode: string | null;
     checkedAt: string;
     validatedAt: string | null;
-  }
+  },
+  audit?: { adminUserId: string }
 ): Promise<void> {
-  await db.prepare(
+  const validation = db.prepare(
     `INSERT INTO show_feed_validations (
        show_id, status, feed_url, validator_version, feed_sha256, item_count,
        failure_code, checked_at, validated_at
@@ -268,7 +318,27 @@ async function recordFeedValidation(
     evidence.failureCode,
     evidence.checkedAt,
     evidence.validatedAt
-  ).run();
+  );
+  if (!audit) {
+    await validation.run();
+    return;
+  }
+  await db.batch([
+    validation,
+    prepareAdminAudit(db, {
+      adminUserId: audit.adminUserId,
+      action: "feed.validation_retried",
+      targetType: "show",
+      targetId: evidence.showId,
+      metadata: {
+        result: evidence.status,
+        validatorVersion: evidence.validatorVersion,
+        ...(evidence.status === "valid"
+          ? { itemCount: evidence.itemCount }
+          : { failureCode: evidence.failureCode })
+      }
+    })
+  ]);
 }
 
 async function readBoundedFeedText(

@@ -496,6 +496,16 @@ evidence accepts only the current `dustwave-rss-launch-v2` validator contract,
 so a previously valid v1 result becomes visibly stale and cannot certify
 publication.
 
+The validation row fingerprints one exact public RSS body. D1 removes it when
+a show/channel field, public-feed episode field, transcript approval, or
+chapter approval can change that projection; the existing deletion trigger
+also advances the publication evidence version. Private notes and unapproved
+transcript/chapter drafts do not expire the row. Launch and cutover therefore
+return to a visible pending state until the canonical feed is validated again.
+The manual recovery action is show-scoped to Producer/Admin/Super-admin,
+requires trusted origin and CSRF, performs no directory/provider request, and
+audits only result, validator version, item count, or stable failure code.
+
 ## Chapter boundary
 
 Chapter editing reuses the original normalized episode rows and adds a

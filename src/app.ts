@@ -158,6 +158,9 @@ import {
   updateShowDistributionDestination
 } from "./distribution";
 import { servePrivateFeed, servePublicFeed } from "./feed";
+import {
+  retryAdminPublicFeedValidation
+} from "./feed-validation";
 import { json, options, privateJson } from "./http";
 import {
   exchangeListenerLogin,
@@ -342,6 +345,8 @@ const ANNOUNCEMENT_UNSUBSCRIBE_PATH =
   /^\/v1\/notifications\/unsubscribe\/([A-Za-z0-9_-]{43})$/;
 const ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)$/;
+const ADMIN_SHOW_FEED_VALIDATION_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/feed-validation$/;
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
@@ -1147,6 +1152,16 @@ async function routeRequest(
       env,
       adminShowDistributionDestinationMatch[1],
       adminShowDistributionDestinationMatch[2]
+    );
+  }
+  const adminShowFeedValidationMatch = url.pathname.match(
+    ADMIN_SHOW_FEED_VALIDATION_PATH
+  );
+  if (adminShowFeedValidationMatch && method === "POST") {
+    return retryAdminPublicFeedValidation(
+      request,
+      env,
+      adminShowFeedValidationMatch[1]
     );
   }
   const adminShowAudioQcPolicyMatch = url.pathname.match(

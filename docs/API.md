@@ -68,6 +68,12 @@ or Spanish revision. The launch validator rejects malformed, non-HTTPS,
 unsupported-type, unsupported-language, or duplicate-language transcript
 metadata.
 
+Stored validation evidence applies to one exact RSS body. Feed-affecting
+show/episode edits and transcript/chapter approval changes delete that
+fingerprint transactionally, so Distribution and RSS cutover return to
+validation-pending until the show-level validation action or next publish-RSS
+job records the new exact body.
+
 The public chapter route uses the same episode visibility boundary, then reads
 the latest immutable approval/revision pair, revalidates ordered integer
 millisecond markers and safe text/HTTPS metadata, and recomputes its SHA-256.
@@ -361,6 +367,7 @@ including under concurrent requests.
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
 | `POST` | `/v1/admin/episodes/{id}/distribution/{rss\|news\|youtube\|email}/retry` | producer+ | Requeue one failed job for the exact current publication revision |
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific enabled/setup state plus a credential-free owner/submission checklist |
+| `POST` | `/v1/admin/shows/{showId}/feed-validation` | producer+ | Re-render, validate, fingerprint, and audit the exact current canonical RSS body |
 | `GET` | `/v1/admin/episodes/{id}/transcription-jobs` | analyst+ | Current working-master/source-language readiness and up to 20 immutable transcription jobs |
 | `POST` | `/v1/admin/episodes/{id}/transcription-jobs` | producer+ | Idempotently queue the explicit source language against an exact approved working master |
 | `GET` | `/v1/admin/alignment-benchmarks` | analyst+ | Latest 20 content-free bilingual benchmark summaries plus required runner identity and input limits |
@@ -543,6 +550,12 @@ ETag, requires the launch RSS/iTunes/Podcasting 2.0 metadata, and checks every
 item for a unique stable GUID and a positive HTTPS enclosure. The current
 validation digest, item count, validator version, and content-free failure code
 are stored per show.
+
+The Distribution tab's show-level validation action uses the same validator
+without contacting a directory or changing publication state. It requires a
+show-scoped Producer/Admin/Super-admin session, allowed origin, and CSRF.
+Success and failure append content-free audit metadata; a failed validation
+records its stable failure code and returns `409`.
 
 Every non-idempotent
 `PATCH /v1/admin/episodes/{id}/distribution/{destinationId}` transition also

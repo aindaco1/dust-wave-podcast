@@ -8,6 +8,7 @@ import {
   updateShowDistributionDestination
 } from "../src/distribution";
 import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
+import { handleRequest } from "../src/app";
 import type { PodcastEnv } from "../src/env";
 
 describe("streamlined publishing directory registry", () => {
@@ -107,6 +108,57 @@ describe("streamlined publishing directory registry", () => {
         && values[0] === "show_opera_en_la_selva"
       )
     ).toBe(true);
+  });
+
+  it("revalidates the exact show feed through the CSRF-scoped admin route", async () => {
+    const fixture = await distributionFixture({ role: "producer" });
+    const response = await handleRequest(
+      fixture.request(
+        "/v1/admin/shows/show_opera_en_la_selva/feed-validation",
+        { method: "POST" }
+      ),
+      fixture.env
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      valid: true,
+      validatorVersion: "dustwave-rss-launch-v2",
+      itemCount: 1
+    });
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("INSERT INTO show_feed_validations")
+        && values[0] === "show_opera_en_la_selva"
+        && values[1] === "valid"
+      )
+    ).toBe(true);
+    expect(
+      fixture.queries.some(({ query, values }) =>
+        query.includes("INSERT INTO admin_audit_events")
+        && values.includes("feed.validation_retried")
+        && values.includes("show_opera_en_la_selva")
+      )
+    ).toBe(true);
+  });
+
+  it("rejects feed revalidation outside the show-scoped producer roles", async () => {
+    const fixture = await distributionFixture({ role: "analyst" });
+    const response = await handleRequest(
+      fixture.request(
+        "/v1/admin/shows/show_opera_en_la_selva/feed-validation",
+        { method: "POST" }
+      ),
+      fixture.env
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "forbidden" });
+    expect(
+      fixture.queries.some(({ query }) =>
+        query.includes("INSERT INTO show_feed_validations")
+      )
+    ).toBe(false);
   });
 
   it("hides an episode in a different role scope", async () => {
@@ -641,6 +693,34 @@ async function distributionFixture({
               rss_slug: "opera-en-la-selva"
             };
           }
+          if (
+            query.includes("SELECT id, rss_slug")
+            && query.includes("status != 'archived'")
+          ) {
+            return {
+              id: "show_opera_en_la_selva",
+              rss_slug: "opera-en-la-selva"
+            };
+          }
+          if (
+            query.includes("rss_slug, author_name")
+            && query.includes("WHERE rss_slug = ?")
+          ) {
+            return {
+              id: "show_opera_en_la_selva",
+              slug: "opera-en-la-selva",
+              title: "Ópera en la Selva",
+              description: "Historias de música, bosque y comunidad.",
+              language: "es",
+              artwork_url: "https://dustwave.xyz/opera.jpg",
+              canonical_url:
+                "https://dustwave.xyz/podcasts/opera-en-la-selva/",
+              rss_slug: "opera-en-la-selva",
+              author_name: "Dust Wave",
+              category: "Arts",
+              explicit: 0
+            };
+          }
           if (query.includes("FROM show_feed_validations")) {
             return {
               status: "valid",
@@ -747,6 +827,29 @@ async function distributionFixture({
               ]
             };
           }
+          if (query.includes("FROM episodes episode")) {
+            return {
+              results: [{
+                id: "episode_opera",
+                slug: "episodio-opera",
+                title: "Episodio Ópera",
+                summary: "Una introducción.",
+                guid: "urn:dustwave:episode:opera",
+                release_at: "2026-07-25T12:00:00.000Z",
+                canonical_url:
+                  "https://dustwave.xyz/news/episodio-opera/",
+                duration_seconds: 600,
+                audio_mime_type: "audio/mpeg",
+                audio_bytes: 1_000,
+                audio_filename: "opera.mp3",
+                explicit: 0,
+                season_number: 1,
+                episode_number: 1,
+                has_approved_chapters: 0,
+                approved_transcript_languages: "es"
+              }]
+            };
+          }
           return { results: [] };
         },
         async run() {
@@ -763,8 +866,11 @@ async function distributionFixture({
     DB: db,
     SITE_ORIGIN: "https://dustwave.xyz",
     FEED_ORIGIN: "https://feeds.dustwave.xyz",
+    MEDIA_ORIGIN: "https://media.dustwave.xyz",
     ALLOWED_ORIGINS: "https://dustwave.xyz",
     ADMIN_SESSION_SECRET: sessionSecret,
+    PODCAST_AUTHOR_NAME: "Dust Wave",
+    PODCAST_OWNER_EMAIL: "podcasts@dustwave.xyz",
     JOBS: {
       async send(job: Record<string, unknown>) {
         sentJobs.push(job);
