@@ -59,8 +59,12 @@ The protected source URL is AES-GCM sealed, never enters Queue or audit data,
 and is erased after completion or seven days. Production keeps execution
 disabled. This boundary cannot create News/RSS/YouTube/directory jobs, contact
 a provider, change billing/email/ads, or configure the old-host redirect;
-working-master review, publication, reconciliation, and the 301 checklist stay
-separate.
+working-master review and publication stay separate. Staging can now hash and
+immutably approve a complete post-copy snapshot only after D1 draft identity,
+completed source-upload evidence, private R2 size/ETag/type/metadata, and
+zero-publication state all agree. The old-host checklist remains
+non-activating and always requires later public-episode, revalidated-feed,
+10-directory, and explicit owner-attestation evidence.
 
 The delivery boundary now derives one fixed-profile MP3 and bounded player
 waveform from the exact approved working master through a staging-only,

@@ -67,6 +67,38 @@ describe("RSS import execution migration", () => {
         "status IN ('queued', 'running', 'succeeded', 'partial', 'failed')"
       );
       expect(migration).not.toMatch(/\bDROP\s+(?:TABLE|COLUMN)\b/iu);
+      const reconciliationColumns = db.prepare(
+        "PRAGMA table_info(rss_import_reconciliations)"
+      ).all().map(({ name }) => name);
+      expect(reconciliationColumns).toEqual(expect.arrayContaining([
+        "execution_id",
+        "plan_id",
+        "show_id",
+        "evidence_sha256",
+        "item_count",
+        "copied_bytes",
+        "approved_by_admin_user_id",
+        "approved_at"
+      ]));
+      expect(triggers).toEqual(expect.arrayContaining([
+        "rss_import_reconciliations_immutable_update",
+        "rss_import_reconciliations_immutable_delete",
+        "rss_import_reconciled_execution_lock",
+        "rss_import_reconciled_item_lock"
+      ]));
+      const reconciliationMigration = readFileSync(
+        join(
+          migrationsDirectory,
+          "0057_rss_import_reconciliations.sql"
+        ),
+        "utf8"
+      );
+      expect(reconciliationMigration).toContain(
+        "rss_import_reconciliation_immutable"
+      );
+      expect(reconciliationMigration).not.toMatch(
+        /\bDROP\s+(?:TABLE|COLUMN)\b/iu
+      );
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"

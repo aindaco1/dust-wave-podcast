@@ -249,6 +249,10 @@ import {
   getAdminRssImportExecution
 } from "./rss-import-executions";
 import {
+  createAdminRssImportReconciliation,
+  getAdminRssImportReconciliation
+} from "./rss-import-reconciliations";
+import {
   abortMultipartUpload,
   completeMultipartUpload,
   createMultipartUpload,
@@ -306,6 +310,8 @@ const ADMIN_RSS_IMPORT_PLAN_CANCEL_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/cancel$/;
 const ADMIN_RSS_IMPORT_PLAN_EXECUTION_PATH =
   /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/execution$/;
+const ADMIN_RSS_IMPORT_PLAN_RECONCILIATION_PATH =
+  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/reconciliation$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
 const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
@@ -964,6 +970,25 @@ async function routeRequest(
         request,
         env,
         adminRssImportPlanExecutionMatch[1]
+      );
+    }
+  }
+  const adminRssImportPlanReconciliationMatch = url.pathname.match(
+    ADMIN_RSS_IMPORT_PLAN_RECONCILIATION_PATH
+  );
+  if (adminRssImportPlanReconciliationMatch) {
+    if (method === "GET") {
+      return getAdminRssImportReconciliation(
+        request,
+        env,
+        adminRssImportPlanReconciliationMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return createAdminRssImportReconciliation(
+        request,
+        env,
+        adminRssImportPlanReconciliationMatch[1]
       );
     }
   }

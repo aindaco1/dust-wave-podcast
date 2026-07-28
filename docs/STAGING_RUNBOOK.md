@@ -192,6 +192,16 @@ exists. Confirm both tables are empty, foreign-key checks are empty, and
 new pre-`0056` Time Travel bookmark. The migration is additive; do not apply it
 to production as part of a staging exercise.
 
+For migration `0057`, verify `rss_import_reconciliations`, its show/approval
+index, immutable row triggers, and execution/item update locks. Confirm the
+table is empty, foreign-key checks are empty, and table-scoped
+`PRAGMA quick_check` is `ok` immediately after the staging migration. Retain a
+new pre-`0057` Time Travel bookmark. The migration is additive; do not apply it
+to production as part of a staging exercise. If Cloudflare's whole-database
+quick check exhausts remote SQLite memory, record that failure transparently
+and require both the complete local replay/global quick check and every new
+table's scoped staging check to pass.
+
 For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
 the four `episode_chapter_*` review/history tables and indexes exist, any
 legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key
@@ -674,8 +684,27 @@ Before any existing-feed migration:
     byte/MIME drift fixture fails closed without an episode and a production-
     mode request returns unavailable before D1, Queue, or R2 mutation.
 13. Do not configure a new-feed tag or old-host 301 redirect. Working-master
-    review, owner reconciliation, publication, and the redirect checklist
-    remain separate approval gates.
+    review, publication, and the redirect checklist remain separate approval
+    gates.
+14. Load reconciliation evidence. Confirm the Worker rechecks the exact
+    execution/item counts, draft ID/slug/GUID/language/canonical URL, completed
+    source upload, private R2 size/ETag/content type/purpose metadata, and
+    zero-delivery/News/RSS/directory publication state without exposing the
+    source URL or private object key.
+15. Tamper one isolated fixture's R2 metadata and confirm approval fails. Put
+    the exact fixture back, reload the digest, approve it as a recently
+    authenticated super-admin, and replay the same identifier/digest to
+    confirm idempotency. Confirm another identifier or digest conflicts and
+    direct execution/item updates are locked.
+16. Confirm approval changes only the immutable reconciliation/audit rows.
+    `r2MutationPerformed`, `episodeMutationPerformed`,
+    `publicationMutationPerformed`, `redirectMutationPerformed`, and
+    `providerContactPerformed` must all remain `false`.
+17. Confirm the old-host checklist says activation is unavailable and remains
+    blocked on imported episodes becoming public, canonical-feed validation
+    after their latest update, renewed 10+ directory certification, and an
+    explicit owner redirect attestation. Do not create that attestation or
+    activate a redirect in this staging exercise.
 
 The authorized Ópera en la Selva Substack URL is useful as a negative preview
 fixture while it contains newsletter article/image enclosures; it must not be
@@ -1266,3 +1295,7 @@ For the full-episode YouTube test, use a separate fixture publication:
   identity edits or cancellation races, and let operators reconcile any
   private object before a later forward deployment. Disable
   `RSS_IMPORT_EXECUTION_MODE` and pause affected Queue work before rollback.
+- A Worker-code rollback after migration `0057` must leave the reconciliation
+  table, immutable triggers, and execution/item locks in place. They preserve
+  approved evidence; older code does not read it and must not try to rewrite
+  reconciled execution rows.

@@ -43,14 +43,14 @@ const SOURCE_URL_CONTRACT = {
   additionalDataContext: "podcast-rss-import-execution-v1"
 };
 
-type ExecutionStatus =
+export type RssImportExecutionStatus =
   | "queued"
   | "running"
   | "succeeded"
   | "partial"
   | "failed";
 
-type ExecutionRow = {
+export type RssImportExecutionRow = {
   id: string;
   plan_id: string;
   show_id: string;
@@ -58,7 +58,7 @@ type ExecutionRow = {
   feed_url_sha256: string;
   feed_sha256: string;
   selection_sha256: string;
-  status: ExecutionStatus;
+  status: RssImportExecutionStatus;
   expected_item_count: number;
   copied_item_count: number;
   draft_item_count: number;
@@ -72,7 +72,7 @@ type ExecutionRow = {
   updated_at: string;
 };
 
-type ExecutionItemRow = {
+export type RssImportExecutionItemRow = {
   execution_id: string;
   plan_id: string;
   source_identity_sha256: string;
@@ -101,7 +101,7 @@ type ExecutionRequestItem = {
   sourceLanguage: "en" | "es";
 };
 
-type ProcessingRow = ExecutionItemRow & {
+type ProcessingRow = RssImportExecutionItemRow & {
   show_id: string;
   feed_url_ciphertext: string;
   feed_url_sha256: string;
@@ -132,7 +132,9 @@ export async function createAdminRssImportExecution(
   env: PodcastEnv,
   planIdValue: string
 ): Promise<Response> {
-  if (!executionEnabled(env)) return executionUnavailable(request, env);
+  if (!rssImportExecutionEnabled(env)) {
+    return executionUnavailable(request, env);
+  }
   const secret = requiredExecutionSecret(env);
   const planId = validIdentifier(planIdValue, "planId");
   const evidence = await loadRssImportPlanEvidence(env.DB, planId);
@@ -190,7 +192,7 @@ export async function createAdminRssImportExecution(
     return executionConflict(request, env, "rss_import_plan_changed");
   }
   const requestedItems = executionRequestItems(body.items, evidence.items);
-  const existing = await loadExecutionByPlan(env.DB, planId);
+  const existing = await loadRssImportExecutionEvidence(env.DB, planId);
   if (existing) {
     if (
       existing.execution.id !== executionId
@@ -315,7 +317,7 @@ export async function createAdminRssImportExecution(
       })
     ]);
   } catch (error) {
-    const concurrent = await loadExecutionByPlan(env.DB, planId);
+    const concurrent = await loadRssImportExecutionEvidence(env.DB, planId);
     if (concurrent) {
       if (
         concurrent.execution.id === executionId
@@ -353,7 +355,7 @@ export async function createAdminRssImportExecution(
     throw error;
   }
   await sendQueuedExecutionItems(env, executionId);
-  const created = await loadExecutionByPlan(env.DB, planId);
+  const created = await loadRssImportExecutionEvidence(env.DB, planId);
   if (!created) {
     return executionConflict(
       request,
@@ -383,12 +385,12 @@ export async function getAdminRssImportExecution(
     showId: evidence.plan.show_id
   });
   if (!auth.ok) return auth.response;
-  const execution = await loadExecutionByPlan(env.DB, planId);
+  const execution = await loadRssImportExecutionEvidence(env.DB, planId);
   return privateJson(request, env.ALLOWED_ORIGINS, {
     execution: execution
       ? presentExecution(execution.execution, execution.items)
       : null,
-    executionAvailable: executionEnabled(env),
+    executionAvailable: rssImportExecutionEnabled(env),
     publicationMutationPerformed: false,
     redirectMutationPerformed: false,
     providerContactPerformed: false
@@ -398,7 +400,7 @@ export async function getAdminRssImportExecution(
 export async function scheduleRssImportExecutions(
   env: PodcastEnv
 ): Promise<void> {
-  if (!executionEnabled(env)) return;
+  if (!rssImportExecutionEnabled(env)) return;
   await env.DB.prepare(
     `UPDATE rss_import_execution_items
      SET
@@ -440,7 +442,7 @@ export async function processRssImportExecutionItem(
   job: PodcastJob
 ): Promise<void> {
   if (
-    !executionEnabled(env)
+    !rssImportExecutionEnabled(env)
     || !job.rssImportExecutionId
     || !job.rssImportSourceIdentitySha256
   ) {
@@ -1020,12 +1022,12 @@ async function refreshExecutionState(
   ).run();
 }
 
-async function loadExecutionByPlan(
+export async function loadRssImportExecutionEvidence(
   db: D1Database,
   planId: string
 ): Promise<{
-  execution: ExecutionRow;
-  items: ExecutionItemRow[];
+  execution: RssImportExecutionRow;
+  items: RssImportExecutionItemRow[];
 } | null> {
   const execution = await db.prepare(
     `SELECT
@@ -1036,7 +1038,7 @@ async function loadExecutionByPlan(
        last_error_code, requested_at, started_at, completed_at, updated_at
      FROM rss_import_executions
      WHERE plan_id = ?`
-  ).bind(planId).first<ExecutionRow>();
+  ).bind(planId).first<RssImportExecutionRow>();
   if (!execution) return null;
   return {
     execution,
@@ -1047,7 +1049,7 @@ async function loadExecutionByPlan(
 async function loadExecutionItems(
   db: D1Database,
   executionId: string
-): Promise<ExecutionItemRow[]> {
+): Promise<RssImportExecutionItemRow[]> {
   const rows = await db.prepare(
     `SELECT
        execution_id, plan_id, source_identity_sha256, ordinal,
@@ -1058,7 +1060,7 @@ async function loadExecutionItems(
      FROM rss_import_execution_items
      WHERE execution_id = ?
      ORDER BY ordinal`
-  ).bind(executionId).all<ExecutionItemRow>();
+  ).bind(executionId).all<RssImportExecutionItemRow>();
   return rows.results;
 }
 
@@ -1197,7 +1199,7 @@ async function ensureSlugsAvailable(
 }
 
 function sameExecutionMapping(
-  stored: ExecutionItemRow[],
+  stored: RssImportExecutionItemRow[],
   expected: ExecutionRequestItem[]
 ): boolean {
   const expectedByIdentity = new Map(expected.map((item) => [
@@ -1215,8 +1217,8 @@ function sameExecutionMapping(
 }
 
 function presentExecution(
-  execution: ExecutionRow,
-  items: ExecutionItemRow[]
+  execution: RssImportExecutionRow,
+  items: RssImportExecutionItemRow[]
 ): Record<string, unknown> {
   return {
     id: execution.id,
@@ -1289,7 +1291,7 @@ function extensionForMimeType(value: string): string {
   }[value] ?? "audio";
 }
 
-function executionEnabled(env: PodcastEnv): boolean {
+export function rssImportExecutionEnabled(env: PodcastEnv): boolean {
   return env.ENVIRONMENT === "staging"
     && env.RSS_IMPORT_EXECUTION_MODE === EXECUTION_MODE;
 }

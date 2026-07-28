@@ -78,10 +78,15 @@ iHeartRadio, and Deezer.
   episodes with stable source identities and post-copy byte/SHA-256 evidence.
   Production execution stays disabled, protected source URLs are encrypted and
   short-lived, and the boundary has no News/RSS/YouTube/directory/provider
-  publication path. Working-master review, owner reconciliation, and the
-  old-host redirect checklist remain later gates. Never activate a 301
-  redirect during preview, plan review, private copy, or before owner
-  reconciliation.
+  publication path. An isolated-staging reconciliation gate now verifies and
+  immutably freezes the exact private R2 copy, draft identity, completed
+  source-upload evidence, and zero-publication state. It cannot change an
+  episode or object. Working-master review and publication remain later gates,
+  and the old-host checklist is deliberately non-activating until imported
+  episodes are public, the canonical feed is revalidated afterward, 10+
+  directories are re-observed, and the owner separately attests the redirect.
+  Never activate a 301 redirect during preview, plan review, private copy, or
+  reconciliation approval.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed

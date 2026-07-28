@@ -236,6 +236,91 @@ describe("RSS import executions", () => {
       },
       publicationMutationPerformed: false
     });
+    const reconciliationPreview = await handleRequest(
+      adminGet(
+        `/v1/admin/rss-import/plans/${plan.id}/reconciliation`
+      ),
+      harness.env
+    );
+    expect(reconciliationPreview.status).toBe(200);
+    const reconciliationState = await reconciliationPreview.json();
+    expect(reconciliationState).toMatchObject({
+      reconciliationAvailable: true,
+      executionId: "rss_execution_fixture",
+      readiness: {
+        itemCount: 1,
+        copiedBytes: audio.byteLength,
+        copyReady: true,
+        prePublicationReady: true,
+        readyForApproval: true,
+        blockers: [],
+        items: [{
+          targetSlug: "episodio-importado",
+          copyReady: true,
+          privateObjectVerified: true,
+          draftIdentityVerified: true,
+          sourceUploadVerified: true,
+          blockers: []
+        }]
+      },
+      approval: null,
+      oldHostRedirectChecklist: {
+        activationAvailable: false,
+        ready: false,
+        checks: {
+          ownerReconciliationApproved: false,
+          importedEpisodesPublic: false,
+          canonicalFeedRevalidated: false,
+          directoryCertificationReady: false,
+          ownerRedirectAttested: false
+        }
+      },
+      r2MutationPerformed: false,
+      episodeMutationPerformed: false,
+      publicationMutationPerformed: false,
+      redirectMutationPerformed: false,
+      providerContactPerformed: false
+    });
+    const reconciliationRequestBody = {
+      reconciliationId: "rss_reconciliation_fixture",
+      expectedEvidenceSha256:
+        reconciliationState.readiness.evidenceSha256,
+      reconciliationConfirmed: true
+    };
+    const reconciliationApproval = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/reconciliation`,
+        reconciliationRequestBody
+      ),
+      harness.env
+    );
+    expect(reconciliationApproval.status).toBe(201);
+    expect(await reconciliationApproval.json()).toMatchObject({
+      approval: {
+        id: "rss_reconciliation_fixture",
+        fresh: true
+      },
+      readiness: { readyForApproval: false },
+      idempotent: false,
+      redirectMutationPerformed: false
+    });
+    const reconciliationRetry = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/reconciliation`,
+        reconciliationRequestBody
+      ),
+      harness.env
+    );
+    expect(reconciliationRetry.status).toBe(200);
+    expect(await reconciliationRetry.json()).toMatchObject({
+      approval: { id: "rss_reconciliation_fixture", fresh: true },
+      idempotent: true
+    });
+    expect(() => harness.database.prepare(
+      `UPDATE rss_import_execution_items
+       SET copied_bytes = copied_bytes + 1
+       WHERE execution_id = 'rss_execution_fixture'`
+    ).run()).toThrow("rss_import_execution_reconciled");
     const canceled = await handleRequest(
       adminRequest(
         `/v1/admin/rss-import/plans/${plan.id}/cancel`,
@@ -412,6 +497,81 @@ describe("RSS import executions", () => {
     expect(harness.puts).toBe(0);
   });
 
+  it("blocks reconciliation when private R2 evidence changed", async () => {
+    installDigestStream();
+    const harness = await createHarness();
+    const plan = await createReviewedPlan(harness);
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+      if (String(input) === feedUrl) return feedResponse(validPodcastFeed());
+      return new Response(audio, {
+        status: 200,
+        headers: {
+          "content-type": "audio/mpeg",
+          "content-length": String(audio.byteLength)
+        }
+      });
+    }));
+    const queued = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/execution`,
+        {
+          executionId: "rss_execution_tampered_object",
+          feedUrl,
+          expectedFeedSha256: plan.feedSha256,
+          expectedSelectionSha256: plan.selectionSha256,
+          executionConfirmed: true,
+          items: [{
+            sourceIdentitySha256:
+              plan.items[0].sourceIdentitySha256,
+            targetSlug: "episodio-tampered-object",
+            sourceLanguage: "es"
+          }]
+        }
+      ),
+      harness.env
+    );
+    expect(queued.status).toBe(202);
+    await processRssImportExecutionItem(
+      harness.env,
+      harness.queueMessages[0]
+    );
+    harness.tamperStoredMetadata();
+    const preview = await handleRequest(
+      adminGet(
+        `/v1/admin/rss-import/plans/${plan.id}/reconciliation`
+      ),
+      harness.env
+    );
+    expect(preview.status).toBe(200);
+    const state = await preview.json();
+    expect(state.readiness).toMatchObject({
+      copyReady: false,
+      prePublicationReady: false,
+      readyForApproval: false
+    });
+    expect(state.readiness.blockers).toContain(
+      "rss_import_private_object_mismatch"
+    );
+    const approval = await handleRequest(
+      adminRequest(
+        `/v1/admin/rss-import/plans/${plan.id}/reconciliation`,
+        {
+          reconciliationId: "rss_reconciliation_tampered",
+          expectedEvidenceSha256: state.readiness.evidenceSha256,
+          reconciliationConfirmed: true
+        }
+      ),
+      harness.env
+    );
+    expect(approval.status).toBe(409);
+    expect(await approval.json()).toEqual({
+      error: "rss_import_reconciliation_not_ready"
+    });
+    expect(harness.database.prepare(
+      "SELECT COUNT(*) AS count FROM rss_import_reconciliations"
+    ).get().count).toBe(0);
+  });
+
   it("keeps production-disabled execution closed before D1, Queue, or R2", async () => {
     let touched = 0;
     const closed = await handleRequest(
@@ -444,6 +604,32 @@ describe("RSS import executions", () => {
     expect(closed.status).toBe(404);
     expect(await closed.json()).toEqual({
       error: "rss_import_execution_unavailable"
+    });
+    const reconciliationClosed = await handleRequest(
+      adminRequest(
+        "/v1/admin/rss-import/plans/plan_fixture/reconciliation",
+        {}
+      ),
+      {
+        ENVIRONMENT: "production",
+        RSS_IMPORT_EXECUTION_MODE: "disabled",
+        ALLOWED_ORIGINS: siteOrigin,
+        DB: {
+          prepare() {
+            touched += 1;
+            throw new Error("D1 must stay closed");
+          }
+        },
+        MEDIA_BUCKET: {
+          async head() {
+            touched += 1;
+          }
+        }
+      }
+    );
+    expect(reconciliationClosed.status).toBe(404);
+    expect(await reconciliationClosed.json()).toEqual({
+      error: "rss_import_reconciliation_unavailable"
     });
     expect(touched).toBe(0);
   });
@@ -536,23 +722,10 @@ async function createHarness() {
       puts += 1;
       const bytes = new Uint8Array(await new Response(body).arrayBuffer());
       stored = { key, bytes, options };
-      return {
-        key,
-        version: "rss-import-fixture",
-        size: bytes.byteLength,
-        etag: "rss-import-etag",
-        httpEtag: '"rss-import-etag"',
-        uploaded: new Date(),
-        httpMetadata: options.httpMetadata,
-        customMetadata: options.customMetadata,
-        range: undefined,
-        checksums: {
-          toJSON() {
-            return {};
-          }
-        },
-        writeHttpMetadata() {}
-      };
+      return storedObject(stored);
+    },
+    async head(key) {
+      return stored?.key === key ? storedObject(stored) : null;
     },
     async delete(key) {
       deletes += 1;
@@ -573,6 +746,14 @@ async function createHarness() {
     },
     storedMetadata() {
       return stored?.options.customMetadata;
+    },
+    tamperStoredMetadata() {
+      if (stored) {
+        stored.options.customMetadata = {
+          ...stored.options.customMetadata,
+          executionId: "rss_execution_tampered"
+        };
+      }
     },
     episodeCount() {
       return Number(database.prepare(
@@ -616,6 +797,26 @@ async function createHarness() {
   };
   harnesses.push(harness);
   return harness;
+}
+
+function storedObject(stored) {
+  return {
+    key: stored.key,
+    version: "rss-import-fixture",
+    size: stored.bytes.byteLength,
+    etag: "rss-import-etag",
+    httpEtag: '"rss-import-etag"',
+    uploaded: new Date(),
+    httpMetadata: stored.options.httpMetadata,
+    customMetadata: stored.options.customMetadata,
+    range: undefined,
+    checksums: {
+      toJSON() {
+        return {};
+      }
+    },
+    writeHttpMetadata() {}
+  };
 }
 
 function installDigestStream() {

@@ -299,6 +299,8 @@ including under concurrent requests.
 | `POST` | `/v1/admin/rss-import/plans/{id}/cancel` | recently authenticated super-admin | Terminally cancel a plan while retaining only a digest of the internal reason |
 | `GET` | `/v1/admin/rss-import/plans/{id}/execution` | analyst+ | Read private-copy/draft evidence and whether this environment permits execution |
 | `POST` | `/v1/admin/rss-import/plans/{id}/execution` | recently authenticated super-admin | Staging-only exact-feed reconciliation and immutable queueing of private source-audio copies plus unpublished draft episodes |
+| `GET` | `/v1/admin/rss-import/plans/{id}/reconciliation` | analyst+ | Recompute content-free exact-copy, draft-identity, source-upload, private-R2, and zero-publication evidence plus a non-activating old-host checklist |
+| `POST` | `/v1/admin/rss-import/plans/{id}/reconciliation` | recently authenticated super-admin | Immutably approve one unchanged staging copy snapshot without publishing, modifying R2, or activating a redirect |
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
@@ -431,6 +433,28 @@ publication, News, RSS, redirect, directory, YouTube, email, ad, billing, or
 provider work. Queue recovery is bounded to five attempts; item and execution
 responses expose only stable error codes and content-free reconciliation
 evidence. An execution locks its reviewed plan against cancellation.
+
+Reconciliation is another staging-only, read-mostly boundary and returns
+unavailable before D1/R2 access when execution mode is disabled. `GET`
+recomputes a deterministic SHA-256 over the immutable execution/item evidence,
+the matching draft episode identity and canonical News URL, one completed
+private source upload, and an R2 `HEAD` whose size, ETag, content type, and
+purpose metadata all agree. It also requires no delivery audio, publication
+revision, distribution job, News/site publication, or directory publication
+for any imported draft. R2 lookups are bounded to five concurrent requests and
+neither endpoint returns source URLs or private object keys.
+
+Approval accepts exactly `reconciliationId`, `expectedEvidenceSha256`, and
+`reconciliationConfirmed: true`; it requires recent Super-admin
+authentication and same-origin CSRF. The conditional insert revalidates the
+D1 draft/upload/no-publication predicates, is idempotent only for the same
+identifier and digest, and locks the execution and items against later
+updates. The response always reports zero R2, episode, publication, redirect,
+and provider mutations. Its old-host checklist has
+`activationAvailable: false` and `ready: false`: later publication of every
+imported episode, canonical-feed validation after those updates, renewed
+10-directory certification, and explicit owner redirect attestation all
+remain required.
 
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |

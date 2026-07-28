@@ -399,9 +399,26 @@ source URL as soon as all items finish.
 
 This capability never sets delivery audio, publishes News/RSS, configures a
 redirect/directory, creates YouTube/email/ad/billing work, or contacts a
-provider other than the explicitly authorized source host. Working-master
-approval, owner reconciliation, publication, and old-host 301 activation are
-separate gates.
+provider other than the explicitly authorized source host.
+
+Owner reconciliation is a distinct staging-only evidence gate. It recomputes
+one fixed-schema digest from execution/item evidence, the exact unpublished
+draft identity and canonical News URL, completed source-upload evidence, and
+private R2 `HEAD` metadata. R2 checks have a five-request concurrency ceiling;
+source URLs and private object keys stay out of responses. Any missing or
+mismatched object, draft/upload identity drift, assigned delivery audio,
+publication revision, or queued publication/distribution work blocks
+approval. A recent Super-admin must submit the exact digest and explicit
+confirmation; D1 rechecks all database predicates in the conditional insert.
+The immutable approval then prevents execution/item edits.
+
+Approval performs no R2, episode, publication, redirect, provider, email, ad,
+or billing mutation. Production fails closed before D1 or R2. The returned
+old-host checklist cannot activate a redirect and is always blocked on a
+separate owner attestation; public imported episodes, canonical-feed
+validation after their latest update, and renewed 10-directory certification
+are also mandatory. Working-master approval, publication, and old-host 301
+activation remain separate gates.
 
 ## Before production
 
