@@ -147,13 +147,7 @@ export async function previewAdminRssImport(
     );
   }
 
-  const source = await fetchImportFeed(requestedUrl);
-  const preview = await parsePodcastRssImportPreview(
-    source.xml,
-    requestedUrl,
-    source.resolvedUrl,
-    source.redirectCount
-  );
+  const preview = await loadPodcastRssImportPreview(requestedUrl);
   return privateJson(request, env.ALLOWED_ORIGINS, {
     show: {
       id: show.id,
@@ -162,6 +156,19 @@ export async function previewAdminRssImport(
     preview,
     importMutationPerformed: false
   });
+}
+
+export async function loadPodcastRssImportPreview(
+  requestedUrlValue: string
+): Promise<RssImportPreview> {
+  const requestedUrl = validatedImportFeedUrl(requestedUrlValue);
+  const source = await fetchImportFeed(requestedUrl);
+  return parsePodcastRssImportPreview(
+    source.xml,
+    requestedUrl,
+    source.resolvedUrl,
+    source.redirectCount
+  );
 }
 
 export async function parsePodcastRssImportPreview(

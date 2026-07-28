@@ -66,11 +66,17 @@ iHeartRadio, and Deezer.
 - Add a migration path comparable to established podcast hosts. The first
   boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
   bounded public-HTTPS fetches and safe XML reduction report which source
-  items are real migratable audio without exposing the owner email. A later
-  reviewed boundary will copy immutable audio into private R2, create draft
-  episode revisions with stable source identities, reconcile counts/digests,
-  and only then provide the old-host redirect checklist. Never activate a 301
-  redirect during preview or before owner reconciliation.
+  items are real migratable audio without exposing the owner email. The
+  reviewed-plan boundary now freezes up to 25 selected source identities,
+  exact feed/metadata digests, and query-stripped display URLs, then requires a
+  recently authenticated Super-admin to re-enter and re-fetch the exact feed
+  before review. Preparing, reviewing, listing, or canceling this immutable
+  evidence performs zero media copies and zero episode mutations. A later
+  execution boundary will copy immutable audio into private R2, create draft
+  episode revisions with stable source identities, reconcile post-copy
+  counts/digests, and only then provide the old-host redirect checklist. Never
+  activate a 301 redirect during preview, plan review, or before owner
+  reconciliation.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed

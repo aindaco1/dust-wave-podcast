@@ -39,13 +39,18 @@ sponsor-reconciliation gates pass. Public clip selection and verified range
 delivery are implemented as a staging preview with production disabled;
 production-live YouTube/GitHub publishing remains roadmap work.
 
-An existing-show RSS migration preview is also implemented without a copy
-boundary. A recently authenticated super-admin must confirm import rights; the
-Worker then performs a bounded, redirect-controlled public-HTTPS fetch,
-sanitizes RSS metadata, hides the owner address, and reports which items have
-valid audio enclosures and stable import identity. It writes no episode or
-media state and never configures a redirect. Media copying, draft creation,
-reconciliation, and the old-host 301 checklist remain separately gated work.
+An existing-show RSS migration preview and reviewed plan boundary are also
+implemented without a copy boundary. A recently authenticated super-admin
+must confirm import rights; the Worker performs a bounded,
+redirect-controlled public-HTTPS fetch, sanitizes RSS metadata, hides the
+owner address, and reports which items have valid audio enclosures and stable
+import identity. A selected plan freezes the exact feed, source identities,
+metadata, and query-stripped display URLs. Review requires the exact source
+URL to be re-entered and re-fetches the feed before accepting byte-identical
+evidence. The plan is immutable, auditable, and cancelable, but writes no
+episode or media state and never configures a redirect. Media copying, draft
+creation, post-copy reconciliation, and the old-host 301 checklist remain
+separately gated work.
 
 The delivery boundary now derives one fixed-profile MP3 and bounded player
 waveform from the exact approved working master through a staging-only,

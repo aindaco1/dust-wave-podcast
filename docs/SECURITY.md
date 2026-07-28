@@ -337,7 +337,7 @@ chunk boundaries. It never fabricates words, speaker identity, or word timing.
 The final transcript still requires review, and the separate English/Spanish
 word-alignment quality gate remains locked.
 
-## RSS migration preview boundary
+## RSS migration preview and reviewed-plan boundary
 
 Only a recently authenticated super-admin with same-origin CSRF may preview an
 existing show's source feed, and the request must explicitly confirm import
@@ -353,10 +353,28 @@ summaries to bounded plain text, revalidates every returned URL, hashes the
 exact feed and each GUID/enclosure identity, previews at most 25 items, and
 returns only an owner-email presence boolean. External HTML, an owner address,
 raw GUID, cookies, response headers, and provider bodies never enter the
-response, D1, audit metadata, or logs. The boundary performs no import-domain,
+response, D1, audit metadata, or logs. The preview performs no import-domain,
 R2, directory, redirect, or provider mutation; the normal admin-session
-last-seen heartbeat remains unchanged. Copying media, creating drafts, and
-activating a feed redirect are separate future approval gates.
+last-seen heartbeat remains unchanged.
+
+Preparing a migration plan is a second zero-copy boundary for recently
+authenticated super-admins. It re-fetches the authorized feed and binds one to
+25 migration-ready source identities to the exact feed digest and normalized
+per-item metadata/enclosure digests. D1 retains hashes for the exact requested,
+resolved, and enclosure URLs but only query/fragment-stripped display URLs, so
+signed source tokens do not become plan or audit data. Item evidence and plan
+identity/count/digest evidence cannot be updated or deleted. Only the
+draft-to-reviewed or terminal canceled state may change.
+
+Review requires the exact feed URL to be supplied again, explicit rights and
+selection confirmation, recent authentication, CSRF, and a fresh source
+fetch. A changed redirect target, feed byte, selected identity, or metadata
+digest fails closed. Cancellation stores and audits only a purpose-bound
+reason digest. List responses are private/no-store and show-scoped; mutating
+routes remain super-admin-only. The APIs explicitly return zero-copy and
+zero-episode-mutation flags and have no R2, Queue, provider, redirect, or
+episode write path. Copying media, creating drafts, post-copy reconciliation,
+and activating a feed redirect remain separate future approval gates.
 
 ## Before production
 

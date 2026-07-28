@@ -239,6 +239,12 @@ import {
 } from "./transcripts";
 import { previewAdminRssImport } from "./rss-import-preview";
 import {
+  cancelAdminRssImportPlan,
+  createAdminRssImportPlan,
+  listAdminRssImportPlans,
+  reviewAdminRssImportPlan
+} from "./rss-import-plans";
+import {
   abortMultipartUpload,
   completeMultipartUpload,
   createMultipartUpload,
@@ -288,6 +294,12 @@ const ADMIN_SHOW_EPISODES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
 const ADMIN_SHOW_RSS_IMPORT_PREVIEW_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/preview$/;
+const ADMIN_SHOW_RSS_IMPORT_PLANS_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/plans$/;
+const ADMIN_RSS_IMPORT_PLAN_REVIEW_PATH =
+  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/review$/;
+const ADMIN_RSS_IMPORT_PLAN_CANCEL_PATH =
+  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/cancel$/;
 const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
 const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
@@ -889,6 +901,45 @@ async function routeRequest(
       request,
       env,
       adminShowRssImportPreviewMatch[1]
+    );
+  }
+  const adminShowRssImportPlansMatch = url.pathname.match(
+    ADMIN_SHOW_RSS_IMPORT_PLANS_PATH
+  );
+  if (adminShowRssImportPlansMatch) {
+    if (method === "GET") {
+      return listAdminRssImportPlans(
+        request,
+        env,
+        adminShowRssImportPlansMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return createAdminRssImportPlan(
+        request,
+        env,
+        adminShowRssImportPlansMatch[1]
+      );
+    }
+  }
+  const adminRssImportPlanReviewMatch = url.pathname.match(
+    ADMIN_RSS_IMPORT_PLAN_REVIEW_PATH
+  );
+  if (adminRssImportPlanReviewMatch && method === "POST") {
+    return reviewAdminRssImportPlan(
+      request,
+      env,
+      adminRssImportPlanReviewMatch[1]
+    );
+  }
+  const adminRssImportPlanCancelMatch = url.pathname.match(
+    ADMIN_RSS_IMPORT_PLAN_CANCEL_PATH
+  );
+  if (adminRssImportPlanCancelMatch && method === "POST") {
+    return cancelAdminRssImportPlan(
+      request,
+      env,
+      adminRssImportPlanCancelMatch[1]
     );
   }
   const adminShowMarketingDryRunMatch = url.pathname.match(

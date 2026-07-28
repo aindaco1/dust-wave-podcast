@@ -176,6 +176,13 @@ After apply:
   become ready. Do not mark real owner, ingestion, or recovery evidence in
   staging merely to make the counter green.
 
+For migration `0055`, verify `rss_import_plans` and
+`rss_import_plan_items`, the show/recent index, evidence immutability triggers,
+1–25 selection bound, query-free display-URL checks, and clean foreign keys.
+Replay all migrations from zero and confirm direct item update/delete and plan
+delete fail. This migration is additive; retain the pre-migration staging Time
+Travel bookmark. Do not apply it to production as part of a staging exercise.
+
 For migration `0032`, verify `episode_chapters` gained `chapter_key` and `toc`,
 the four `episode_chapter_*` review/history tables and indexes exist, any
 legacy rows have a revision-zero `episode_chapter_sets` header, and foreign-key
@@ -620,7 +627,18 @@ Before any existing-feed migration:
    enclosure URLs into public evidence.
 5. Compare episode/media-table counts and the staging R2 prefix before and
    after; only the ordinary admin-session last-seen heartbeat may change.
-6. Do not configure a new-feed tag or old-host 301 redirect. Those actions
+6. Select one to 25 migration-ready items and prepare an immutable plan.
+   Confirm the response says `mediaCopyPerformed: false` and
+   `episodeMutationPerformed: false`, D1 contains no query-bearing source URL,
+   and episode/R2 counts remain unchanged.
+7. Re-enter the exact source feed URL, explicitly confirm the immutable
+   selection, and review it. Change one feed byte in a local/mock fixture and
+   confirm review returns `409` while the plan stays `draft`; then restore the
+   exact feed and confirm review succeeds without episode/R2 mutation.
+8. Cancel an isolated fixture with a unique internal phrase; confirm the raw
+   phrase is absent from plan and audit rows while its purpose-bound digest is
+   present. Confirm plan/item evidence cannot be edited or deleted.
+9. Do not configure a new-feed tag or old-host 301 redirect. Those actions
    remain unavailable until a later immutable copy/reconciliation boundary and
    owner approval.
 

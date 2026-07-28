@@ -293,6 +293,10 @@ including under concurrent requests.
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
 | `POST` | `/v1/admin/shows/{id}/rss-import/preview` | recently authenticated super-admin | Fetch and sanitize one explicitly authorized public HTTPS RSS feed without importing episodes or media |
+| `GET` | `/v1/admin/shows/{id}/rss-import/plans` | analyst+ | List the ten most recent show-scoped immutable migration plans and selected evidence |
+| `POST` | `/v1/admin/shows/{id}/rss-import/plans` | recently authenticated super-admin | Re-fetch and freeze one exact 1–25 episode selection without copying media or creating episodes |
+| `POST` | `/v1/admin/rss-import/plans/{id}/review` | recently authenticated super-admin | Re-fetch and reconcile the exact feed, selection, and metadata before marking the zero-copy plan reviewed |
+| `POST` | `/v1/admin/rss-import/plans/{id}/cancel` | recently authenticated super-admin | Terminally cancel a plan while retaining only a digest of the internal reason |
 | `GET` | `/v1/admin/shows/{id}/audio-qc-policy` | analyst+ | Read the show-scoped source-audio thresholds before or after episodes exist |
 | `PATCH` | `/v1/admin/shows/{id}/audio-qc-policy` | admin+ | Optimistically replace show-scoped source-audio measurement thresholds |
 | `POST` | `/v1/admin/shows/{id}/marketing/announcements/dry-run` | producer+ | Review one consent-filtered, paired-language announcement without sending |
@@ -384,6 +388,26 @@ only whether an owner email exists; it never returns the address. The route
 does not create or update a show, episode, media object, redirect, directory,
 or provider object. The ordinary authenticated-session heartbeat may still
 advance.
+
+Plan preparation accepts exactly `planId`, `feedUrl`,
+`ownershipConfirmed: true`, the preview's `expectedFeedSha256`, and one to 25
+unique `selectedSourceIdentitySha256` values. It re-fetches the source, rejects
+a changed feed or a non-migratable/out-of-preview selection, and persists
+immutable per-item metadata/enclosure digests. Full query-bearing feed and
+enclosure URLs are not retained: D1 stores their SHA-256 values and
+query/fragment-free display forms. Exact retries by plan ID are idempotent;
+another plan for the same show/feed/selection conflicts.
+
+Review accepts the exact `feedUrl`, `ownershipConfirmed: true`,
+`reviewConfirmed: true`, `expectedFeedSha256`, and
+`expectedSelectionSha256`. It re-fetches the source and requires the resolved
+URL digest, feed bytes, selected identities, selection digest, and every
+metadata digest to match. Cancel accepts `expectedSelectionSha256` and a
+bounded reason, but retains and audits only its purpose-bound SHA-256. All plan
+responses explicitly report `mediaCopyPerformed: false` and
+`episodeMutationPerformed: false`; none of these routes writes R2, the episode
+catalog, redirects, directories, or providers.
+
 | `GET` | `/v1/admin/ads/campaigns?showId={id}` | analyst+ | Show-scoped campaign/readiness list |
 | `POST` | `/v1/admin/ads/campaigns` | admin+ | Create an audited draft campaign and target |
 | `PATCH` | `/v1/admin/ads/campaigns/{id}` | admin+ | Edit metadata and reset approval |
