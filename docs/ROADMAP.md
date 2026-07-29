@@ -248,8 +248,11 @@ iHeartRadio, and Deezer.
   uploads through checksum-verified multipart Worker streams, and creates an
   ordinary source-audio QC run for the completed candidate. It remains
   staging-only and private. A zero-blocker, current-policy result still needs
-  an explicit Super-admin promotion before it becomes a new immutable master;
-  it cannot replace delivery audio by itself.
+  an explicit, recently authenticated Super-admin decision. Promotion creates
+  a new immutable master; rejection records immutable actor/reason/time
+  evidence, retains the private render and QC result, frees the selection for
+  another candidate, and leaves the working master untouched. A candidate
+  cannot replace delivery audio by itself.
 - The delivery boundary now snapshots that exact current master into one
   deterministic 44.1 kHz stereo 128 kbps MP3 and bounded
   `dustwave-player-peaks-v1` document. The staging-only workflow fully decodes

@@ -77,6 +77,7 @@ import {
   getAudioEnhancementDerivativeProcessorSource,
   listAdminAudioEnhancementDerivatives,
   queueAdminAudioEnhancementDerivative,
+  rejectAdminAudioEnhancementDerivative,
   serveAdminAudioEnhancementDerivative,
   uploadAudioEnhancementDerivativeProcessorPart
 } from "./audio-enhancement-derivatives";
@@ -409,6 +410,8 @@ const ADMIN_AUDIO_ENHANCEMENT_MEDIA_PATH =
   /^\/v1\/admin\/audio-enhancements\/([A-Za-z0-9_-]+)\/media\/(original|enhanced)$/;
 const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_APPROVE_PATH =
   /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/approve$/;
+const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_REJECT_PATH =
+  /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/reject$/;
 const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_MEDIA_PATH =
   /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/media$/;
 const ADMIN_DELIVERY_AUDIO_APPROVE_PATH =
@@ -1435,6 +1438,19 @@ async function routeRequest(
       request,
       env,
       adminAudioEnhancementDerivativeApproveMatch[1]
+    );
+  }
+  const adminAudioEnhancementDerivativeRejectMatch = url.pathname.match(
+    ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_REJECT_PATH
+  );
+  if (
+    adminAudioEnhancementDerivativeRejectMatch
+    && method === "POST"
+  ) {
+    return rejectAdminAudioEnhancementDerivative(
+      request,
+      env,
+      adminAudioEnhancementDerivativeRejectMatch[1]
     );
   }
   const adminAudioEnhancementDerivativeMediaMatch = url.pathname.match(

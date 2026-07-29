@@ -774,17 +774,29 @@ The replay validates both retained contracts, accepts only the isolated
 staging host/bucket, removes the manifest/callback after success, and must be
 idempotent. In the workbench, confirm authenticated full-file range
 playback/download, current-policy and digest-match indicators, and that the
-approval form appears only to a Super-admin after zero-blocker QC.
+promote and reject forms appear only to a recently authenticated Super-admin
+after zero-blocker QC.
 
-Approve with the exact displayed base revision and a bounded operational
-reason. Confirm the response creates an `enhanced_derivative` master at the
-next revision, the old derivative becomes approved while other active
-derivatives become stale, and transcript/chapter/clip approvals are
-invalidated through the existing master triggers. Repeat with a stale
-revision, changed current master, mismatched output SHA, old QC-policy
+Exercise both terminal choices against separate disposable candidates:
+
+- Promote with the exact displayed base revision and a bounded operational
+  reason. Confirm the response creates an `enhanced_derivative` master at the
+  next revision, the derivative becomes approved, other active derivatives
+  become stale, and transcript/chapter/clip approvals are invalidated through
+  the existing master triggers.
+- Reject with the exact displayed base revision, a 10–500 character reason,
+  and the exact-derivative acknowledgement. Confirm the API presents the
+  candidate as `rejected`, the working-master ID and revision are unchanged,
+  the private R2 object and QC row remain, immutable rejection evidence and
+  one privacy-minimized audit event exist, and a fresh candidate can be
+  queued for the same selected preview/master pair.
+
+Repeat each terminal request with an authentication older than 15 minutes,
+stale revision, changed current master, mismatched output SHA, old QC-policy
 revision, and non-Super-admin session; each must fail closed without a master
-or audit row. Anonymous derivative media is `401`; production queue,
-processor, and object state remain untouched.
+change or audit row. A same-reason rejection retry must be idempotent.
+Anonymous derivative media is `401`; production queue, processor, and object
+state remain untouched.
 
 With the final working master selected, queue Delivery audio and player
 waveform from Production and dispatch the returned job ID:

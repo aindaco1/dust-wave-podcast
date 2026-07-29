@@ -22,6 +22,7 @@ import { authorizeAdminEpisode } from "./admin-episode-access";
 import {
   hasAdminRoleForShow,
   requireAdmin,
+  requireRecentAdminAuthentication,
   type AdminRole
 } from "./admin-auth";
 import { prepareAdminAuditAfterSingleChange } from "./audit";
@@ -72,6 +73,27 @@ const FAILURE_CODES = new Set([
   "output_invalid",
   "multipart_unavailable"
 ]);
+const CURRENT_DECISION_EVIDENCE_SQL = `
+  EXISTS (
+    SELECT 1
+    FROM episode_working_master_states state
+    JOIN audio_qc_runs qc
+      ON qc.id =
+        audio_enhancement_derivatives.derivative_quality_control_run_id
+    JOIN show_audio_qc_policies policy
+      ON policy.show_id = ?
+    WHERE state.episode_id =
+        audio_enhancement_derivatives.episode_id
+      AND state.revision = ?
+      AND state.current_master_id =
+        audio_enhancement_derivatives.source_master_id
+      AND qc.status = 'succeeded'
+      AND qc.blocker_count = 0
+      AND qc.policy_revision = policy.revision
+      AND qc.source_sha256 =
+        audio_enhancement_derivatives.output_sha256
+      AND qc.report_sha256 IS NOT NULL
+  )`;
 
 type DerivativeSourceRow = {
   episode_id: string;
@@ -131,6 +153,9 @@ type DerivativeRow = {
   completed_at: string | null;
   approved_at: string | null;
   approval_reason: string | null;
+  rejected_by_admin_user_id: string | null;
+  rejection_reason: string | null;
+  rejected_at: string | null;
   current_master_id: string | null;
   source_duration_ms: number;
   quality_control_status: string | null;
@@ -1172,6 +1197,12 @@ export async function approveAdminAudioEnhancementDerivative(
     requireCsrf: true
   });
   if (!auth.ok) return auth.response;
+  const recentError = await requireRecentAdminAuthentication(
+    request,
+    env,
+    auth.authorization.identity.id
+  );
+  if (recentError) return recentError;
   const derivative = await loadDerivative(env.DB, derivativeId);
   if (
     !derivative
@@ -1194,22 +1225,7 @@ export async function approveAdminAudioEnhancementDerivative(
     "approvalReason",
     500
   );
-  if (
-    derivative.status !== "ready"
-    || !derivativeCurrent(derivative)
-    || !derivative.output_upload_id
-    || !derivative.derivative_quality_control_run_id
-    || !derivative.output_object_bytes
-    || !derivative.output_object_etag
-    || !derivative.output_sha256
-    || derivative.quality_control_status !== "succeeded"
-    || derivative.quality_control_blocker_count !== 0
-    || derivative.quality_control_policy_revision
-      !== derivative.current_policy_revision
-    || derivative.quality_control_source_sha256
-      !== derivative.output_sha256
-    || !derivative.quality_control_report_sha256
-  ) {
+  if (!derivativeDecisionReady(derivative)) {
     return derivativeConflict(
       request,
       env,
@@ -1244,7 +1260,7 @@ export async function approveAdminAudioEnhancementDerivative(
     !validCompletedObject(
       object,
       derivative,
-      derivative.output_object_bytes
+      derivative.output_object_bytes!
     )
     || object!.httpEtag !== derivative.output_object_etag
   ) {
@@ -1255,86 +1271,124 @@ export async function approveAdminAudioEnhancementDerivative(
     );
   }
   const revision = baseRevision + 1;
-  const results = await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE audio_enhancement_derivatives
-       SET
-         status = 'approved',
-         approved_by_admin_user_id = ?,
-         approval_reason = ?,
-         approved_at = datetime('now'),
-         updated_at = datetime('now')
-       WHERE id = ?
-         AND status = 'ready'
-         AND source_master_id = ?`
-    ).bind(
-      auth.authorization.identity.id,
-      approvalReason,
-      derivativeId,
-      derivative.source_master_id
-    ),
-    env.DB.prepare(
-      `INSERT INTO episode_working_masters (
-         id, episode_id, revision, origin_kind, source_upload_id,
-         quality_control_run_id, object_key, object_bytes, object_etag,
-         mime_type, source_sha256, quality_control_report_sha256,
-         approval_reason, approved_by_admin_user_id
-       ) VALUES (
-         ?, ?, ?, 'enhanced_derivative', ?, ?, ?, ?, ?, 'audio/mpeg',
-         ?, ?, ?, ?
-       )`
-    ).bind(
-      masterId,
-      derivative.episode_id,
-      revision,
-      derivative.output_upload_id,
-      derivative.derivative_quality_control_run_id,
-      derivative.output_object_key,
-      derivative.output_object_bytes,
-      derivative.output_object_etag,
-      derivative.output_sha256,
-      derivative.quality_control_report_sha256,
-      approvalReason,
-      auth.authorization.identity.id
-    ),
-    env.DB.prepare(
-      `UPDATE episode_working_master_states
-       SET
-         revision = ?,
-         current_master_id = ?,
-         updated_at = datetime('now')
-       WHERE episode_id = ?
-         AND revision = ?
-         AND current_master_id = ?`
-    ).bind(
-      revision,
-      masterId,
-      derivative.episode_id,
-      baseRevision,
-      derivative.source_master_id
-    ),
-    prepareAdminAuditAfterSingleChange(env.DB, {
-      adminUserId: auth.authorization.identity.id,
-      action: "audio_enhancement_derivative.approved",
-      targetType: "episode_working_master",
-      targetId: masterId,
-      metadata: {
+  const derivativeGuardId =
+    `derivative_approval_guard_${crypto.randomUUID().replace(/-/g, "")}`;
+  const masterGuardId =
+    `master_approval_guard_${crypto.randomUUID().replace(/-/g, "")}`;
+  let results;
+  try {
+    results = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE audio_enhancement_derivatives
+         SET
+           status = 'approved',
+           approved_by_admin_user_id = ?,
+           approval_reason = ?,
+           approved_at = datetime('now'),
+           updated_at = datetime('now')
+         WHERE id = ?
+           AND status = 'ready'
+           AND source_master_id = ?
+           AND rejected_at IS NULL
+           AND ${CURRENT_DECISION_EVIDENCE_SQL}`
+      ).bind(
+        auth.authorization.identity.id,
+        approvalReason,
         derivativeId,
-        episodeId: derivative.episode_id,
+        derivative.source_master_id,
+        derivative.show_id,
+        baseRevision
+      ),
+      env.DB.prepare(
+        `INSERT INTO publication_batch_guards (id, update_succeeded)
+         VALUES (?, changes())`
+      ).bind(derivativeGuardId),
+      env.DB.prepare(
+        `INSERT INTO episode_working_masters (
+           id, episode_id, revision, origin_kind, source_upload_id,
+           quality_control_run_id, object_key, object_bytes, object_etag,
+           mime_type, source_sha256, quality_control_report_sha256,
+           approval_reason, approved_by_admin_user_id
+         ) VALUES (
+           ?, ?, ?, 'enhanced_derivative', ?, ?, ?, ?, ?, 'audio/mpeg',
+           ?, ?, ?, ?
+         )`
+      ).bind(
+        masterId,
+        derivative.episode_id,
         revision,
-        sourceMasterId: derivative.source_master_id,
-        outputUploadId: derivative.output_upload_id,
-        qualityControlRunId:
-          derivative.derivative_quality_control_run_id,
-        outputSha256: derivative.output_sha256,
-        qualityControlReportSha256:
-          derivative.quality_control_report_sha256
-      }
-    })
-  ]);
+        derivative.output_upload_id,
+        derivative.derivative_quality_control_run_id,
+        derivative.output_object_key,
+        derivative.output_object_bytes,
+        derivative.output_object_etag,
+        derivative.output_sha256,
+        derivative.quality_control_report_sha256,
+        approvalReason,
+        auth.authorization.identity.id
+      ),
+      env.DB.prepare(
+        `UPDATE episode_working_master_states
+         SET
+           revision = ?,
+           current_master_id = ?,
+           updated_at = datetime('now')
+         WHERE episode_id = ?
+           AND revision = ?
+           AND current_master_id = ?`
+      ).bind(
+        revision,
+        masterId,
+        derivative.episode_id,
+        baseRevision,
+        derivative.source_master_id
+      ),
+      env.DB.prepare(
+        `INSERT INTO publication_batch_guards (id, update_succeeded)
+         VALUES (?, changes())`
+      ).bind(masterGuardId),
+      prepareAdminAuditAfterSingleChange(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "audio_enhancement_derivative.approved",
+        targetType: "episode_working_master",
+        targetId: masterId,
+        metadata: {
+          derivativeId,
+          episodeId: derivative.episode_id,
+          revision,
+          sourceMasterId: derivative.source_master_id,
+          outputUploadId: derivative.output_upload_id,
+          qualityControlRunId:
+            derivative.derivative_quality_control_run_id,
+          outputSha256: derivative.output_sha256,
+          qualityControlReportSha256:
+            derivative.quality_control_report_sha256
+        }
+      }),
+      env.DB.prepare(
+        `DELETE FROM publication_batch_guards WHERE id = ?`
+      ).bind(derivativeGuardId),
+      env.DB.prepare(
+        `DELETE FROM publication_batch_guards WHERE id = ?`
+      ).bind(masterGuardId)
+    ]);
+  } catch (error) {
+    const message = String(error);
+    if (
+      message.includes("publication_batch_guards")
+      || message.includes("update_succeeded")
+    ) {
+      return derivativeConflict(
+        request,
+        env,
+        "audio_enhancement_derivative_master_conflict"
+      );
+    }
+    throw error;
+  }
   if (
     Number(results[0]?.meta?.changes ?? 0) !== 1
-    || Number(results[2]?.meta?.changes ?? 0) !== 1
+    || Number(results[3]?.meta?.changes ?? 0) !== 1
   ) {
     return derivativeConflict(
       request,
@@ -1359,6 +1413,124 @@ export async function approveAdminAudioEnhancementDerivative(
       approvalReason,
       approvedAt: new Date().toISOString()
     }
+  });
+}
+
+export async function rejectAdminAudioEnhancementDerivative(
+  request: Request,
+  env: PodcastEnv,
+  derivativeIdValue: string
+): Promise<Response> {
+  const derivativeId = validIdentifier(derivativeIdValue, "derivativeId");
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: APPROVE_ROLES,
+    requireCsrf: true
+  });
+  if (!auth.ok) return auth.response;
+  const recentError = await requireRecentAdminAuthentication(
+    request,
+    env,
+    auth.authorization.identity.id
+  );
+  if (recentError) return recentError;
+  const derivative = await loadDerivative(env.DB, derivativeId);
+  if (
+    !derivative
+    || !hasAdminRoleForShow(
+      auth.authorization.identity,
+      APPROVE_ROLES,
+      derivative.show_id
+    )
+  ) {
+    return derivativeNotFound(request, env);
+  }
+  const body = await readJsonObject(request, 20_000);
+  const baseRevision = positiveInteger(
+    body.baseRevision,
+    "baseRevision"
+  );
+  const rejectionReason = requiredText(
+    body.rejectionReason,
+    "rejectionReason",
+    500
+  );
+  if (rejectionReason.length < 10) {
+    throw new RequestValidationError(
+      "rejectionReason must be at least 10 characters"
+    );
+  }
+  if (body.acknowledgeExactDerivative !== true) {
+    throw new RequestValidationError(
+      "acknowledgeExactDerivative must be true"
+    );
+  }
+  if (
+    derivative.status === "stale"
+    && derivative.rejected_at
+    && derivative.rejection_reason === rejectionReason
+  ) {
+    return privateJson(request, env.ALLOWED_ORIGINS, {
+      derivative: presentDerivative(env, derivative),
+      idempotent: true
+    });
+  }
+  if (!derivativeDecisionReady(derivative)) {
+    return derivativeConflict(
+      request,
+      env,
+      "audio_enhancement_derivative_not_rejectable"
+    );
+  }
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE audio_enhancement_derivatives
+       SET
+         status = 'stale',
+         rejected_by_admin_user_id = ?,
+         rejection_reason = ?,
+         rejected_at = datetime('now'),
+         updated_at = datetime('now')
+       WHERE id = ?
+         AND status = 'ready'
+         AND source_master_id = ?
+         AND rejected_at IS NULL
+         AND ${CURRENT_DECISION_EVIDENCE_SQL}`
+    ).bind(
+      auth.authorization.identity.id,
+      rejectionReason,
+      derivativeId,
+      derivative.source_master_id,
+      derivative.show_id,
+      baseRevision
+    ),
+    prepareAdminAuditAfterSingleChange(env.DB, {
+      adminUserId: auth.authorization.identity.id,
+      action: "audio_enhancement_derivative.rejected",
+      targetType: "audio_enhancement_derivative",
+      targetId: derivativeId,
+      metadata: {
+        episodeId: derivative.episode_id,
+        sourceMasterId: derivative.source_master_id,
+        baseRevision,
+        outputSha256: derivative.output_sha256,
+        qualityControlRunId:
+          derivative.derivative_quality_control_run_id,
+        qualityControlReportSha256:
+          derivative.quality_control_report_sha256
+      }
+    })
+  ]);
+  if (Number(results[0]?.meta?.changes ?? 0) !== 1) {
+    return derivativeConflict(
+      request,
+      env,
+      "audio_enhancement_derivative_rejection_conflict"
+    );
+  }
+  const rejected = await loadDerivative(env.DB, derivativeId);
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    derivative: rejected ? presentDerivative(env, rejected) : null,
+    idempotent: false
   });
 }
 
@@ -1730,6 +1902,9 @@ function derivativeSelect(): string {
      derivative.completed_at,
      derivative.approved_at,
      derivative.approval_reason,
+     derivative.rejected_by_admin_user_id,
+     derivative.rejection_reason,
+     derivative.rejected_at,
      state.current_master_id,
      source_qc.duration_ms AS source_duration_ms,
      derivative_qc.status AS quality_control_status,
@@ -2075,12 +2250,7 @@ function presentDerivative(
     row.output_sha256
     && row.quality_control_source_sha256 === row.output_sha256
   );
-  const approvable = row.status === "ready"
-    && derivativeCurrent(row)
-    && row.quality_control_status === "succeeded"
-    && row.quality_control_blocker_count === 0
-    && qcCurrent
-    && qcMatchesOutput;
+  const approvable = derivativeDecisionReady(row);
   return {
     id: row.id,
     episodeId: row.episode_id,
@@ -2090,7 +2260,7 @@ function presentDerivative(
     recipe: JSON.parse(row.recipe_json) as AudioEnhancementDerivativeRecipe,
     recipeSha256: row.recipe_sha256,
     processorManifestSha256: row.processor_manifest_sha256,
-    status: row.status,
+    status: row.rejected_at ? "rejected" : row.status,
     current: derivativeCurrent(row),
     output: row.output_object_bytes
       ? {
@@ -2123,13 +2293,16 @@ function presentDerivative(
         }
       : null,
     approvable,
+    rejectable: approvable,
     processorVersion: row.processor_version,
     processorReportSha256: row.processor_report_sha256,
     failureCode: row.failure_code,
     approvalReason: row.approval_reason,
+    rejectionReason: row.rejection_reason,
     requestedAt: row.requested_at,
     completedAt: row.completed_at,
     approvedAt: row.approved_at,
+    rejectedAt: row.rejected_at,
     processor: row.derivative_quality_control_run_id
       && ["queued", "running"].includes(
         row.quality_control_status ?? ""
@@ -2163,6 +2336,22 @@ function qcDispatch(manifest: AudioQcManifest): Record<string, unknown> {
 
 function derivativeCurrent(row: DerivativeRow): boolean {
   return row.current_master_id === row.source_master_id;
+}
+
+function derivativeDecisionReady(row: DerivativeRow): boolean {
+  return row.status === "ready"
+    && row.rejected_at === null
+    && derivativeCurrent(row)
+    && Boolean(row.output_upload_id)
+    && Boolean(row.derivative_quality_control_run_id)
+    && Boolean(row.output_object_bytes)
+    && Boolean(row.output_object_etag)
+    && Boolean(row.output_sha256)
+    && row.quality_control_status === "succeeded"
+    && row.quality_control_blocker_count === 0
+    && row.quality_control_policy_revision === row.current_policy_revision
+    && row.quality_control_source_sha256 === row.output_sha256
+    && Boolean(row.quality_control_report_sha256);
 }
 
 function processorAvailable(env: PodcastEnv): boolean {

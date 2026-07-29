@@ -378,7 +378,8 @@ including under concurrent requests.
 | `POST` | `/v1/admin/episodes/{id}/audio-enhancement-derivatives` | producer+ | Staging-only queue from one ready preview and the exact current master |
 | `GET`, `HEAD` | `/v1/admin/audio-enhancements/{jobId}/media/{original\|enhanced}` | analyst+ | Show-scoped, range-safe, no-store preview or download |
 | `GET`, `HEAD` | `/v1/admin/audio-enhancement-derivatives/{jobId}/media` | analyst+ | Show-scoped, range-safe, no-store full derivative preview or download |
-| `POST` | `/v1/admin/audio-enhancement-derivatives/{jobId}/approve` | super-admin | Promote an exact current, zero-blocker QC candidate to a new working-master revision |
+| `POST` | `/v1/admin/audio-enhancement-derivatives/{jobId}/approve` | recently authenticated super-admin | Promote an exact current, zero-blocker QC candidate to a new working-master revision |
+| `POST` | `/v1/admin/audio-enhancement-derivatives/{jobId}/reject` | recently authenticated super-admin | Close an exact current, zero-blocker QC candidate without changing the working master |
 | `GET` | `/v1/admin/episodes/{id}/delivery-audio-jobs` | analyst+ | Current-master delivery state, bounded waveform evidence, and staging processor availability |
 | `POST` | `/v1/admin/episodes/{id}/delivery-audio-jobs` | producer+ | Staging-only queue of an exact current-master MP3 and player-peaks render |
 | `GET`, `HEAD` | `/v1/admin/delivery-audio-jobs/{jobId}/media` | analyst+ | Show-scoped, range-safe, no-store normalized-audio preview or download |
@@ -1333,8 +1334,14 @@ explicit immutable failure state, freeing the selected preview/master pair
 for a fresh render without erasing diagnostic evidence. A Super-admin approval
 rechecks the current master, R2 evidence, output digest, successful
 zero-blocker QC result, and current policy revision in the same D1 transaction
-that creates the replacement master. It never changes delivery audio or
-publishes.
+that creates the replacement master. Rejection accepts `baseRevision`, a
+10–500 character `rejectionReason`, and
+`acknowledgeExactDerivative: true`. Its guarded transaction presents the
+terminal state as `rejected`, retains the private object and QC evidence,
+records immutable actor/reason/time evidence plus a privacy-minimized audit
+event, and frees the selected preview/master pair. It never advances the
+working-master revision. Both terminal choices require a recent Super-admin
+authentication; neither changes delivery audio or publishes.
 
 ### Delivery audio and player peaks
 
