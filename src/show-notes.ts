@@ -2,6 +2,15 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import {
+  AI_DRAFT_MODEL,
+  aiDraftLanguage,
+  claimAiDraftGeneration,
+  generatedAiText,
+  parseAiProviderJsonObject,
+  projectTranscriptForAiDraft,
+  safeAiUsage
+} from "./ai-drafts";
 import { recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
@@ -12,20 +21,14 @@ import {
 } from "./transcripts";
 import {
   isTruthy,
-  readJsonObject,
-  RequestValidationError,
-  requiredText
+  readJsonObject
 } from "./validation";
 
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
-const SHOW_NOTES_MODEL = "@cf/meta/llama-3.2-3b-instruct";
-const MAXIMUM_TRANSCRIPT_EXCERPT_CHARACTERS = 48_000;
 const MAXIMUM_SUMMARY_CHARACTERS = 1_200;
 const MAXIMUM_SHOW_NOTES_CHARACTERS = 8_000;
 const MAXIMUM_KEYWORDS = 10;
 const MAXIMUM_KEYWORD_CHARACTERS = 60;
-const GENERATION_LIMIT_PER_EPISODE_PER_ADMIN_PER_HOUR = 6;
-const LANGUAGE_VALUES = new Set<TranscriptLanguage>(["en", "es"]);
 
 type EpisodePromptRow = {
   title: string;
@@ -68,11 +71,11 @@ export async function createAdminEpisodeShowNotesDraft(
   }
 
   const body = await readJsonObject(request, 2_000);
-  const sourceLanguage = showNotesLanguage(
+  const sourceLanguage = aiDraftLanguage(
     body.sourceLanguage,
     "sourceLanguage"
   );
-  const outputLanguage = showNotesLanguage(
+  const outputLanguage = aiDraftLanguage(
     body.outputLanguage,
     "outputLanguage"
   );
@@ -109,11 +112,11 @@ export async function createAdminEpisodeShowNotesDraft(
 
   const adminUserId = authorized.authorization.identity.id;
   const projection = projectTranscriptForShowNotes(transcript);
-  const generationClaimed = await claimShowNotesGeneration(
-    env.DB,
+  const generationClaimed = await claimAiDraftGeneration(env.DB, {
+    action: "show_notes.draft_requested",
     adminUserId,
-    authorized.episode.id,
-    {
+    episodeId: authorized.episode.id,
+    metadata: {
       sourceLanguage,
       outputLanguage,
       transcriptRevision: transcript.revision,
@@ -122,9 +125,9 @@ export async function createAdminEpisodeShowNotesDraft(
       includedCueCount: projection.includedCueCount,
       totalCueCount: projection.totalCueCount,
       truncated: projection.truncated,
-      model: SHOW_NOTES_MODEL
+      model: AI_DRAFT_MODEL
     }
-  );
+  });
   if (!generationClaimed) {
     return privateJson(
       request,
@@ -139,7 +142,7 @@ export async function createAdminEpisodeShowNotesDraft(
 
   try {
     const providerResponse = await env.AI.run(
-      SHOW_NOTES_MODEL,
+      AI_DRAFT_MODEL,
       {
         messages: showNotesMessages({
           episode,
@@ -176,8 +179,8 @@ export async function createAdminEpisodeShowNotesDraft(
         transcriptRevision: transcript.revision,
         transcriptSha256: transcript.contentSha256,
         draftSha256,
-        model: SHOW_NOTES_MODEL,
-        usage: safeUsage(providerResponse)
+        model: AI_DRAFT_MODEL,
+        usage: safeAiUsage(providerResponse)
       }
     });
     return privateJson(request, env.ALLOWED_ORIGINS, {
@@ -192,7 +195,7 @@ export async function createAdminEpisodeShowNotesDraft(
         truncated: projection.truncated
       },
       outputLanguage,
-      model: SHOW_NOTES_MODEL,
+      model: AI_DRAFT_MODEL,
       reviewRequired: true,
       saved: false
     });
@@ -207,7 +210,7 @@ export async function createAdminEpisodeShowNotesDraft(
         outputLanguage,
         transcriptRevision: transcript.revision,
         transcriptSha256: transcript.contentSha256,
-        model: SHOW_NOTES_MODEL,
+        model: AI_DRAFT_MODEL,
         errorName: error instanceof Error ? error.name : "UnknownError"
       }
     });
@@ -222,79 +225,21 @@ export async function createAdminEpisodeShowNotesDraft(
 
 export function projectTranscriptForShowNotes(
   transcript: VerifiedApprovedTranscript,
-  maximumCharacters = MAXIMUM_TRANSCRIPT_EXCERPT_CHARACTERS
+  maximumCharacters = 48_000
 ): TranscriptProjection {
-  if (
-    !Number.isSafeInteger(maximumCharacters)
-    || maximumCharacters < 4_000
-    || maximumCharacters > MAXIMUM_TRANSCRIPT_EXCERPT_CHARACTERS
-  ) {
-    throw new RangeError("maximumCharacters is outside the supported range");
-  }
-  const lines = transcript.cues.map((cue) => {
-    const speaker = cue.speakerLabel ? `${cue.speakerLabel}: ` : "";
-    return `[${formatTimestamp(cue.startsAtMs)}] ${speaker}${cue.text}`;
-  });
-  const fullTranscript = lines.join("\n");
-  if (fullTranscript.length <= maximumCharacters) {
-    return {
-      excerpt: fullTranscript,
-      includedCueCount: lines.length,
-      totalCueCount: lines.length,
-      truncated: false
-    };
-  }
-
-  const selected = new Set<number>();
-  const segmentBudget = Math.floor((maximumCharacters - 500) / 3);
-  collectForward(lines, 0, segmentBudget, selected);
-  collectForward(
-    lines,
-    Math.max(0, Math.floor(lines.length / 2) - 1),
-    segmentBudget,
-    selected
-  );
-  collectBackward(lines, lines.length - 1, segmentBudget, selected);
-  const indexes = [...selected].sort((left, right) => left - right);
-  let excerpt = renderTranscriptSelection(lines, indexes);
-  while (excerpt.length > maximumCharacters && indexes.length > 3) {
-    indexes.splice(Math.floor(indexes.length / 2), 1);
-    excerpt = renderTranscriptSelection(lines, indexes);
-  }
-  return {
-    excerpt,
-    includedCueCount: indexes.length,
-    totalCueCount: lines.length,
-    truncated: true
-  };
+  return projectTranscriptForAiDraft(transcript, { maximumCharacters });
 }
 
 export function parseShowNotesProviderResponse(
   value: unknown
 ): ShowNotesDraft {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("Show-notes provider response must be an object");
-  }
-  const response = (value as { response?: unknown }).response;
-  if (typeof response !== "string" || response.length > 20_000) {
-    throw new TypeError("Show-notes provider response is invalid");
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(response);
-  } catch {
-    throw new TypeError("Show-notes provider response is not valid JSON");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new TypeError("Show-notes provider output must be an object");
-  }
-  const result = parsed as Record<string, unknown>;
-  const summary = generatedText(
+  const result = parseAiProviderJsonObject(value);
+  const summary = generatedAiText(
     result.summary,
     "summary",
     MAXIMUM_SUMMARY_CHARACTERS
   );
-  const showNotesMarkdown = generatedText(
+  const showNotesMarkdown = generatedAiText(
     result.showNotesMarkdown,
     "showNotesMarkdown",
     MAXIMUM_SHOW_NOTES_CHARACTERS
@@ -305,7 +250,7 @@ export function parseShowNotesProviderResponse(
   const keywords: string[] = [];
   const seen = new Set<string>();
   for (const keywordValue of result.keywords) {
-    const keyword = generatedText(
+    const keyword = generatedAiText(
       keywordValue,
       "keyword",
       MAXIMUM_KEYWORD_CHARACTERS,
@@ -318,52 +263,6 @@ export function parseShowNotesProviderResponse(
     }
   }
   return { summary, showNotesMarkdown, keywords };
-}
-
-function showNotesLanguage(
-  value: unknown,
-  field: string
-): TranscriptLanguage {
-  const language = requiredText(value, field, 2) as TranscriptLanguage;
-  if (!LANGUAGE_VALUES.has(language)) {
-    throw new RequestValidationError(`${field} must be en or es`);
-  }
-  return language;
-}
-
-async function claimShowNotesGeneration(
-  db: D1Database,
-  adminUserId: string,
-  episodeId: string,
-  metadata: Record<string, unknown>
-): Promise<boolean> {
-  const result = await db
-    .prepare(
-      `INSERT INTO admin_audit_events (
-         id, admin_user_id, action, target_type, target_id, metadata_json
-       )
-       SELECT ?, ?, 'show_notes.draft_requested', 'episode', ?, ?
-       WHERE (
-         SELECT COUNT(*)
-         FROM admin_audit_events
-         WHERE target_type = 'episode'
-           AND target_id = ?
-           AND action = 'show_notes.draft_requested'
-           AND admin_user_id = ?
-           AND occurred_at > datetime('now', '-1 hour')
-       ) < ?`
-    )
-    .bind(
-      `audit_${crypto.randomUUID().replace(/-/g, "")}`,
-      adminUserId,
-      episodeId,
-      JSON.stringify(metadata),
-      episodeId,
-      adminUserId,
-      GENERATION_LIMIT_PER_EPISODE_PER_ADMIN_PER_HOUR
-    )
-    .run();
-  return result.meta.changes === 1;
 }
 
 function showNotesMessages({
@@ -438,103 +337,4 @@ function showNotesResponseSchema(): Record<string, unknown> {
     },
     required: ["summary", "showNotesMarkdown", "keywords"]
   };
-}
-
-function generatedText(
-  value: unknown,
-  field: string,
-  maximumCharacters: number,
-  { allowNewlines = true }: { allowNewlines?: boolean } = {}
-): string {
-  if (typeof value !== "string") {
-    throw new TypeError(`Show-notes provider ${field} must be text`);
-  }
-  const normalized = value
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .trim();
-  if (
-    !normalized
-    || normalized.length > maximumCharacters
-    || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/u
-      .test(normalized)
-    || /<[^>]*>/u.test(normalized)
-    || (!allowNewlines && normalized.includes("\n"))
-  ) {
-    throw new TypeError(`Show-notes provider ${field} is invalid`);
-  }
-  return normalized;
-}
-
-function safeUsage(value: unknown): Record<string, number> | null {
-  const usage = (
-    value
-    && typeof value === "object"
-    && !Array.isArray(value)
-  )
-    ? (value as { usage?: unknown }).usage
-    : null;
-  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
-  const result: Record<string, number> = {};
-  for (const key of ["prompt_tokens", "completion_tokens", "total_tokens"]) {
-    const amount = Number((usage as Record<string, unknown>)[key]);
-    if (Number.isSafeInteger(amount) && amount >= 0) result[key] = amount;
-  }
-  return Object.keys(result).length ? result : null;
-}
-
-function collectForward(
-  lines: string[],
-  start: number,
-  budget: number,
-  selected: Set<number>
-): void {
-  let used = 0;
-  for (let index = start; index < lines.length; index += 1) {
-    const length = lines[index].length + 1;
-    if (used > 0 && used + length > budget) break;
-    selected.add(index);
-    used += length;
-  }
-}
-
-function collectBackward(
-  lines: string[],
-  start: number,
-  budget: number,
-  selected: Set<number>
-): void {
-  let used = 0;
-  for (let index = start; index >= 0; index -= 1) {
-    const length = lines[index].length + 1;
-    if (used > 0 && used + length > budget) break;
-    selected.add(index);
-    used += length;
-  }
-}
-
-function renderTranscriptSelection(
-  lines: string[],
-  indexes: number[]
-): string {
-  const output: string[] = [];
-  let previous = -1;
-  for (const index of indexes) {
-    if (previous >= 0 && index > previous + 1) {
-      output.push("[… approved transcript cues omitted …]");
-    }
-    output.push(lines[index]);
-    previous = index;
-  }
-  return output.join("\n");
-}
-
-function formatTimestamp(milliseconds: number): string {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-  return [hours, minutes, seconds]
-    .map((value) => String(value).padStart(2, "0"))
-    .join(":");
 }

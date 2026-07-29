@@ -139,6 +139,15 @@ them in the unsaved editor; no episode, News, RSS, distribution, or provider
 publication state changes. Staging is enabled for controlled review while
 production remains disabled.
 
+The chapter workbench has a separate bilingual, review-only proposal assistant
+on the same verified-transcript and Workers AI boundary. Chapter drafting
+requires complete coverage within the 48,000-character prompt limit; it never
+silently proposes a table of contents from a partial transcript. Provider
+output may select only exact cue IDs, which the Worker maps back to immutable
+cue start times before the normal chapter validator runs. Applying a proposal
+only replaces unsaved chapter-editor state. Saving and Admin approval remain
+separate explicit actions. Staging is enabled and production is disabled.
+
 Source-language transcription accepts an explicit English/Spanish episode
 language and only the current approved working master. The job fingerprint
 binds the master SHA-256, model, language, and versioned settings; duplicate

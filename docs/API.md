@@ -403,6 +403,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
 | `POST` | `/v1/admin/episodes/{id}/show-notes/draft` | producer+ | Generate one bounded bilingual review draft from the latest verified approved transcript; never saves or publishes |
 | `GET` | `/v1/admin/episodes/{id}/chapters` | analyst+ | Current normalized chapter rows plus version/approval state |
+| `POST` | `/v1/admin/episodes/{id}/chapters/draft` | producer+ | Propose bounded bilingual chapter markers from every cue in one verified approved transcript; never saves or approves |
 | `PUT` | `/v1/admin/episodes/{id}/chapters` | producer+ | Idempotent optimistic chapter revision |
 | `POST` | `/v1/admin/episodes/{id}/chapters/approve` | admin+ | Approve one exact chapter revision |
 | `GET` | `/v1/admin/episodes/{id}/reviews` | analyst+ | Current reviewable targets, exact-revision history, comments, blockers, and non-enforcing readiness |
@@ -876,6 +877,30 @@ successful response sets `reviewRequired: true` and `saved: false`. The admin
 renders it with text-only DOM sinks; placing the Markdown in the existing
 sanitized WYSIWYG remains a local unsaved action until the normal episode
 PATCH. `SHOW_NOTES_AI_ENABLED=true` is staging-only; production is fail-closed.
+
+### Review-only AI chapter proposals
+
+`POST /v1/admin/episodes/{id}/chapters/draft` reuses the same Producer+,
+trusted-origin CSRF, immutable transcript verifier, Workers AI model, atomic
+six-per-admin/episode/hour claim, content-free audit, and strict output-text
+rules as show-note drafting. It has a separate
+`CHAPTER_DRAFT_AI_ENABLED` kill switch and rate-limit namespace.
+
+Unlike show-note drafting, chapter proposals require the complete approved
+transcript to fit the 48,000-character prompt boundary. A partial
+head/middle/tail projection returns `chapter_draft_full_transcript_required`
+before the model or audit claim. The model returns only ordered `cueId` and
+title pairs. The Worker requires the first cue, rejects missing, duplicate, or
+reordered identities, derives start times from exact verified cues, creates
+deterministic draft-only IDs, and reruns the ordinary chapter validator.
+
+The response contains exact transcript revision/digest/count evidence,
+`reviewRequired: true`, and `saved: false`. It stores no proposal text and
+cannot write chapter revisions or approvals. The browser renders titles with
+DOM text nodes; “Replace unsaved chapters” only changes the local chapter
+editor after confirmation. The existing `PUT` and Admin approval routes remain
+the only persistence/publication path. Staging enables the feature; production
+keeps `CHAPTER_DRAFT_AI_ENABLED=false`.
 
 ### Word-alignment review
 

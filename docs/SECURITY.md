@@ -553,6 +553,28 @@ and cannot save an episode, publish News/RSS/YouTube, contact a directory, or
 change media, billing, ads, or subscriber state. Staging is enabled for
 controlled tests; production is disabled until a separate promotion review.
 
+## AI chapter-draft boundary
+
+Chapter drafting reuses the show-notes authentication, CSRF, verified
+transcript, model, provider parsing, generated-text, usage, and atomic audit
+claim primitives under a separate action and kill switch. It fails before the
+model when the complete approved transcript exceeds 48,000 prompt characters;
+partial chapter coverage is never presented as complete.
+
+The provider cannot choose timestamps. It may return only ordered exact cue IDs
+and bounded titles. The Worker requires the first transcript cue, rejects
+unknown/duplicate/reordered IDs, derives start times from the immutable
+verified transcript, assigns digest-derived draft IDs, and passes the result
+through the ordinary chapter validator. Audits retain only languages,
+revision/digests, counts, model, usage, result, and generated-document digest.
+They never retain prompt, transcript, provider response, or chapter titles.
+
+The response is private/no-store and explicitly unsaved. The browser repeats
+the bounded/full-coverage contract, renders DOM text nodes, and requires
+confirmation before replacing existing unsaved rows. Generation cannot write a
+chapter revision or approval, publish a feed or News page, contact a provider,
+or mutate any other domain. Staging is enabled; production is fail-closed.
+
 Public transcript reads are slug-addressed and fail closed behind the same
 published/due/public-or-free-or-early-access/ready-media policy as canonical
 News/audio publication. Premium bonuses, drafts, future releases, archived

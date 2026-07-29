@@ -152,6 +152,13 @@ iHeartRadio, and Deezer.
   separate review card never saves or publishes; “Replace editor notes” is
   still only an unsaved local edit, with confirmation when notes already
   exist. Staging is rate-limited and enabled; production remains disabled.
+- The companion Hilite-value chapter assistant reuses the same verified
+  transcript, Workers AI, audit, language, and rate-limit primitives without a
+  new provider. It requires complete bounded cue coverage, accepts only ordered
+  exact cue identities, derives times server-side, and reruns the normal
+  chapter contract. The bilingual review card can replace only unsaved editor
+  state; versioned save and Admin approval remain separate. Staging is enabled
+  and production remains disabled.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
   speaker labels, Admin approval, and matching-alignment readiness. Canonical

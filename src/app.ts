@@ -10,6 +10,9 @@ import {
   createAdminEpisodeShowNotesDraft
 } from "./show-notes";
 import {
+  createAdminEpisodeChapterDraft
+} from "./chapter-drafts";
+import {
   getAdminAdQualificationReconciliation
 } from "./ad-reporting";
 import {
@@ -373,6 +376,8 @@ const ADMIN_SHOW_FEED_VALIDATION_PATH =
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_SHOW_NOTES_DRAFT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/show-notes\/draft$/;
+const ADMIN_EPISODE_CHAPTER_DRAFT_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/draft$/;
 const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_READINESS_PATH =
@@ -1312,6 +1317,16 @@ async function routeRequest(
       request,
       env,
       adminEpisodeShowNotesDraftMatch[1]
+    );
+  }
+  const adminEpisodeChapterDraftMatch = url.pathname.match(
+    ADMIN_EPISODE_CHAPTER_DRAFT_PATH
+  );
+  if (adminEpisodeChapterDraftMatch && method === "POST") {
+    return createAdminEpisodeChapterDraft(
+      request,
+      env,
+      adminEpisodeChapterDraftMatch[1]
     );
   }
   const adminEpisodeReadinessMatch = url.pathname.match(

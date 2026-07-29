@@ -438,6 +438,24 @@ one controlled draft and verify:
   publication row changes; and
 - the production bundle retains `SHOW_NOTES_AI_ENABLED=false`.
 
+Exercise the companion chapter assistant first against the local mock. Select
+the same episode in Production, generate English and Spanish proposals, and
+confirm the evidence reports the exact approved revision and all reviewed
+cues. Titles must render as text; no `PUT /chapters` may occur until the
+operator separately chooses Save review draft. Cancel replacement with
+existing rows and confirm they remain unchanged; accept it and confirm only
+the unsaved rows change. Verify 320 px layout, 44 px actions, no horizontal
+overflow, console error, or CSP violation.
+
+On staging, the real `needs_review` transcript must return
+`chapter_draft_approved_transcript_required` without a model call. After
+separate human approval, one controlled request must prove private/no-store,
+`reviewRequired: true`, `saved: false`, complete cue counts, content-free
+request/completion audits, no chapter revision/approval write, and the
+separate six-request rate limit. A transcript over 48,000 prompt characters
+must return `chapter_draft_full_transcript_required` before an audit claim.
+The production dry bundle must retain `CHAPTER_DRAFT_AI_ENABLED=false`.
+
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and
 maximum follow only the currently rendered page, neighboring cues remain
