@@ -1386,6 +1386,27 @@ acknowledgement requires a human to listen to the full derivative. Delivery
 audio stays blocked, and no News page, RSS item, directory job, YouTube job,
 or public media selection exists.
 
+Use the replay-safe operator gate to recheck that order without reading
+private content or bypassing the admin session:
+
+```sh
+npm run gate:episode:staging -- \
+  episode_98c14f1999dd4625b07b74b8cd0824be
+```
+
+The July 29, 2026 run reported four passes, five explicit blocks, one ordered
+wait, zero failures, and `enhancement_decision` as the next action. It
+confirmed the isolated revision-zero draft, zero-blocker source master, no
+premature downstream work, and clean foreign keys. The ready private
+derivative still needs a full listen and promote/reject decision, so delivery
+audio remains waiting instead of rendering from a master that may be replaced.
+Transcript, alignment, chapter, and final-audio production review remain
+separate blocks. All 21 remote `SELECT`/`PRAGMA` statements reported zero
+writes. The command returns no transcript/caption text, object key, hash,
+review comment, email, or admin identity. Add `--require-ready` only when CI
+or an operator should receive a nonzero exit for expected human/waiting gates;
+any safety or read-only failure is nonzero by default.
+
 On July 28, 2026, the workbench queued English transcription job
 `transcription_8243ef54973b9588cd453b23f55a0b99` and immutable chunk run
 `transcription_chunks_8243ef54973b9588cd453b23f55a0b99` against working-master

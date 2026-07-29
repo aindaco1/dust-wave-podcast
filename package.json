@@ -16,6 +16,7 @@
     "matrix:virtual-audio": "node scripts/run-virtual-audio-protocol-matrix.mjs",
     "load:virtual-audio": "node scripts/run-virtual-audio-load-gate.mjs",
     "gate:virtual-audio:staging": "node scripts/run-virtual-audio-staging-gate.mjs",
+    "gate:episode:staging": "node scripts/check-episode-staging-gate.mjs",
     "gate:stripe:staging": "node scripts/check-stripe-staging-readiness.mjs",
     "deploy:staging:dry": "wrangler deploy --env staging --dry-run",
     "deploy:production:dry": "wrangler deploy --env production --dry-run",

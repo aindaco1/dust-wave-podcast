@@ -205,6 +205,14 @@ iHeartRadio, and Deezer.
   fails closed unless the selected audio and player peaks still descend from
   the current master. The bilingual workbench uses the existing Digest player
   for authenticated waveform preview and download.
+- Keep operator launch checks content-free and replayable. The staging episode
+  gate now reads only bounded statuses, revisions, counts, and D1 integrity;
+  rejects an episode that has already escaped the isolated-draft boundary;
+  verifies Cloudflare reported zero writes for every statement; and orders a
+  ready enhanced-master decision ahead of delivery rendering so avoidable work
+  cannot immediately become stale. It never returns transcript/caption text,
+  object identity, hashes, review comments, email, or admin identity and cannot
+  replace authenticated human approval.
 - Transcribe Spanish and English and expose bounded confidence/provenance. The
   signed staging alignment bridge now binds the exact approved transcript,
   working master, normalized projection, adapter, and pinned runner; validates
