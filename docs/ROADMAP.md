@@ -127,6 +127,17 @@ iHeartRadio, and Deezer.
   rejects malformed transcript metadata, requires the immutable Podcasting 2.0
   channel UUIDv5, and deliberately makes older valid evidence stale before
   launch or RSS cutover.
+- The bilingual admin now also provides a deterministic, review-only transcript
+  quality panel over the already loaded draft. It reports text-free counts for
+  invalid timing, cues shorter than 0.5 seconds or longer than 10 seconds,
+  reading speed above 25 visible characters per second, and public-speaker
+  confirmation; each signal opens and focuses the first matching cue across
+  pagination. These product review thresholds do not approve, reject, upload,
+  retain, or export transcript content and do not replace listening or the
+  separate word-alignment gate. A bounded opt-in browser fixture supports up to
+  10,000 synthetic cues; the 1,300-cue English/Spanish desktop/mobile
+  regression passed without horizontal overflow, enforced CSP violations, or
+  browser console errors.
 - The first source-audio QC slice now snapshots a completed private source and
   show policy, fully decodes it in the pinned staging FFmpeg workflow, and
   records normalized codec/duration/sample/channel/bitrate, LUFS/LRA,

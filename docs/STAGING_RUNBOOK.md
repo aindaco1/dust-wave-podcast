@@ -378,6 +378,34 @@ transcript text in audits, and unchanged working-master/public-media objects.
 Do not expose the production processor routes until this rehearsal passes with
 rights-cleared English and Spanish sources.
 
+Before human transcript approval, exercise the review-only browser quality
+panel against a synthetic large draft. Build `dust-wave-new` against the local
+Podcast mock API, start that API with
+`PODCAST_ADMIN_MOCK_TRANSCRIPT_CUES=1300`, and use its dependency-free Chrome
+tracer with `--admin-tab production` at both 1440×900 and 390×844. Confirm:
+
+- the Production tab is selected and verified rather than inferred from a
+  stored preference;
+- the summary counts all 1,300 cues but never includes transcript text;
+- invalid timing, under-0.5-second, over-10-second, over-25-visible-characters-
+  per-second, and speaker-confirmation cards contain bounded counts and a
+  button that opens the first matching cue;
+- cue navigation changes to the correct 100-cue page, scrolls the exact stable
+  cue ID into view, and places keyboard focus on its start-time field;
+- the Spanish mobile tab control remains synchronized with Production, every
+  diagnostic card fits the viewport, and the document has no horizontal
+  overflow;
+- no enforced CSP violation or browser console error occurs; and
+- the main unminified admin module remains within its existing 302,000-byte
+  ceiling while the isolated transcript-review module remains within 12,000
+  bytes.
+
+The review panel is an editing aid only. Do not treat its local product
+thresholds as a transcript approval, accessibility certification,
+word-alignment result, or substitute for listening. It must not add a Worker
+request, D1 write, analytics event, browser storage entry, transcript export,
+or provider action.
+
 After both reviewed transcript languages and an exact working master exist,
 queue an alignment from the Production workbench in isolated staging. Copy the
 displayed job ID and dispatch only from the reviewed release branch:
