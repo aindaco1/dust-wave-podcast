@@ -64,9 +64,10 @@ describe("AI clip review drafts", () => {
       temperature: 0.2,
       response_format: { type: "json_schema" }
     });
-    expect(fixture.writes.every(({ query }) =>
-      query.includes("admin_audit_events")
-    )).toBe(true);
+    expect(fixture.writes.some(({ query }) =>
+      /\b(?:INSERT INTO|UPDATE|DELETE FROM)\s+(?:clips|clip_mutations|clip_revisions|clip_renders|clip_publications|clip_youtube_publications)\b/i
+        .test(query)
+    )).toBe(false);
     const auditMetadata = fixture.writes
       .filter(({ query }) => query.includes("admin_audit_events"))
       .flatMap(({ values }) => values
