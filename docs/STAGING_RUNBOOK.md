@@ -512,6 +512,20 @@ results. Exercise both locales at 320 CSS pixels; the input and all three
 actions must retain at least 44 px height, stack without horizontal overflow,
 and produce no console or CSP error.
 
+On the same loaded draft, exercise every transcript quality category with more
+than one matching cue. Confirm the category exposes one labeled control group
+with previous, open/current, and next actions; the endpoints disable rather
+than wrap; the visible and accessible position uses the selected cue and total;
+and the selected issue survives a transition between the first and second
+100-cue pages. Each action must reuse the existing paginated cue focus path.
+Fix one flagged value locally and confirm the next render either preserves the
+same cue when it still matches or returns to the first remaining match. The
+navigation may retain only bounded cue indexes in browser memory: no caption
+text, API request, storage write, dirty-state change, save, or approval may be
+introduced by navigation alone. Repeat in English and Spanish at 320 CSS
+pixels; each action must remain at least 44 px high with no horizontal
+overflow, inaccessible name, CSP violation, or console/page error.
+
 Create unsaved transcript and chapter edits without saving. For each relevant
 show, episode, transcript-language, and chapter selector, decline the bilingual
 discard prompt and confirm the prior value and draft remain unchanged with no
