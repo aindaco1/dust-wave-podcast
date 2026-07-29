@@ -1851,7 +1851,7 @@ function clipMediaHeaders(
     "accept-ranges": "bytes",
     "cache-control": visibility === "private"
       ? "private, no-store, max-age=0"
-      : "public, max-age=60, must-revalidate",
+      : "public, max-age=0, must-revalidate",
     "content-security-policy": "default-src 'none'; sandbox",
     "cross-origin-resource-policy": visibility === "private"
       ? "same-site"

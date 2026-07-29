@@ -1075,6 +1075,47 @@ announcement, address, or delivery row was fabricated. This is signature and
 replay evidence only: `ANNOUNCEMENT_DELIVERY_MODE` remains `dry_run` until one
 consented staging listener can receive the bounded live-send test below.
 
+### Public clip withdrawal and canonical-page gate
+
+Keep `CLIP_PUBLICATION_MODE=staging_preview` and use only a disposable staging
+episode whose canonical URL has the exact
+`/news/podcasts/{showSlug}/{episodeSlug}/` shape. Production stays disabled.
+
+Before using a real media object, run the repository contracts:
+
+```sh
+npm run check
+npm run deploy:staging:dry
+npm run deploy:production:dry
+```
+
+The public clip tests must prove all of the following:
+
+- approved metadata returns a strong content ETag with `public, max-age=0,
+  must-revalidate`, and an unchanged conditional request returns `304`;
+- the range-safe MP4 uses the same revalidation policy, canonical `Link`
+  ownership points to the episode News page, and object identity/checksums are
+  absent from public JSON;
+- after recent-Super-admin withdrawal, the same conditional metadata request
+  returns a new ETag and an empty clip selection instead of stale `304`;
+- the withdrawn MP4 returns no-store `404` without another R2 object read;
+- the website consumer renders with `preload="none"`, first-party canonical
+  share/download URLs, DOM text assignment, and at least 44 px controls;
+- at a 320 px device-width exercise, the card and every action remain within
+  the document width, the actions stack with intentional gaps, the copy status
+  occupies its own row, and `scrollWidth` equals `clientWidth`;
+- replaying the consumer with the empty metadata response leaves the whole
+  clip region hidden, clears its children, and records the local `empty`
+  state.
+
+The deterministic local browser fixture uses
+`PODCAST_ADMIN_MOCK_PUBLIC_CLIPS=ready|empty|missing`; it must never be
+published as an episode or copied to R2. The 2026-07-28 exercise used one 9:16
+24-second Spanish-caption fixture. At the narrow viewport its three actions
+were 219 by 48 px, the post-copy status was 219 by 21 px on its own row, and
+document client/scroll widths were both 291 CSS px under Chrome's 320 px
+device override. No media playback or provider action occurred.
+
 ## 5. Deploy and smoke test
 
 ```sh

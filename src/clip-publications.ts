@@ -827,7 +827,7 @@ async function publicClipJson(
     .join("")}"`;
   const headers = new Headers({
     "access-control-allow-origin": "*",
-    "cache-control": "public, max-age=60, must-revalidate",
+    "cache-control": "public, max-age=0, must-revalidate",
     "content-type": "application/json; charset=utf-8",
     etag,
     "referrer-policy": "no-referrer",

@@ -109,8 +109,9 @@ describe("public clip publication", () => {
     expect(listed.status).toBe(200);
     expect(listed.headers.get("access-control-allow-origin")).toBe("*");
     expect(listed.headers.get("cache-control"))
-      .toBe("public, max-age=60, must-revalidate");
-    expect(listed.headers.get("etag")).toMatch(/^"[a-f0-9]{64}"$/);
+      .toBe("public, max-age=0, must-revalidate");
+    const listedEtag = listed.headers.get("etag");
+    expect(listedEtag).toMatch(/^"[a-f0-9]{64}"$/);
     const payload = await listed.json();
     expect(payload).toEqual({
       schemaVersion: 1,
@@ -118,7 +119,8 @@ describe("public clip publication", () => {
         showSlug: "show-fixture",
         slug: "episode-fixture",
         canonicalUrl:
-          "https://dustwave.xyz/news/episode-fixture/"
+          "https://dustwave.xyz/news/podcasts/show-fixture/"
+          + "episode-fixture/"
       },
       clips: [{
         slug: "launch-moment",
@@ -136,17 +138,39 @@ describe("public clip publication", () => {
           `${feedOrigin}/v1/shows/show-fixture/episodes/episode-fixture`
           + "/clips/launch-moment.mp4?download=1",
         canonicalUrl:
-          "https://dustwave.xyz/news/episode-fixture/"
+          "https://dustwave.xyz/news/podcasts/show-fixture/"
+          + "episode-fixture/"
       }],
       truncated: false
     });
     expect(JSON.stringify(payload)).not.toContain(objectKey);
     expect(JSON.stringify(payload)).not.toContain(outputSha256);
+
+    const unchanged = await handleRequest(
+      publicRequest(
+        "/v1/shows/show-fixture/episodes/episode-fixture/clips",
+        { headers: { "if-none-match": listedEtag } }
+      ),
+      harness.env
+    );
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get("cache-control"))
+      .toBe("public, max-age=0, must-revalidate");
+    expect(await unchanged.text()).toBe("");
   });
 
   it("serves one verified public range and conceals a withdrawn selection", async () => {
     const harness = await createHarness({ episodeStatus: "published" });
     await prepareAndApprove(harness.env);
+    const listed = await handleRequest(
+      publicRequest(
+        "/v1/shows/show-fixture/episodes/episode-fixture/clips"
+      ),
+      harness.env
+    );
+    const listedEtag = listed.headers.get("etag");
+    expect(listed.status).toBe(200);
+    expect(listedEtag).toMatch(/^"[a-f0-9]{64}"$/);
     const mediaPath =
       "/v1/shows/show-fixture/episodes/episode-fixture"
       + "/clips/launch-moment.mp4";
@@ -162,12 +186,13 @@ describe("public clip publication", () => {
     expect(media.headers.get("content-length")).toBe("4");
     expect(media.headers.get("content-type")).toBe("video/mp4");
     expect(media.headers.get("cache-control"))
-      .toBe("public, max-age=60, must-revalidate");
+      .toBe("public, max-age=0, must-revalidate");
     expect(media.headers.get("cross-origin-resource-policy"))
       .toBe("cross-origin");
     expect(media.headers.get("access-control-allow-origin")).toBe("*");
     expect(media.headers.get("link")).toBe(
-      "<https://dustwave.xyz/news/episode-fixture/>; rel=\"canonical\""
+      "<https://dustwave.xyz/news/podcasts/show-fixture/"
+      + "episode-fixture/>; rel=\"canonical\""
     );
     expect(media.headers.get("x-robots-tag")).toContain("noindex");
     expect(await media.text()).toBe("2345");
@@ -183,6 +208,21 @@ describe("public clip publication", () => {
     expect(withdrawn.status).toBe(200);
     expect(await withdrawn.json()).toMatchObject({
       publication: { status: "withdrawn" }
+    });
+    const listAfterWithdrawal = await handleRequest(
+      publicRequest(
+        "/v1/shows/show-fixture/episodes/episode-fixture/clips",
+        { headers: { "if-none-match": listedEtag } }
+      ),
+      harness.env
+    );
+    expect(listAfterWithdrawal.status).toBe(200);
+    expect(listAfterWithdrawal.headers.get("cache-control"))
+      .toBe("public, max-age=0, must-revalidate");
+    expect(listAfterWithdrawal.headers.get("etag")).not.toBe(listedEtag);
+    expect(await listAfterWithdrawal.json()).toMatchObject({
+      clips: [],
+      truncated: false
     });
     const afterWithdrawal = await handleRequest(
       publicRequest(mediaPath),
@@ -347,7 +387,7 @@ async function createHarness({
       ?,
       'public',
       datetime('now', '-1 minute'),
-      'https://dustwave.xyz/news/episode-fixture/',
+      'https://dustwave.xyz/news/podcasts/show-fixture/episode-fixture/',
       'podcasts/show/episode.mp3',
       100,
       'audio/mpeg',

@@ -203,9 +203,16 @@ iHeartRadio, and Deezer.
   staging-preview metadata and range-safe MP4 routes repeat the canonical
   episode visibility gate and exact D1/R2 checksum/manifest evidence, expose
   no object identity, and point canonical ownership back to the episode News
-  page. Production remains disabled until the canonical page integration,
-  accessibility/responsive review, withdrawal-cache exercise, and owner
-  promotion decision pass.
+  page. The canonical page consumer now has an executable bilingual DOM
+  contract and a 320 px browser exercise covering 48 px actions, canonical
+  copy/share state, zero horizontal overflow, and complete concealment for an
+  empty/withdrawn response. Public metadata and MP4 responses now require
+  revalidation on every reuse; a withdrawal changes the metadata ETag to an
+  empty selection and makes the media route return no-store `404` without a
+  second R2 read. The owner included captioned clips/audiograms in the initial
+  launch scope. Keep production delivery disabled until the reviewed release
+  is merged and the same controlled staging exercise passes against a real
+  canonical episode.
 - Publish public RSS and canonical News pages; keep stable GUID and enclosure
   identity across retries.
 - Keep public release, early-access/bonus, subscription-expiry, assigned-tax,
