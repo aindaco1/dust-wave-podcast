@@ -149,6 +149,32 @@ does not mutate Worker secrets or create Worker versions during a run. A
 force-killed process still requires the exact lease/object audit in the staging
 runbook.
 
+## Isolated synthetic staging evidence
+
+On July 28, 2026, source commit
+`c2f06c01775a10c91bb697b0c17866242b378ff9` passed the complete wrapper
+against `dust-wave-podcast-staging.jogo.workers.dev` with 5,000 request pairs
+at concurrency 12:
+
+- all 24 HTTP protocol probes passed, including `HEAD`, full and ranged
+  `GET`, open and suffix ranges, retry, `If-None-Match`, `If-Range`,
+  unsatisfiable/multipart rejection, and concurrent range reads;
+- all 10,000 measured requests completed with zero request errors and zero
+  content mismatches;
+- virtual delivery measured 225.23 ms p95 versus 185.41 ms for the
+  byte-identical private-R2 baseline, an added p95 of 39.82 ms against the
+  250 ms ceiling; and
+- the wrapper confirmed removal of every object uploaded by the run and its
+  exact D1 lease. A follow-up aggregate query found zero diagnostic leases.
+
+The retained JSON is mode `0600`, contains no raw lease token, signed
+capability, authorization value, or capability path, and explicitly records
+`nativeClientValidation: false`. This closes the synthetic HTTP and paired-load
+gate only. It does not authorize `staging_public` or `live`, satisfy native
+Apple/Spotify/Overcast/Pocket Casts/Podcast Addict playback, prove launch
+inventory has equal-length house coverage, or replace the reviewed sponsor
+pilot.
+
 ## Required fixture set
 
 Generate Dust Wave-owned fixtures for both launch formats:

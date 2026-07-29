@@ -33,11 +33,13 @@ an immutable working-master snapshot, Queue recovery, private R2 evidence, and
 versioned transcript review. A real rights-cleared transcription run plus the
 alignment adapter's human-reviewed benchmark evidence remain gated. Checkout
 remains disabled pending accountant-approved tax/provider evidence. Dynamic
-audio now has a guarded public-enclosure runtime in code, but both deployed
-modes remain non-automatic until the real-client, load, fallback, and
-sponsor-reconciliation gates pass. Public clip selection and verified range
-delivery are implemented as a staging preview with production disabled;
-production-live YouTube/GitHub publishing remains roadmap work.
+audio now has a guarded public-enclosure runtime in code. Its isolated
+synthetic protocol and 10,000-request paired-load gates pass with exact
+cleanup, but both deployed modes remain non-automatic until the native-client,
+inventory/fallback, and sponsor-reconciliation gates pass. Public clip
+selection and verified range delivery are implemented as a staging preview
+with production disabled; production-live YouTube/GitHub publishing remains
+roadmap work.
 
 Public release, premium-window, subscription-expiry, tax-rate, and publication
 job boundaries compare canonical millisecond UTC RFC 3339 timestamps against
