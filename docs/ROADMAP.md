@@ -150,7 +150,12 @@ iHeartRadio, and Deezer.
   per language, render it as safe plain timed text, and seek the shared Digest
   player from accessible timestamps. Draft/future/premium-only content stays
   outside the public projection; word-linked controls remain alignment-gated.
-  The same approval now projects speaker-aware WebVTT and one Podcasting 2.0
+  Producer+ review now also has one page-bounded speaker-range aid for long
+  transcripts. It changes only visible speaker inputs in the local draft,
+  requires a separate explicit confirmation before marking names confirmed,
+  and reuses the existing versioned Save path; it cannot alter caption
+  text/timing, call the Worker, or approve a revision. The same approval now
+  projects speaker-aware WebVTT and one Podcasting 2.0
   discovery tag per approved English/Spanish language, with tokenized
   entitlement-checked VTT for private early/bonus feeds. The v3 feed validator
   rejects malformed transcript metadata, requires the immutable Podcasting 2.0

@@ -413,6 +413,28 @@ word-alignment result, or substitute for listening. It must not add a Worker
 request, D1 write, analytics event, browser storage entry, transcript export,
 or provider action.
 
+On the same synthetic draft, exercise the separate speaker-range aid on the
+first and second 100-cue pages in English and Spanish. Confirm its minimum and
+maximum follow only the currently rendered page, neighboring cues remain
+unchanged, and the unchecked path applies an unconfirmed label. The checked
+path must require the editor's explicit exact-range acknowledgement, mark the
+draft dirty, and keep approval disabled. The aid must dispatch through the
+existing cue inputs, make no request itself, and preserve every cue ID,
+caption, and timestamp. At 320 CSS pixels, text and action controls must remain
+44 px high, the checkbox label must remain a comfortable full-row target, and
+there must be no horizontal overflow, CSP violation, or console/page error.
+
+The July 29, 2026 acceptance used the bounded 1,300-cue fixture at exact site
+commit `99829e5ec57d05e0d36ae01c183776c00b7cc335`. English pages 1–100 and
+101–200 plus Spanish page 1 passed both confirmed and unconfirmed paths with
+untouched neighboring cues. The main source module remained 301,946 bytes
+against its unchanged 302,000-byte ceiling; the isolated controller was 5,336
+bytes against 7,000. The immutable deployed 320×844 trace is
+`.artifacts/performance/podcast-admin-speaker-range-99829e5-320x844.json`
+(2,311,742 bytes), and the deployed admin routes were private/no-store,
+noindex, and 320 px wide. The browser fixture deliberately kept these edits
+local; it did not claim a real transcript save or approval.
+
 Also exercise the separate Settings tab in English and Spanish. Confirm the
 responsive tab controller exposes and selects Settings, the selected show is
 synchronized with the Episodes selector, exactly one show-settings form is
