@@ -154,7 +154,8 @@ describe("full-length audio enhancement derivative boundaries", () => {
         metadata: { outputSha256: "a".repeat(64) }
       })
     ).toBe(statement);
-    expect(query).toContain("WHERE changes() = 1");
+    expect(query).toContain("WHERE changes() = ?");
+    expect(values).toContain(1);
     expect(values).toContain("audio_enhancement_derivative.ready");
     expect(values).toContain("derivative_fixture");
     expect(values).toContain(null);

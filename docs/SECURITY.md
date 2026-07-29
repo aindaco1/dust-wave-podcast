@@ -595,6 +595,23 @@ is never accepted from the browser, and GitHub write auth is mandatory.
 `GITHUB_PUBLISH_MODE` remains fail-closed as `dry_run` unless explicitly set
 to `live`; audit metadata records only SHAs and changed field names.
 
+## Premium-price configuration boundary
+
+Monthly and annual USD configuration is separate from ordinary show settings.
+Readiness is Super-admin-only, and mutation additionally requires
+authentication within the last 15 minutes, same-origin CSRF, the exact current pair, the typed
+`CONFIGURE_SHOW_PRICES {show-id}` confirmation, and an annual discount. Both
+rows change in one conditional D1 statement and the audit insert is conditional
+on both rows changing; a stale value changes neither row.
+
+This is a pre-launch configuration boundary, not a Stripe provisioning
+boundary. It fails closed while the checkout kill switch is on or after any
+subscription or checkout-attempt history exists. A changed amount clears only
+that row's now-stale Stripe Price identifier, leaves the provider untouched,
+and makes checkout readiness fail until a separate reviewed provider step
+binds a matching immutable Stripe Price. Responses expose amounts, readiness,
+counts, and stable blocker codes but never provider identifiers or secrets.
+
 ## Chapter boundary
 
 Chapter editing reuses the original normalized episode rows and adds a

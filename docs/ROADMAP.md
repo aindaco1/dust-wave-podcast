@@ -85,6 +85,13 @@ iHeartRadio, and Deezer.
   Super-admin-only, requires the reviewed Git blob SHA and exact typed
   confirmation, defaults to dry-run, and uses one optimistic GitHub Contents
   write only when the environment is deliberately live.
+- Make the launch monthly and annual USD prices genuinely configurable per
+  show without hiding a Stripe mismatch. A separate recent-Super-admin action
+  requires the exact current pair and typed show confirmation, applies both
+  values atomically, clears only provider Price links made stale by the
+  change, and records one audit event. It is intentionally pre-launch-only:
+  checkout must be off and any subscription or checkout history locks the
+  mutation. Provider provisioning remains a separate reviewed Stripe step.
 - Add a migration path comparable to established podcast hosts. The first
   boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
   bounded public-HTTPS fetches and safe XML reduction report which source

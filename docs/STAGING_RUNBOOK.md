@@ -439,6 +439,20 @@ store `NULL`. A canonical `https://www.youtube.com/@handle` channel and
 credential-free HTTPS artwork should save through the existing audited
 mutation.
 
+As a Super-admin, load the separate Podcast Premium price card in Settings
+and confirm it reports the current $5 monthly / $50 annual USD pair and
+matching Stripe test readiness without exposing either provider Price ID.
+At 320 CSS pixels, both decimal inputs, the confirmation field, and the action
+must remain within the panel at a minimum 44 px control height. Reject
+fractional cents, an annual price below the monthly price, and an annual price
+without a discount. A stale expected pair must change neither row nor audit.
+With checkout disabled and no billing history, an isolated changed-price
+fixture must update both expected rows atomically, clear only the changed
+row's provider link, and insert one audit. Never change the actual launch pair
+merely to exercise staging; use an isolated local fixture. Checkout enabled,
+any subscription, or any checkout attempt must lock the mutation. Stripe must
+receive no request from this boundary.
+
 In Settings, preview the site projection for the selected show. Confirm the
 configured owner/repository/ref/path, Git blob SHA, changed Worker-owned
 fields, and an empty blocker list. Verify local artwork variants, wordmark,
