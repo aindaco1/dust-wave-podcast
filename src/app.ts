@@ -453,7 +453,7 @@ const ADMIN_CLIP_RENDER_PATH =
 const ADMIN_CLIP_RENDER_MEDIA_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/media$/;
 const ADMIN_CLIP_RENDER_CAPTIONS_PATH =
-  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/captions\.vtt$/;
+  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/captions\.(vtt|srt)$/;
 const ADMIN_CLIP_RENDER_YOUTUBE_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/youtube$/;
 const ADMIN_CLIP_RENDER_PUBLICATION_PATH =
@@ -1808,7 +1808,8 @@ async function routeRequest(
     return serveAdminClipRenderCaptions(
       request,
       env,
-      adminClipRenderCaptionsMatch[1]
+      adminClipRenderCaptionsMatch[1],
+      adminClipRenderCaptionsMatch[2] as "vtt" | "srt"
     );
   }
   const adminClipRenderYouTubeMatch = url.pathname.match(

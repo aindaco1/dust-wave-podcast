@@ -397,7 +397,7 @@ describe("podcast API", () => {
   });
 
   it("keeps ready clip media and captions private before lookup", async () => {
-    for (const suffix of ["media", "captions.vtt"]) {
+    for (const suffix of ["media", "captions.vtt", "captions.srt"]) {
       const response = await handleRequest(
         new Request(
           "https://podcast.example/v1/admin/clip-renders/"

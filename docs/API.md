@@ -413,7 +413,7 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
 | `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
 | `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
-| `GET`, `HEAD` | `/v1/admin/clip-renders/{renderId}/captions.vtt` | analyst+ | Download checksum-bound relative WebVTT rebuilt from the exact approved caption manifest |
+| `GET`, `HEAD` | `/v1/admin/clip-renders/{renderId}/captions.{vtt\|srt}` | analyst+ | Download checksum-bound relative WebVTT or SubRip rebuilt from the exact approved caption manifest |
 | `POST` | `/v1/admin/clip-renders/{renderId}/publication` | producer+ | Prepare one staging-preview public selection from exact current render/R2 evidence |
 | `POST` | `/v1/admin/clip-publications/{id}/approve` | recently authenticated super-admin | Approve one exact selection without bypassing episode release visibility |
 | `POST` | `/v1/admin/clip-publications/{id}/withdraw` | recently authenticated super-admin | Terminally withdraw the selection and audit the action |
@@ -1093,14 +1093,14 @@ player, and `?download=1` attachment delivery. Responses are private,
 no-store, noindex, and never expose the R2 key.
 
 `GET` and `HEAD`
-`/v1/admin/clip-renders/{renderId}/captions.vtt` reuse the same show-scoped
+`/v1/admin/clip-renders/{renderId}/captions.{vtt|srt}` reuse the same show-scoped
 Analyst+ session and ready MP4 checksum checks. The Worker then rebuilds the
 original manifest from the immutable clip recipe, approved transcript digest,
 source-audio snapshot, and source R2 ETag; the rebuilt manifest SHA-256 must
-match the render record. Only then does it derive relative WebVTT timestamps
-and confirmed speaker labels from the exact caption cues. The sidecar is
-private/no-store, attachment-only, conditionally cacheable by its content
-digest, and never stored as a second caption source.
+match the render record. Only then does it derive relative WebVTT or SubRip
+timestamps and confirmed speaker labels from the exact caption cues. Both
+sidecars are private/no-store, attachment-only, conditionally cacheable by
+their content digest, and never stored as a second caption source.
 
 `GET /v1/admin/shows/{showId}/clips` supplies the Marketing clip library
 without issuing one request per episode. Results are ordered by immutable
@@ -1108,8 +1108,8 @@ updated-time/ID keyset, default to 24 and cap at 100, and may be filtered by
 episode, `9:16|1:1|16:9`, and the current revision's
 `queued|rendering|ready|failed` render state. The opaque next cursor is a
 show-scoped clip ID. Returned ready actions reuse the private media route
-above and expose only the authenticated WebVTT path for the same render; no
-object key or public media URL is included.
+above and expose only the authenticated WebVTT and SubRip paths for the same
+render; no object key or public media URL is included.
 
 The same library row exposes only bounded public-selection state
 (ID/slug/title/status/timestamps and whether its immutable evidence is still

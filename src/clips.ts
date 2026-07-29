@@ -32,9 +32,10 @@ import {
   validIdentifier
 } from "./validation";
 import {
+  renderSubRip,
   renderWebVtt,
   timedTextMarkdownToPlainText
-} from "./webvtt";
+} from "./timed-text";
 
 const READ_ROLES: AdminRole[] = [
   "super_admin",
@@ -805,7 +806,8 @@ export async function serveAdminClipRenderMedia(
 export async function serveAdminClipRenderCaptions(
   request: Request,
   env: PodcastEnv,
-  renderIdValue: string
+  renderIdValue: string,
+  format: "vtt" | "srt" = "vtt"
 ): Promise<Response> {
   const renderId = validIdentifier(renderIdValue, "renderId");
   const auth = await requireAdmin(request, env, {
@@ -852,26 +854,30 @@ export async function serveAdminClipRenderCaptions(
       }
     );
   }
-  const body = renderWebVtt(manifest.body.captions.cues.map((cue) => ({
+  const cues = manifest.body.captions.cues.map((cue) => ({
     startsAtMs: cue.startsAtMs,
     endsAtMs: cue.endsAtMs,
     speakerLabel: cue.speakerLabel,
     text: timedTextMarkdownToPlainText(cue.textMarkdown)
-  })));
+  }));
+  const body = format === "srt" ? renderSubRip(cues) : renderWebVtt(cues);
   const bodyBytes = new TextEncoder().encode(body).byteLength;
   const etag = `"${await sha256Hex(body)}"`;
+  const contentType = format === "srt"
+    ? "application/x-subrip; charset=utf-8"
+    : "text/vtt; charset=utf-8";
   const headers = new Headers({
     ...privateCorsHeaders(request, env.ALLOWED_ORIGINS),
     "access-control-expose-headers": "content-disposition,etag",
     "cache-control": "private, no-store, max-age=0",
     "content-disposition":
       `attachment; filename="${safeDownloadFilename(
-        `${render.clip_title}-${render.id}.vtt`
+        `${render.clip_title}-${render.id}.${format}`
       )}"`,
     "content-language": manifest.body.captions.language,
     "content-length": String(bodyBytes),
     "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
-    "content-type": "text/vtt; charset=utf-8",
+    "content-type": contentType,
     "cross-origin-resource-policy": "same-site",
     etag,
     "referrer-policy": "no-referrer",
@@ -2286,6 +2292,7 @@ function clipRenderMediaPaths(renderId: string): {
   mediaPath: string;
   downloadPath: string;
   captionsPath: string;
+  subtitlesPath: string;
 } {
   const mediaPath =
     `/v1/admin/clip-renders/${encodeURIComponent(renderId)}/media`;
@@ -2293,7 +2300,9 @@ function clipRenderMediaPaths(renderId: string): {
     mediaPath,
     downloadPath: `${mediaPath}?download=1`,
     captionsPath:
-      `/v1/admin/clip-renders/${encodeURIComponent(renderId)}/captions.vtt`
+      `/v1/admin/clip-renders/${encodeURIComponent(renderId)}/captions.vtt`,
+    subtitlesPath:
+      `/v1/admin/clip-renders/${encodeURIComponent(renderId)}/captions.srt`
   };
 }
 

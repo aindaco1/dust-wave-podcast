@@ -59,6 +59,27 @@ describe("private clip render WebVTT", () => {
       ""
     ].join("\n"));
 
+    const subRip = await serveAdminClipRenderCaptions(
+      adminRequest({ path: "captions.srt" }),
+      env,
+      "render_fixture",
+      "srt"
+    );
+    expect(subRip.status).toBe(200);
+    expect(subRip.headers.get("content-type"))
+      .toBe("application/x-subrip; charset=utf-8");
+    expect(subRip.headers.get("content-language")).toBe("es");
+    expect(subRip.headers.get("content-disposition")).toBe(
+      'attachment; filename="-pera---launch-clip-render_fixture.srt"'
+    );
+    expect(await subRip.text()).toBe([
+      "1",
+      "00:00:00,000 --> 00:00:02,000",
+      "Jay: Hola &amp; selva",
+      ""
+    ].join("\n"));
+    expect(subRip.headers.get("etag")).not.toBe(response.headers.get("etag"));
+
     const etag = response.headers.get("etag");
     expect(etag).toMatch(/^"[a-f0-9]{64}"$/);
     const notModified = await serveAdminClipRenderCaptions(
@@ -90,9 +111,10 @@ describe("private clip render WebVTT", () => {
       }
     );
     const response = await serveAdminClipRenderCaptions(
-      adminRequest(),
+      adminRequest({ path: "captions.srt" }),
       env,
-      "render_fixture"
+      "render_fixture",
+      "srt"
     );
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({
@@ -104,14 +126,16 @@ describe("private clip render WebVTT", () => {
 
 function adminRequest({
   method = "GET",
-  headers = {}
+  headers = {},
+  path = "captions.vtt"
 }: {
   method?: string;
   headers?: Record<string, string>;
+  path?: "captions.vtt" | "captions.srt";
 } = {}): Request {
   return new Request(
     "https://feeds.dustwave.xyz/v1/admin/clip-renders/"
-      + "render_fixture/captions.vtt",
+      + `render_fixture/${path}`,
     {
       method,
       headers: {

@@ -21,7 +21,7 @@ import {
 import {
   renderWebVtt,
   timedTextMarkdownToPlainText
-} from "./webvtt";
+} from "./timed-text";
 
 const READ_ROLES: AdminRole[] = [
   "super_admin",

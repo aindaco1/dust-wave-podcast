@@ -261,8 +261,8 @@ evidence only when MP4 dimensions/duration and private-R2 checksum metadata
 match that manifest. The complete source/render/upload/callback path has passed
 the local Worker+D1+R2 runtime gate; the remote GitHub workflow still requires
 the reviewed workflow to exist on the default branch and a queued staging
-render. Ready renders have authenticated range-safe preview/download plus a
-checksum-bound WebVTT sidecar rebuilt from the same approved relative cues,
+render. Ready renders have authenticated range-safe preview/download plus
+checksum-bound WebVTT and SubRip sidecars rebuilt from the same approved cues,
 plus a bounded, filterable cross-episode Marketing library; none of those
 routes exposes an R2 key or creates a second caption record. A separate
 public-selection record now snapshots exact current
