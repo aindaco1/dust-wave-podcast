@@ -245,7 +245,7 @@ function renderFeed(
   ) => string
 ): string {
   const ownerEmail = env.PODCAST_OWNER_EMAIL || "podcasts@dustwave.xyz";
-  const authorName = env.PODCAST_AUTHOR_NAME || show.author_name;
+  const authorName = show.author_name;
   const items = episodes
     .map((episode) =>
       renderEpisode(

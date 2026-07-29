@@ -23,7 +23,6 @@ export type PodcastEnv = Env & {
   LISTENER_TURNSTILE_REQUIRED?: string;
   CHECKOUT_TURNSTILE_REQUIRED?: string;
   CLIP_PUBLICATION_MODE?: string;
-  PODCAST_AUTHOR_NAME?: string;
   PODCAST_EMAIL_FROM?: string;
   PODCAST_OWNER_EMAIL?: string;
   POOL_PODCAST_BRIDGE_SECRET?: string;

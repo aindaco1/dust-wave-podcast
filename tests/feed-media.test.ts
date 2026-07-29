@@ -50,7 +50,7 @@ describe("public feed and media delivery", () => {
               canonical_url: "https://dustwave.xyz/podcasts/show-fixture/",
               rss_slug: "show-fixture",
               podcast_guid: "d21642df-1816-55c8-b308-6209066e9ef6",
-              author_name: "Dust Wave",
+              author_name: "Fixture Author",
               category: "Arts",
               explicit: 0
             };
@@ -96,6 +96,8 @@ describe("public feed and media delivery", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/rss+xml");
     expect(xml).toContain("<title>Show Fixture</title>");
+    expect(xml).toContain("<itunes:author>Fixture Author</itunes:author>");
+    expect(xml).toContain("<itunes:name>Fixture Author</itunes:name>");
     expect(xml.match(/<podcast:guid>/gu)).toHaveLength(1);
     expect(xml).toContain(
       "<podcast:guid>d21642df-1816-55c8-b308-6209066e9ef6"
@@ -246,7 +248,7 @@ describe("public feed and media delivery", () => {
               canonical_url: "https://dustwave.xyz/podcasts/show-fixture/",
               rss_slug: "show-fixture",
               podcast_guid: "d21642df-1816-55c8-b308-6209066e9ef6",
-              author_name: "Dust Wave",
+              author_name: "Premium Fixture Author",
               category: "Arts",
               explicit: 0,
               last_used_at: "2099-01-01 00:00:00"
@@ -306,6 +308,12 @@ describe("public feed and media delivery", () => {
     expect(response.headers.has("access-control-allow-origin")).toBe(false);
     expect(response.headers.get("x-robots-tag")).toContain("noindex");
     expect(xml).toContain("<title>Show Fixture Premium</title>");
+    expect(xml).toContain(
+      "<itunes:author>Premium Fixture Author</itunes:author>"
+    );
+    expect(xml).toContain(
+      "<itunes:name>Premium Fixture Author</itunes:name>"
+    );
     expect(xml).toContain(
       "<podcast:guid>d21642df-1816-55c8-b308-6209066e9ef6"
       + "</podcast:guid>"

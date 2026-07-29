@@ -72,7 +72,10 @@ iHeartRadio, and Deezer.
   explicit-content policy, premium benefits, early-access default, and
   YouTube destination. Canonical-page and RSS addresses are visible but
   read-only, and entering the archived lifecycle requires an explicit
-  confirmation. Artwork and channel destinations are enforced again at the
+  confirmation. RSS author identity is read from that per-show record rather
+  than a network-wide environment override, so adding another show cannot
+  silently inherit Ópera en la Selva's author. Artwork and channel
+  destinations are enforced again at the
   Worker boundary as credential-free, port-free, fragment-free HTTPS; the
   latter accepts only canonical YouTube channel hosts and paths.
 - Keep show pages and feeds DRY through an explicit site-catalog projection.

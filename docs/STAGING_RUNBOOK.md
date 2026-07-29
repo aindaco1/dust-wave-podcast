@@ -56,6 +56,13 @@ bookmark is returned and the migration is additive/reversible through Time
 Travel; record the export failure and bookmark privately. Never substitute a
 production bookmark or apply the migration to production.
 
+For migration `0065`, confirm the existing Ópera en la Selva author is exactly
+the legacy `Dust Wave` fallback before applying it. Afterward, confirm the
+author is `Jay Renteria`, `PRAGMA foreign_key_check` is empty, and the public
+show API plus RSS `<itunes:author>` agree. The guarded update must leave any
+other show and any already-customized Ópera author untouched. Production
+remains unapplied until its own explicit promotion decision.
+
 For migration `0026`, verify the fresh and restored databases contain
 `show_notification_preferences`, its listener/show primary key, and the
 `show_notification_preferences_eligible` partial index. Before and after the
