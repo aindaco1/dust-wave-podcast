@@ -267,6 +267,16 @@ iHeartRadio, and Deezer.
   cannot immediately become stale. It never returns transcript/caption text,
   object identity, hashes, review comments, email, or admin identity and cannot
   replace authenticated human approval.
+- Compose that narrow episode check with the existing Stripe provider preflight
+  in one read-only staging launch report. The report also verifies exact
+  staging and production kill switches, required installed secret names,
+  current 10-directory certification, controlled YouTube and Resend records,
+  durable dynamic-ad pilot state, and referential integrity without returning
+  content, URLs, object/provider identity, recipient identity, hashes, or
+  secret values. Its dynamic-ad node accepts synthetic performance evidence
+  only when the signed 5,000-pair/10,000-request gate is fresh, fully cleaned
+  up, and unchanged across runtime-sensitive source; that evidence still
+  cannot substitute for the real isolated client pilot.
 - Transcribe Spanish and English and expose bounded confidence/provenance. The
   signed staging alignment bridge now binds the exact approved transcript,
   working master, normalized projection, adapter, and pinned runner; validates

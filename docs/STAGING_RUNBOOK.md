@@ -1649,6 +1649,34 @@ idempotent only when their stored checksum metadata matches exactly.
 
 ## 6. Controlled external tests
 
+Before promoting any external boundary, run the composed read-only launch
+report against the isolated launch episode:
+
+```sh
+npm run gate:launch:staging -- EPISODE_ID
+```
+
+The report reuses the episode and Stripe evaluators and adds exact staging and
+production kill-switch posture, installed secret names, current RSS/directory
+certification, controlled YouTube and Resend records, durable dynamic-ad pilot
+records, and D1 referential integrity. It returns only counts and bounded
+status; it never returns caption text, object keys, hashes, URLs, provider
+identifiers, recipient identity, or secret values. `BLOCK` is expected while
+human/provider evidence remains outstanding. Use `--require-ready` only as the
+final promotion check; do not change data merely to make that mode exit zero.
+Pass a successful gate artifact with
+`--virtual-audio-evidence=/absolute/path/staging-gate.json` to bind the
+dynamic-ad node to the current runtime-sensitive source. Evidence is accepted
+only for the signed 5,000-pair/10,000-request exercise, full cleanup, a
+seven-day freshness window, and no relevant source drift.
+
+The 2026-07-29 isolated rerun passed all 24 protocol probes and 10,000 paired
+requests with zero errors, zero content mismatches, and 27.97 ms p95 added
+latency. The signed diagnostic lease and every temporary object were removed.
+The composed report then returned six safe passes, six expected promotion
+blocks, and zero failures. The dynamic-ad block narrowed to the real isolated
+client pilot; production remained disabled.
+
 Live GitHub publication targets only the release branch and requires a reviewed
 fixture.
 

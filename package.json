@@ -18,6 +18,7 @@
     "gate:virtual-audio:staging": "node scripts/run-virtual-audio-staging-gate.mjs",
     "gate:episode:staging": "node scripts/check-episode-staging-gate.mjs",
     "gate:stripe:staging": "node scripts/check-stripe-staging-readiness.mjs",
+    "gate:launch:staging": "node scripts/check-launch-staging-readiness.mjs",
     "deploy:staging:dry": "wrangler deploy --env staging --dry-run",
     "deploy:production:dry": "wrangler deploy --env production --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --env staging",
