@@ -500,6 +500,18 @@ Spanish at 320 CSS pixels; the file field and action must retain the shared
 44 px control height with no horizontal overflow, console error, or CSP
 violation.
 
+On that imported or synthetic draft, use local transcript search for caption
+text and public speaker labels on different cue pages. Confirm English/Spanish
+case and accent folding, ordered Previous/Next navigation, cue-range status,
+and focus on the matched cue through the existing paginated editor. A
+Markdown link label may match but its hidden destination must not. Empty,
+over-160-character, and over-10,000-cue searches must fail locally without a
+request, storage write, cue mutation, dirty-state change, or approval-state
+change. Changing episode or transcript language must clear prior query and
+results. Exercise both locales at 320 CSS pixels; the input and all three
+actions must retain at least 44 px height, stack without horizontal overflow,
+and produce no console or CSP error.
+
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and
 maximum follow only the currently rendered page, neighboring cues remain

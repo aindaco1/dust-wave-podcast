@@ -637,6 +637,16 @@ revision-zero, malformed, or digest-drifted evidence returns no caption text.
 The download creates no second transcript, export record, audit content, R2
 object, or provider call.
 
+Browser-local caption import and search are separate review aids, not Worker
+boundaries. Import accepts only bounded WebVTT/SubRip text, reduces supported
+markup before inserting an unsaved cue draft, keeps voice labels unconfirmed,
+and requires replacement confirmation. Search scans only the at-most-10,000
+loaded cues through the same visible-text reducer, excludes hidden Markdown
+link destinations, and limits the query to 160 characters. Neither feature
+uses network/storage APIs, creates HTML, changes approval state, or bypasses
+the ordinary versioned transcript Save action. Episode/language context
+changes clear pending file/search state.
+
 The validation row fingerprints one exact public RSS body. D1 removes it when
 a show/channel field, public-feed episode field, transcript approval, or
 chapter approval can change that projection; the existing deletion trigger

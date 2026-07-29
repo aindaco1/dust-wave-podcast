@@ -185,6 +185,11 @@ iHeartRadio, and Deezer.
   explicit VTT voice labels unconfirmed, preserves ambiguous SRT prefixes as
   caption text, and requires confirmation before replacing existing work. It
   performs no upload or API call and reuses the existing versioned Save path.
+  A companion browser-local search navigator reuses the same visible-text
+  reducer and paginated cue focus path across at most 10,000 loaded cues. It
+  finds caption or public-speaker text with English/Spanish case and accent
+  folding, excludes hidden Markdown link destinations, stores nothing, calls
+  no API, and changes no cue or approval state.
   The same workbench also
   exports the exact current saved revision as private checksum-verified WebVTT
   or SubRip while excluding unsaved edits and unconfirmed speaker labels; no
