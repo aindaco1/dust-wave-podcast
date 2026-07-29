@@ -268,9 +268,13 @@ iHeartRadio, and Deezer.
   workflow now renders and fully decodes all three aspect ratios, with
   purpose-bound Worker streams and native R2 SHA-256 verification. Ready
   outputs now have an authenticated, show-scoped, range-safe admin preview and
-  MP4 download path. The Marketing tab now adds one bounded, keyset-paginated
-  cross-episode library with episode, aspect, and current-render-state filters
-  while reusing that exact preview/download boundary. The staging-only Shorts
+  MP4 download path. Each exact ready render also has a private WebVTT sidecar
+  rebuilt from the same approved relative caption cues only after output,
+  source, transcript, and manifest evidence revalidate; no second caption
+  record or provider is introduced. The Marketing tab now adds one bounded,
+  keyset-paginated cross-episode library with episode, aspect, and
+  current-render-state filters while reusing those exact download boundaries.
+  The staging-only Shorts
   path now supports an immutable Producer draft, recent-super-admin dry run,
   and explicitly gated private/unlisted queue with provider channel/privacy
   verification and terminal duplicate prevention. A remote clip workflow run,

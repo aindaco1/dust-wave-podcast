@@ -1079,6 +1079,15 @@ Confirm the report artifact contains only callback/failure/upload evidence,
 never the source MP3, manifest/captions, raster frames, or MP4. Follow
 `CLIP_RENDER_GATE.md` for the acceptance and rollback matrix.
 
+For a ready render, use both Production and Marketing to download its WebVTT
+sidecar. Confirm the response is `text/vtt`, attachment-only,
+private/no-store, noindex, and uses relative timestamps beginning at
+`00:00:00.000`. Compare its cues and confirmed speaker labels with the burned
+captions. Then change the approved transcript digest, source ETag, stored
+manifest digest, and output checksum one at a time in a disposable fixture;
+each change must fail closed without returning caption text. An out-of-scope
+Analyst must receive the same private `404` before either R2 object is read.
+
 Required for the isolated signed-decision exercise:
 
 - Worker secret `AD_DECISION_SIGNING_SECRET`

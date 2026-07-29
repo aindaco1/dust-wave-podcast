@@ -34,6 +34,9 @@ describe("show clip library", () => {
     expect(payload.clips[0].render.downloadPath).toBe(
       "/v1/admin/clip-renders/render_2/media?download=1"
     );
+    expect(payload.clips[0].render.captionsPath).toBe(
+      "/v1/admin/clip-renders/render_2/captions.vtt"
+    );
     expect(payload.clips[0].publicPublication).toMatchObject({
       id: "publication_clip_2",
       renderId: "render_2",

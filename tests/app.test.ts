@@ -396,17 +396,20 @@ describe("podcast API", () => {
     }
   });
 
-  it("keeps ready clip media private before render or R2 lookup", async () => {
-    const response = await handleRequest(
-      new Request(
-        "https://podcast.example/v1/admin/clip-renders/render_fixture/media"
-      ),
-      createEnv()
-    );
+  it("keeps ready clip media and captions private before lookup", async () => {
+    for (const suffix of ["media", "captions.vtt"]) {
+      const response = await handleRequest(
+        new Request(
+          "https://podcast.example/v1/admin/clip-renders/"
+          + `render_fixture/${suffix}`
+        ),
+        createEnv()
+      );
 
-    expect(response.status).toBe(401);
-    expect(response.headers.get("cache-control")).toContain("private");
-    expect(await response.json()).toEqual({ error: "unauthorized" });
+      expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toContain("private");
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
   });
 
   it("allows credentialed conditional range requests from the site origin", async () => {

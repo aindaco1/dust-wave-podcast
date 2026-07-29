@@ -18,6 +18,10 @@ import {
   requiredText,
   validIdentifier
 } from "./validation";
+import {
+  renderWebVtt,
+  timedTextMarkdownToPlainText
+} from "./webvtt";
 
 const READ_ROLES: AdminRole[] = [
   "super_admin",
@@ -1016,48 +1020,13 @@ function parseTranscriptContent(
 }
 
 function publicTimedText(textMarkdown: string): string {
-  return textMarkdown
-    .replace(/<\/?u>/gi, "")
-    .replace(/[*_]/g, "")
-    .trim();
+  return timedTextMarkdownToPlainText(textMarkdown);
 }
 
 function renderTranscriptWebVtt(
   transcript: VerifiedPublicTranscript
 ): string {
-  const cues = transcript.cues.map((cue, index) => {
-    const text = escapeWebVttText(cue.text);
-    const payload = cue.speakerLabel
-      ? `<v ${escapeWebVttText(cue.speakerLabel)}>${text}</v>`
-      : text;
-    return [
-      String(index + 1),
-      `${webVttTimestamp(cue.startsAtMs)} --> ${webVttTimestamp(cue.endsAtMs)}`,
-      payload
-    ].join("\n");
-  });
-  return `WEBVTT\n\n${cues.join("\n\n")}\n`;
-}
-
-function webVttTimestamp(milliseconds: number): string {
-  const hours = Math.floor(milliseconds / 3_600_000);
-  const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
-  const seconds = Math.floor((milliseconds % 60_000) / 1_000);
-  const remainder = milliseconds % 1_000;
-  return [
-    String(hours).padStart(2, "0"),
-    String(minutes).padStart(2, "0"),
-    `${String(seconds).padStart(2, "0")}.${
-      String(remainder).padStart(3, "0")
-    }`
-  ].join(":");
-}
-
-function escapeWebVttText(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return renderWebVtt(transcript.cues);
 }
 
 async function transcriptVttResponse(

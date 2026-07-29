@@ -262,8 +262,10 @@ match that manifest. The complete source/render/upload/callback path has passed
 the local Worker+D1+R2 runtime gate; the remote GitHub workflow still requires
 the reviewed workflow to exist on the default branch and a queued staging
 render. Ready renders have authenticated range-safe preview/download plus a
-bounded, filterable cross-episode Marketing library; neither route exposes an
-R2 key. A separate public-selection record now snapshots exact current
+checksum-bound WebVTT sidecar rebuilt from the same approved relative cues,
+plus a bounded, filterable cross-episode Marketing library; none of those
+routes exposes an R2 key or creates a second caption record. A separate
+public-selection record now snapshots exact current
 render/R2 evidence, requires recent-super-admin approval or withdrawal, and
 serves only a due public episode through short-cache metadata and range-safe
 MP4 routes. Production keeps that mode disabled. A separate staging-only

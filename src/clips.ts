@@ -31,6 +31,10 @@ import {
   requiredText,
   validIdentifier
 } from "./validation";
+import {
+  renderWebVtt,
+  timedTextMarkdownToPlainText
+} from "./webvtt";
 
 const READ_ROLES: AdminRole[] = [
   "super_admin",
@@ -69,6 +73,17 @@ type ClipProcessorManifestBody = Record<string, unknown> & {
     objectBytes: number;
     etag: string;
     mimeType: "audio/mpeg";
+  };
+  captions: {
+    format: "timed-text-v1";
+    language: "en" | "es";
+    cues: Array<{
+      id: string;
+      startsAtMs: number;
+      endsAtMs: number;
+      speakerLabel: string;
+      textMarkdown: string;
+    }>;
   };
 };
 
@@ -785,6 +800,89 @@ export async function serveAdminClipRenderMedia(
   );
   return response
     ?? clipConflict(request, env, "clip_render_object_mismatch");
+}
+
+export async function serveAdminClipRenderCaptions(
+  request: Request,
+  env: PodcastEnv,
+  renderIdValue: string
+): Promise<Response> {
+  const renderId = validIdentifier(renderIdValue, "renderId");
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: READ_ROLES
+  });
+  if (!auth.ok) return auth.response;
+  const render = await loadClipRenderMedia(env.DB, renderId);
+  if (
+    !render
+    || !hasAdminRoleForShow(
+      auth.authorization.identity,
+      READ_ROLES,
+      render.show_id
+    )
+    || render.status !== "ready"
+    || render.output_mime_type !== "video/mp4"
+    || !render.output_object_bytes
+    || !render.output_sha256
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "clip_render_not_found" },
+      { status: 404 }
+    );
+  }
+  if (!await verifyClipRenderObject(env, render)) {
+    return clipConflict(request, env, "clip_render_object_mismatch");
+  }
+  const manifest = await buildClipProcessorManifest(
+    env,
+    render.id,
+    render.clip_id,
+    render.clip_revision
+  );
+  if (manifest.sha256 !== render.processor_manifest_sha256) {
+    return clipConflict(
+      request,
+      env,
+      "clip_render_manifest_mismatch",
+      {
+        storedManifestSha256: render.processor_manifest_sha256,
+        rebuiltManifestSha256: manifest.sha256
+      }
+    );
+  }
+  const body = renderWebVtt(manifest.body.captions.cues.map((cue) => ({
+    startsAtMs: cue.startsAtMs,
+    endsAtMs: cue.endsAtMs,
+    speakerLabel: cue.speakerLabel,
+    text: timedTextMarkdownToPlainText(cue.textMarkdown)
+  })));
+  const bodyBytes = new TextEncoder().encode(body).byteLength;
+  const etag = `"${await sha256Hex(body)}"`;
+  const headers = new Headers({
+    ...privateCorsHeaders(request, env.ALLOWED_ORIGINS),
+    "access-control-expose-headers": "content-disposition,etag",
+    "cache-control": "private, no-store, max-age=0",
+    "content-disposition":
+      `attachment; filename="${safeDownloadFilename(
+        `${render.clip_title}-${render.id}.vtt`
+      )}"`,
+    "content-language": manifest.body.captions.language,
+    "content-length": String(bodyBytes),
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "content-type": "text/vtt; charset=utf-8",
+    "cross-origin-resource-policy": "same-site",
+    etag,
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+    "x-robots-tag": "noindex, nofollow, noarchive"
+  });
+  if (request.headers.get("if-none-match") === etag) {
+    headers.delete("content-length");
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(request.method === "HEAD" ? null : body, { headers });
 }
 
 export async function verifyClipRenderObject(
@@ -2187,12 +2285,15 @@ function presentRender(row: ClipRenderRow): Record<string, unknown> {
 function clipRenderMediaPaths(renderId: string): {
   mediaPath: string;
   downloadPath: string;
+  captionsPath: string;
 } {
   const mediaPath =
     `/v1/admin/clip-renders/${encodeURIComponent(renderId)}/media`;
   return {
     mediaPath,
-    downloadPath: `${mediaPath}?download=1`
+    downloadPath: `${mediaPath}?download=1`,
+    captionsPath:
+      `/v1/admin/clip-renders/${encodeURIComponent(renderId)}/captions.vtt`
   };
 }
 

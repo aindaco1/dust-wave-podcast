@@ -110,6 +110,7 @@ import {
   listAdminShowClips,
   queueAdminClipRender,
   saveAdminEpisodeClip,
+  serveAdminClipRenderCaptions,
   serveAdminClipRenderMedia,
   uploadClipRenderProcessorOutput
 } from "./clips";
@@ -451,6 +452,8 @@ const ADMIN_CLIP_RENDER_PATH =
   /^\/v1\/admin\/clips\/([A-Za-z0-9_-]+)\/render$/;
 const ADMIN_CLIP_RENDER_MEDIA_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/media$/;
+const ADMIN_CLIP_RENDER_CAPTIONS_PATH =
+  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/captions\.vtt$/;
 const ADMIN_CLIP_RENDER_YOUTUBE_PATH =
   /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/youtube$/;
 const ADMIN_CLIP_RENDER_PUBLICATION_PATH =
@@ -1793,6 +1796,19 @@ async function routeRequest(
       request,
       env,
       adminClipRenderMediaMatch[1]
+    );
+  }
+  const adminClipRenderCaptionsMatch = url.pathname.match(
+    ADMIN_CLIP_RENDER_CAPTIONS_PATH
+  );
+  if (
+    adminClipRenderCaptionsMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveAdminClipRenderCaptions(
+      request,
+      env,
+      adminClipRenderCaptionsMatch[1]
     );
   }
   const adminClipRenderYouTubeMatch = url.pathname.match(

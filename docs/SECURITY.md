@@ -814,6 +814,15 @@ exact MP4 dimensions/duration, byte count, native checksum, and custom metadata
 matching both output and manifest digests. A callback for a stale revision may
 preserve historical evidence but cannot change the current clip.
 
+Authenticated WebVTT download does not trust a client path or a second caption
+artifact. It first repeats the show-scoped Analyst+ check and exact ready MP4
+R2 checksum/manifest-metadata check, then rebuilds the original processor
+manifest from the immutable recipe, current approved transcript digest,
+source-audio snapshot, and source R2 ETag. A manifest-digest mismatch fails
+closed. Relative cues and confirmed speaker labels are serialized with escaped
+WebVTT text into a private/no-store attachment; no transcript text is audited
+or persisted by the download.
+
 Public clip selection remains separate from render readiness. Producer+ may
 prepare one current render, but only a recently authenticated super-admin may
 approve or terminally withdraw it. The approval snapshots exact D1 and R2
