@@ -88,7 +88,7 @@ describe("controlled full-episode YouTube publication", () => {
       "podcasts/show/episode/video_source/upload-video.mp4",
       expect.objectContaining({ onlyIf: expect.any(Headers) })
     );
-    expect(providerFetch).toHaveBeenCalledTimes(4);
+    expect(providerFetch).toHaveBeenCalledTimes(5);
     expect(env.DB.batch).toHaveBeenCalledOnce();
   });
 
@@ -443,6 +443,9 @@ function providerFetchFixture(
     .mockResolvedValueOnce(jsonResponse({
       access_token: "access_token_fixture",
       token_type: "Bearer"
+    }))
+    .mockResolvedValueOnce(jsonResponse({
+      items: [{ id: "channel_fixture" }]
     }))
     .mockResolvedValueOnce(new Response(null, {
       status: 200,

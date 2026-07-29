@@ -1035,13 +1035,18 @@ provider request. That same immutable record may later be promoted once to
 
 Controlled mode additionally requires Worker secrets
 `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`, and
-`YOUTUBE_CHANNEL_ID`. Approval records the expected channel ID and queues a
-plain serializable job; no provider upload happens in the request. The consumer
+`YOUTUBE_CHANNEL_ID`. Before any queue-state mutation, approval exchanges the
+refresh token and calls the bounded YouTube channel-list endpoint with
+`mine=true`; the exact configured channel ID must be present. A mismatch or
+provider failure returns `503` with no queued publication or Queue message.
+Approval then records the verified channel ID and queues a plain serializable
+job; no provider upload happens in the request. The consumer
 rechecks D1 revision state, R2 bytes/MIME/native checksum/custom checksum and
-manifest digest, conditionally streams the exact private object into a
-hard-pinned Google resumable-upload session, then verifies the returned video
-channel and privacy through the YouTube API before atomically recording D1
-provider evidence and the admin audit.
+manifest digest, repeats the authenticated-channel check with its fresh access
+token immediately before creating an upload session, conditionally streams the
+exact private object into a hard-pinned Google resumable-upload session, then
+verifies the returned video channel and privacy through the YouTube API before
+atomically recording D1 provider evidence and the admin audit.
 
 Provider JSON is streamed through a 64 KB response cap and OAuth/metadata/media
 requests have explicit timeouts with redirects disabled. Credentials, access
@@ -1068,17 +1073,19 @@ description, and private/unlisted visibility.
 In committed `dry_run` mode, approval re-heads that object and records audited
 evidence without D1 job mutation, Queue delivery, OAuth, or provider access. A
 later `controlled_test` approval accepts only `unlisted`, requires the four
-launch-channel OAuth settings, resets only the matching failed/queued or
-provider-free dry-run root job, and sends it immediately only when its public
-release time is due. Future early-access releases stay queued until their
-public time.
+launch-channel OAuth settings, and verifies the authenticated `mine=true`
+channel list contains the exact configured channel ID before queue-state
+mutation. It then resets only the matching failed/queued or provider-free
+dry-run root job and sends it immediately only when its public release time is
+due. Future early-access releases stay queued until their public time.
 
 The consumer rechecks the current episode revision, completed upload record,
 show/runtime channel, R2 size/ETag/MIME type, and conditional object read before
-streaming the body to Google's resumable endpoint. It verifies returned
-channel/privacy, then records the provider ID both on the immutable publication
-and current episode. A committed provider ID makes a root-job retry
-provider-free. An upload timeout, incomplete response, verification failure,
+streaming the body to Google's resumable endpoint. It repeats the authenticated
+channel check with the freshly issued access token before an upload session can
+exist, verifies returned channel/privacy afterward, then records the provider
+ID both on the immutable publication and current episode. A committed provider
+ID makes a root-job retry provider-free. An upload timeout, incomplete response, verification failure,
 state-commit uncertainty, or Worker interruption moves the record to
 `reconciliation_required`; neither cron recovery nor the generic retry route
 may replay that upload. A recently authenticated super-admin may reconcile it

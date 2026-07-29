@@ -5,6 +5,8 @@ const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const VIDEO_UPLOAD_URL =
   "https://www.googleapis.com/upload/youtube/v3/videos"
   + "?uploadType=resumable&part=snippet,status";
+const CHANNEL_LOOKUP_URL =
+  "https://www.googleapis.com/youtube/v3/channels";
 const VIDEO_LOOKUP_URL = "https://www.googleapis.com/youtube/v3/videos";
 const MAXIMUM_PROVIDER_RESPONSE_BYTES = 64_000;
 const TOKEN_TIMEOUT_MS = 10_000;
@@ -33,6 +35,57 @@ export class YouTubeProviderError extends Error {
 
 export function youtubeProviderConfigured(env: PodcastEnv): boolean {
   return youtubeProviderConfig(env) !== null;
+}
+
+export async function verifyYouTubeChannelAccess(
+  env: PodcastEnv
+): Promise<{ channelId: string }> {
+  const config = youtubeProviderConfig(env);
+  if (!config) {
+    throw new YouTubeProviderError("youtube_not_configured");
+  }
+  const accessToken = await refreshAccessToken(config);
+  await verifyAuthenticatedChannel(accessToken, config.channelId);
+  return { channelId: config.channelId };
+}
+
+async function verifyAuthenticatedChannel(
+  accessToken: string,
+  expectedChannelId: string
+): Promise<void> {
+  const url = new URL(CHANNEL_LOOKUP_URL);
+  url.searchParams.set("part", "id");
+  url.searchParams.set("mine", "true");
+  url.searchParams.set("maxResults", "50");
+  const response = await fetchWithTimeout(url, {
+    headers: { authorization: `Bearer ${accessToken}` },
+    redirect: "error"
+  }, METADATA_TIMEOUT_MS).catch(() => {
+    throw new YouTubeProviderError(
+      "youtube_channel_verification_failed"
+    );
+  });
+  if (!response.ok) {
+    throw new YouTubeProviderError(
+      "youtube_channel_verification_failed"
+    );
+  }
+  const payload = await boundedJson(
+    response,
+    "youtube_channel_verification_failed"
+  );
+  const items = Array.isArray(payload.items)
+    ? payload.items.slice(0, 50)
+    : [];
+  const matched = items.some((value) => {
+    const item = jsonObject(value);
+    return String(item?.id ?? "") === expectedChannelId;
+  });
+  if (!matched) {
+    throw new YouTubeProviderError(
+      "youtube_channel_verification_failed"
+    );
+  }
 }
 
 export async function uploadUnlistedYouTubeVideo(
@@ -65,6 +118,7 @@ export async function uploadUnlistedYouTubeVideo(
     throw new YouTubeProviderError("youtube_not_configured");
   }
   const accessToken = await refreshAccessToken(config);
+  await verifyAuthenticatedChannel(accessToken, config.channelId);
   const initiation = await fetchWithTimeout(VIDEO_UPLOAD_URL, {
     method: "POST",
     headers: {

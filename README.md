@@ -242,7 +242,9 @@ Shorts boundary now lets Producer+ prepare one
 immutable private/unlisted draft for the current ready render. Approval
 requires a recently authenticated super-admin. The committed mode records only
 a dry run; an actual upload additionally requires explicit `controlled_test`
-mode and launch-channel OAuth secrets, and public visibility is structurally
+mode and launch-channel OAuth secrets. Before queueing, approval exchanges the
+refresh token and requires YouTube's authenticated `mine=true` channel list to
+contain the exact configured channel ID. Public visibility is structurally
 rejected. No production public clip route or production Shorts upload is
 enabled.
 
@@ -250,9 +252,11 @@ Full-episode video now has a parallel staging-only boundary. Its draft pins the
 current publication revision, YouTube root job, completed MP4 upload, private
 R2 bytes/ETag, and exact launch channel. A recent super-admin approval records
 a provider-free dry run or, only under explicit `controlled_test`, queues one
-unlisted upload at public release. Committed provider evidence is replay-safe;
-interrupted or ambiguous uploads are quarantined for manual reconciliation.
-Production and public visibility remain disabled.
+unlisted upload at public release. The same authenticated-channel preflight
+must pass before either the publication or root job can be queued. Committed
+provider evidence is replay-safe; interrupted or ambiguous uploads are
+quarantined for manual reconciliation. Production and public visibility remain
+disabled.
 
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member

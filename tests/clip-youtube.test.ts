@@ -67,13 +67,13 @@ describe("controlled clip YouTube publication", () => {
     );
   });
 
-  it("queues an explicitly configured controlled test without uploading inline", async () => {
+  it("preflights the channel then queues without uploading inline", async () => {
     const fixture = await createFixture({
       youtubeMode: "controlled_test",
       providerConfigured: true
     });
     await createDraft(fixture.env);
-    const providerFetch = vi.fn();
+    const providerFetch = channelPreflightFetchFixture();
     vi.stubGlobal("fetch", providerFetch);
     const response = await handleRequest(
       adminRequest(
@@ -96,7 +96,40 @@ describe("controlled clip YouTube publication", () => {
       clipRenderId: "render_fixture",
       clipPublicationId: "youtube_fixture"
     });
-    expect(providerFetch).not.toHaveBeenCalled();
+    expect(providerFetch).toHaveBeenCalledTimes(2);
+    expect(String(providerFetch.mock.calls[1][0])).toContain(
+      "/youtube/v3/channels"
+    );
+    expect(String(providerFetch.mock.calls[1][0])).not.toContain(
+      "/upload/youtube/v3/videos"
+    );
+  });
+
+  it("rejects a controlled queue when OAuth owns another channel", async () => {
+    const fixture = await createFixture({
+      youtubeMode: "controlled_test",
+      providerConfigured: true
+    });
+    await createDraft(fixture.env);
+    const providerFetch = channelPreflightFetchFixture("channel_other");
+    vi.stubGlobal("fetch", providerFetch);
+
+    const response = await handleRequest(
+      adminRequest(
+        "/v1/admin/clip-youtube-publications/youtube_fixture/approve",
+        {}
+      ),
+      fixture.env
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "youtube_channel_verification_failed"
+    });
+    expect(fixture.publication?.status).toBe("draft");
+    expect(fixture.queuedJobs).toEqual([]);
+    expect(fixture.r2Heads).toBe(1);
+    expect(providerFetch).toHaveBeenCalledTimes(2);
   });
 
   it("streams the exact private object and commits verified provider evidence", async () => {
@@ -105,6 +138,7 @@ describe("controlled clip YouTube publication", () => {
       providerConfigured: true
     });
     await createDraft(fixture.env);
+    vi.stubGlobal("fetch", channelPreflightFetchFixture());
     await handleRequest(
       adminRequest(
         "/v1/admin/clip-youtube-publications/youtube_fixture/approve",
@@ -127,7 +161,7 @@ describe("controlled clip YouTube publication", () => {
     expect(fixture.auditActions).toContain(
       "clip.youtube_controlled_test_uploaded"
     );
-    expect(providerFetch).toHaveBeenCalledTimes(4);
+    expect(providerFetch).toHaveBeenCalledTimes(5);
   });
 
   it("promotes the same dry-run evidence to one controlled upload", async () => {
@@ -150,6 +184,7 @@ describe("controlled clip YouTube publication", () => {
       "YOUTUBE_PUBLISH_MODE",
       "controlled_test"
     );
+    vi.stubGlobal("fetch", channelPreflightFetchFixture());
     const controlled = await handleRequest(
       adminRequest(
         "/v1/admin/clip-youtube-publications/youtube_fixture/approve",
@@ -170,6 +205,7 @@ describe("controlled clip YouTube publication", () => {
       providerConfigured: true
     });
     await createDraft(fixture.env);
+    vi.stubGlobal("fetch", channelPreflightFetchFixture());
     await handleRequest(
       adminRequest(
         "/v1/admin/clip-youtube-publications/youtube_fixture/approve",
@@ -202,7 +238,7 @@ describe("controlled clip YouTube publication", () => {
       queueFails: true
     });
     await createDraft(fixture.env);
-    const providerFetch = vi.fn();
+    const providerFetch = channelPreflightFetchFixture();
     vi.stubGlobal("fetch", providerFetch);
 
     const response = await handleRequest(
@@ -222,7 +258,7 @@ describe("controlled clip YouTube publication", () => {
       "youtube_queue_failed"
     );
     expect(fixture.queuedJobs).toEqual([]);
-    expect(providerFetch).not.toHaveBeenCalled();
+    expect(providerFetch).toHaveBeenCalledTimes(2);
   });
 
   it("does not automatically duplicate a provider attempt after failure", async () => {
@@ -231,6 +267,7 @@ describe("controlled clip YouTube publication", () => {
       providerConfigured: true
     });
     await createDraft(fixture.env);
+    vi.stubGlobal("fetch", channelPreflightFetchFixture());
     await handleRequest(
       adminRequest(
         "/v1/admin/clip-youtube-publications/youtube_fixture/approve",
@@ -585,6 +622,9 @@ function providerFetchFixture() {
       access_token: "access_token_fixture",
       token_type: "Bearer"
     }))
+    .mockResolvedValueOnce(jsonResponse({
+      items: [{ id: "channel_fixture" }]
+    }))
     .mockResolvedValueOnce(new Response(null, {
       status: 200,
       headers: {
@@ -599,6 +639,19 @@ function providerFetchFixture() {
         snippet: { channelId: "channel_fixture" },
         status: { privacyStatus: "unlisted" }
       }]
+    }));
+}
+
+function channelPreflightFetchFixture(
+  channelId = "channel_fixture"
+) {
+  return vi.fn()
+    .mockResolvedValueOnce(jsonResponse({
+      access_token: "access_token_fixture",
+      token_type: "Bearer"
+    }))
+    .mockResolvedValueOnce(jsonResponse({
+      items: [{ id: channelId }]
     }));
 }
 

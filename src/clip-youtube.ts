@@ -18,6 +18,7 @@ import {
 } from "./validation";
 import {
   uploadUnlistedYouTubeVideo,
+  verifyYouTubeChannelAccess,
   youtubeProviderDescription,
   YouTubeProviderError,
   youtubeProviderConfigured,
@@ -329,6 +330,21 @@ export async function approveAdminClipYouTubePublication(
       { status: 503 }
     );
   }
+  let verifiedChannelId: string;
+  try {
+    const verified = await verifyYouTubeChannelAccess(env);
+    verifiedChannelId = verified.channelId;
+  } catch (error) {
+    const code = error instanceof YouTubeProviderError
+      ? error.code
+      : "youtube_channel_verification_failed";
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: code },
+      { status: 503 }
+    );
+  }
   const queued = await env.DB.prepare(
     `UPDATE clip_youtube_publications
      SET
@@ -342,7 +358,7 @@ export async function approveAdminClipYouTubePublication(
        updated_at = datetime('now')
      WHERE id = ? AND status IN ('draft', 'dry_run')`
   ).bind(
-    env.YOUTUBE_CHANNEL_ID,
+    verifiedChannelId,
     auth.authorization.identity.id,
     publicationId
   ).run();
@@ -389,7 +405,7 @@ export async function approveAdminClipYouTubePublication(
       clipId: publication.clip_id,
       renderId: publication.render_id,
       privacyStatus: publication.privacy_status,
-      channelId: env.YOUTUBE_CHANNEL_ID,
+      channelId: verifiedChannelId,
       promotedFromDryRun: promotableDryRun
     }
   });

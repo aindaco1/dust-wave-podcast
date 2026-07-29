@@ -206,10 +206,12 @@ iHeartRadio, and Deezer.
   full-episode boundary is now implemented as a staging-only, unlisted
   controlled test: its recent-super-admin approval pins the publication
   revision, distribution job, completed MP4 upload, R2 key/bytes/ETag, and
-  launch channel before Queue consumption. Ordinary Publish remains a
-  provider-free dry run, production mode remains inert, and any interrupted
-  or provider-ambiguous upload is quarantined for reconciliation instead of
-  replayed. The implemented reconciliation path requires a recent
+  launch channel before Queue consumption. Controlled approval now refreshes
+  OAuth and requires YouTube's authenticated channel list to contain that
+  exact channel ID before either D1 record or Queue job can become queued.
+  Ordinary Publish remains a provider-free dry run, production mode remains
+  inert, and any interrupted or provider-ambiguous upload is quarantined for
+  reconciliation instead of replayed. The implemented reconciliation path requires a recent
   Super-admin either to verify the exact unlisted provider video and channel
   or to attest explicitly that no channel video remains; both outcomes are
   audited and neither replays an ambiguous upload. The audio-only fallback is

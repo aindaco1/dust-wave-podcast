@@ -224,10 +224,13 @@
   unlisted in controlled mode, and production routes return `404`. The episode
   record additionally snapshots the exact publication revision, root job,
   completed MP4 upload ID, R2 key/bytes/ETag, and channel. The consumer requires
-  launch-channel OAuth secrets, hard-pins Google origins, disables redirects,
-  bounds provider JSON, streams the conditionally read private R2 body,
-  verifies returned channel/privacy, and fails closed if the mode is restored
-  before consumption.
+  launch-channel OAuth secrets. Before any controlled D1/Queue mutation,
+  approval refreshes OAuth and requires the bounded authenticated `mine=true`
+  channel list to contain the exact configured channel ID. The adapter
+  repeats that check with the consumer's fresh access token before creating an
+  upload session, hard-pins Google origins, disables redirects, bounds provider
+  JSON, streams the conditionally read private R2 body, verifies returned
+  channel/privacy, and fails closed if the mode is restored before consumption.
 - Saved marketing links accept only bounded text and the show's existing
   credential-free HTTPS canonical URL. The Worker rebuilds every tagged URL
   through the exact shared Pool/Store normalizer instead of trusting the

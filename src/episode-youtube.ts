@@ -18,6 +18,7 @@ import {
 } from "./validation";
 import {
   uploadUnlistedYouTubeVideo,
+  verifyYouTubeChannelAccess,
   verifyYouTubeVideo,
   youtubeProviderConfigured,
   youtubeProviderDescription,
@@ -364,6 +365,21 @@ export async function approveAdminEpisodeYouTubePublication(
       { status: 503 }
     );
   }
+  let verifiedChannelId: string;
+  try {
+    const verified = await verifyYouTubeChannelAccess(env);
+    verifiedChannelId = verified.channelId;
+  } catch (error) {
+    const code = error instanceof YouTubeProviderError
+      ? error.code
+      : "youtube_channel_verification_failed";
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: code },
+      { status: 503 }
+    );
+  }
   const [queuedPublication, queuedJob] = await env.DB.batch([
     env.DB.prepare(
       `UPDATE episode_youtube_publications
@@ -378,7 +394,7 @@ export async function approveAdminEpisodeYouTubePublication(
          updated_at = datetime('now')
        WHERE id = ? AND status IN ('draft', 'dry_run', 'failed')`
     ).bind(
-      env.YOUTUBE_CHANNEL_ID,
+      verifiedChannelId,
       auth.authorization.identity.id,
       publicationId
     ),
@@ -450,7 +466,7 @@ export async function approveAdminEpisodeYouTubePublication(
       episodeId: publication.episode_id,
       publicationRevision: publication.publication_revision,
       distributionJobId: publication.distribution_job_id,
-      channelId: env.YOUTUBE_CHANNEL_ID,
+      channelId: verifiedChannelId,
       privacyStatus: publication.privacy_status,
       queuedImmediately: due
     }

@@ -1309,10 +1309,15 @@ For the YouTube clip test:
    validate a dry-run bundle, and deploy the exact reviewed commit.
 4. Reopen the existing dry-run record and approve it once. Prefer `unlisted`;
    `private` is allowed, while `public` is structurally rejected. The request
-   should return `202` before any provider upload completes.
+   must first refresh OAuth and find the exact configured channel ID in
+   YouTube's authenticated `mine=true` channel list. Only then should it return
+   `202`; no upload occurs inline. A mismatch or provider failure must leave
+   the publication unqueued and create no Queue message.
 5. Record the publication ID, provider video ID, verified channel/privacy,
-   upload audit event, Queue outcome, and manual inspection result. Delete or
-   retain the test video according to the recorded owner decision.
+   upload audit event, Queue outcome, and manual inspection result. Confirm the
+   consumer repeated the channel preflight before creating the resumable upload
+   session. Delete or retain the test video according to the recorded owner
+   decision.
 6. Restore staging `YOUTUBE_PUBLISH_MODE=dry_run` first and redeploy the exact
    reviewed configuration. Any still-queued job then fails closed as
    `youtube_mode_disabled` without R2/provider access. Remove or rotate the
@@ -1336,10 +1341,13 @@ For the full-episode YouTube test, use a separate fixture publication:
    R2 body reads, OAuth, and provider calls.
 3. Install the same four temporary launch-channel secrets, switch only staging
    to `controlled_test`, dry-run/deploy the reviewed commit, and approve the
-   same immutable record. If public release is due, confirm `202` and one root
-   Queue message; if it is future-dated, confirm no immediate send and let cron
-   enqueue it only at public release.
+   same immutable record. Confirm approval refreshes OAuth and finds the exact
+   configured channel ID in YouTube's authenticated `mine=true` channel list
+   before D1/Queue mutation. If public release is due, confirm `202` and one
+   root Queue message; if it is future-dated, confirm no immediate send and let
+   cron enqueue it only at public release.
 4. Confirm the consumer conditionally reads the snapshotted R2 ETag, verifies
+   the authenticated channel again before creating an upload session, verifies
    the returned channel and unlisted privacy, records one provider video ID on
    the publication/current episode/root job, and emits the upload audit.
 5. Restore staging to `dry_run` before cleanup. If state becomes
