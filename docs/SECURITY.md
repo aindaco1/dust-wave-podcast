@@ -575,6 +575,29 @@ confirmation before replacing existing unsaved rows. Generation cannot write a
 chapter revision or approval, publish a feed or News page, contact a provider,
 or mutate any other domain. Staging is enabled; production is fail-closed.
 
+## AI clip-candidate boundary
+
+Clip discovery reuses the Producer+ authentication, trusted-origin CSRF,
+verified transcript, bounded prompt, model, provider parser, generated-text,
+usage, and atomic audit-claim primitives under its own action and environment
+kill switch. Like chapters, it fails before the model and before an audit claim
+unless the complete approved transcript fits the 48,000-character boundary.
+
+The provider may return only bounded title/reason text and exact start/end cue
+identities. The Worker rejects missing, reordered, overlapping, invented, or
+unsafe values and derives every timestamp from the immutable cues. Each result
+must span 15–90 seconds. Digest-derived candidate IDs bind only the source
+transcript and cue range. Audit metadata retains languages, revision/digests,
+cue and candidate counts, duration bounds, model, usage, and result—not prompt,
+transcript, provider output, generated title, or editorial reason.
+
+The private/no-store response is explicitly unsaved. The browser revalidates
+the source digest, full coverage, ordering, duration, and text, renders only DOM
+text nodes, and requires confirmation before replacing populated recipe
+fields. A candidate can fill only a new local segment recipe. The existing clip
+PUT, H1 alignment, render, approval, and publication paths remain independent
+explicit gates. Staging is enabled; production is fail-closed.
+
 Public transcript reads are slug-addressed and fail closed behind the same
 published/due/public-or-free-or-early-access/ready-media policy as canonical
 News/audio publication. Premium bonuses, drafts, future releases, archived

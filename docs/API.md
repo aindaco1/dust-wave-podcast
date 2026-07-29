@@ -902,6 +902,31 @@ editor after confirmation. The existing `PUT` and Admin approval routes remain
 the only persistence/publication path. Staging enables the feature; production
 keeps `CHAPTER_DRAFT_AI_ENABLED=false`.
 
+### Review-only AI social clip candidates
+
+`POST /v1/admin/episodes/{id}/clips/draft` reuses the same Producer+,
+trusted-origin CSRF, immutable approved-transcript verifier, Workers AI model,
+content-free audit, generated-text validation, and atomic
+six-per-admin/episode/hour claim under a separate `clip_draft` namespace and
+`CLIP_DRAFT_AI_ENABLED` kill switch.
+
+The complete approved transcript must fit the 48,000-character prompt
+boundary. The model may return one to six title/reason and start/end `cueId`
+pairs. The Worker rejects unknown, reordered, overlapping, unsafe, or
+out-of-range output, derives exact timing from the immutable cues, and requires
+each candidate to span 15–90 seconds. Candidate IDs are digest-derived from the
+source transcript and cue range. Audits contain no transcript or generated
+text.
+
+The response reports exact transcript revision/digest/count evidence,
+`reviewRequired: true`, and `saved: false`. It writes no clip, revision, render,
+approval, or publication state. The browser repeats the contract and can place
+one candidate only into a new unsaved vertical segment recipe after confirming
+replacement of populated fields. The ordinary clip PUT remains the sole save
+path; H1 alignment, private render, approval, and publication remain separate.
+Staging enables the feature; production keeps
+`CLIP_DRAFT_AI_ENABLED=false`.
+
 ### Word-alignment review
 
 Queue requests require `requestId`, `expectedWorkingMasterId`,

@@ -148,6 +148,15 @@ cue start times before the normal chapter validator runs. Applying a proposal
 only replaces unsaved chapter-editor state. Saving and Admin approval remain
 separate explicit actions. Staging is enabled and production is disabled.
 
+The clip factory also has a bilingual, review-only social-candidate assistant
+on that shared boundary. It requires complete approved-transcript coverage and
+accepts only chronological, non-overlapping exact cue ranges. The Worker
+derives and enforces 15–90 second timing from immutable cues, while generated
+titles and editorial reasons remain review text. Choosing a candidate fills a
+new unsaved vertical segment recipe; the existing versioned save, alignment,
+render, approval, and publication gates remain unchanged. Staging is enabled
+and production is disabled.
+
 Source-language transcription accepts an explicit English/Spanish episode
 language and only the current approved working master. The job fingerprint
 binds the master SHA-256, model, language, and versioned settings; duplicate

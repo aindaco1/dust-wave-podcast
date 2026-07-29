@@ -456,6 +456,28 @@ separate six-request rate limit. A transcript over 48,000 prompt characters
 must return `chapter_draft_full_transcript_required` before an audit claim.
 The production dry bundle must retain `CHAPTER_DRAFT_AI_ENABLED=false`.
 
+Exercise the social clip-candidate assistant against the local mock with
+`PODCAST_ADMIN_MOCK_TRANSCRIPT_CUES=24` and
+`PODCAST_ADMIN_MOCK_TRANSCRIPT_APPROVED=true`. Generate English and Spanish
+candidates and confirm the review evidence reports the exact approved
+revision, digest, and all reviewed cues. Candidate text must use DOM text
+nodes. Cancel replacement over populated fields and verify the recipe is
+unchanged; accept one candidate and verify only the unsaved title and exact
+start/end cue fields change. No clip PUT, render request, approval, publication,
+or provider action may occur until its separate existing control is used.
+Verify 320 px layout, 44 px actions, no horizontal overflow, console error, or
+CSP violation.
+
+On staging, the real `needs_review` transcript must return
+`clip_draft_approved_transcript_required` without a model call. After separate
+human approval, one controlled request must prove private/no-store,
+`reviewRequired: true`, `saved: false`, complete cue counts, 15–90 second
+server-derived non-overlapping ranges, content-free request/completion audits,
+no clip/revision/render/publication write, and the separate six-request rate
+limit. Oversized complete input must fail before the claim with
+`clip_draft_full_transcript_required`. The production dry bundle must retain
+`CLIP_DRAFT_AI_ENABLED=false`.
+
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and
 maximum follow only the currently rendered page, neighboring cues remain

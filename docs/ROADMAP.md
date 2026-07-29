@@ -159,6 +159,14 @@ iHeartRadio, and Deezer.
   chapter contract. The bilingual review card can replace only unsaved editor
   state; versioned save and Admin approval remain separate. Staging is enabled
   and production remains disabled.
+- The first Hilite-value social discovery assistant now reuses that same
+  verified-transcript and Workers AI core. It proposes at most six
+  chronological, non-overlapping 15–90 second ranges using exact cue
+  identities; the Worker derives every timestamp and audits no generated text.
+  A bilingual review card can fill only a new unsaved vertical segment recipe.
+  Existing versioned save, H1 word alignment, private rendering, approval, and
+  publication controls remain the only state-changing path. Staging is enabled
+  and production remains disabled.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
   speaker labels, Admin approval, and matching-alignment readiness. Canonical
