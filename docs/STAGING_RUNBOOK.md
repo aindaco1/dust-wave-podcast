@@ -645,6 +645,27 @@ remote review branch (for this release,
 preview unavailable and must never fall back to the repository default
 branch. Production remains pinned to `main`.
 
+The July 29, 2026 public-show audit used exact site commit
+`4980505b201b7781d9fb84a2d24752a15013a2cc` at the stable isolated staging
+origin and immutable deployment
+`https://5cfbb5a3.dust-wave-website-staging.pages.dev`. The staging entrypoint
+reused the production CI image pipeline and generated every one of 124
+referenced WebP assets; the show wordmark and artwork returned `200 image/webp`
+instead of the earlier missing sources. The public checkout loaded
+`@dustwave/admin-shell` 0.8.2 with `credentials: "omit"`, and the real
+credential-free `GET /v1/shows/opera-en-la-selva` returned `200` without
+broadening the Worker's CORS response.
+
+Mobile Chrome measured 131 ms LCP and 0.00 CLS. Lighthouse scored
+Accessibility 100 and Best Practices 100 after the light hero action, tier
+labels, and account link met AA contrast and the hero action retained a 44 px
+target. Its only failed SEO audit was the staging project's required
+`X-Robots-Tag: noindex, nofollow, noarchive`. English and Spanish loaded every
+first-party image/script/style/API request successfully with no console
+warning, error, or inspector issue. Site run `30477544602` and shared run
+`30477269242` passed their exact commits. Production Pages, Worker, routes,
+data, and DNS remained untouched.
+
 After both reviewed transcript languages and an exact working master exist,
 queue an alignment from the Production workbench in isolated staging. Copy the
 displayed job ID and dispatch only from the reviewed release branch:

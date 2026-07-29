@@ -124,6 +124,11 @@
   immutable Pages preview hostnames are intentionally excluded. CI rejects
   duplicate, cross-environment, credential-bearing, or path-bearing origins.
   Admin responses are private/no-store and marked noindex.
+  Public show, quote, and checkout routes deliberately omit
+  `Access-Control-Allow-Credentials`; their site client must use Fetch
+  `credentials: "omit"`. Admin and member clients remain credentialed by
+  default. This prevents a public presentation route from silently broadening
+  the cookie-bearing CORS boundary.
 - Ready clip preview/download remains under the path-scoped admin session.
   The Marketing library returns only bounded show-scoped metadata and those
   same ready media paths plus bounded public-selection state; it never returns
