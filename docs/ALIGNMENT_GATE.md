@@ -132,3 +132,18 @@ records only. It does not claim that either candidate passes real audio. H1
 remains blocked until the 24-fixture rights-cleared corpus, human word
 boundaries, 100 preview reviews, 60-minute resource runs, idempotency evidence,
 and clean-runner reproduction are imported and produce a passing row.
+
+As of July 28, 2026, the owner-authorized English Dust Don't Settle source has
+enough duration for 12 non-overlapping two-to-five-minute candidates, but its
+transcript still needs human text, speaker, and timing review. No English
+fixture is accepted yet. The Ópera en la Selva Substack feed currently exposes
+two editorial items and no podcast-audio enclosure. A metadata-only review of
+candidate Dust Wave YouTube uploads found English automatic captions and no
+owner-confirmed Spanish spoken-audio source. YouTube's translated caption
+options are not evidence that the underlying speech is Spanish.
+
+The Spanish 12-fixture corpus therefore remains a sourcing and rights blocker.
+Do not download an unapproved candidate, derive gold boundaries from
+machine-translated captions, or substitute the deterministic UI fixture for
+real benchmark evidence. Record the source authorization and spoken language
+before any private corpus download or segmentation.

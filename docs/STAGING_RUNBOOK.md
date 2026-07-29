@@ -1385,6 +1385,16 @@ attempt one as private English transcript
 `needs_review`. It has no approval, no word-alignment rows, and no public
 projection.
 
+The content-free July 28 diagnostic pass counted 1,300 cues spanning
+13.620–3,716.060 seconds and 50,882 visible characters. It found zero empty
+cues, invalid intervals, or overlaps, but flagged 226 cues shorter than
+0.5 seconds, 20 longer than 10 seconds, and 229 above the 25-character/second
+review threshold. All 1,300 cues still lack a confirmed speaker label. The
+read-only aggregate query returned no transcript text and wrote zero rows.
+Use the existing diagnostic links to review each class; these counts are
+editorial work, not an automatic rejection or permission to bulk-rewrite
+speech.
+
 Do not approve or align this transcript as launch evidence yet. A human must
 first review its exact content and speaker labels, and promotion of the
 enhanced derivative would intentionally stale this source-bound revision.
