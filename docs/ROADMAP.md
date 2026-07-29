@@ -179,6 +179,13 @@ iHeartRadio, and Deezer.
   requires a separate explicit confirmation before marking names confirmed,
   and reuses the existing versioned Save path; it cannot alter caption
   text/timing, call the Worker, or approve a revision. The same workbench now
+  accepts bounded WebVTT and SubRip files through a browser-local, review-only
+  parser. It caps the normalized review at 1 MB and 10,000 ordered,
+  non-overlapping cues, enforces episode and per-cue duration bounds, keeps
+  explicit VTT voice labels unconfirmed, preserves ambiguous SRT prefixes as
+  caption text, and requires confirmation before replacing existing work. It
+  performs no upload or API call and reuses the existing versioned Save path.
+  The same workbench also
   exports the exact current saved revision as private checksum-verified WebVTT
   or SubRip while excluding unsaved edits and unconfirmed speaker labels; no
   export persistence or provider is introduced. The same approval now

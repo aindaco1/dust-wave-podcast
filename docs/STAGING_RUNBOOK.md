@@ -488,6 +488,18 @@ D1 content digest and verify no caption text returns. At 320 CSS pixels, both
 localized actions must retain at least 44 px height, wrap without horizontal
 overflow, and produce no console or CSP error.
 
+Import those two saved formats back into a disposable review draft. Confirm
+the browser performs no API request during file reading, explicit WebVTT voice
+labels enter as unconfirmed, an SRT speaker-looking prefix remains caption
+text, line breaks normalize without HTML execution, and the existing saved
+revision remains unchanged until the ordinary Save action. Existing or unsaved
+work must require replacement confirmation. Empty, malformed, overlapping,
+out-of-order, over-two-minute, past-episode, over-10,000-cue, and normalized
+over-1-MB fixtures must fail without changing the editor. Exercise English and
+Spanish at 320 CSS pixels; the file field and action must retain the shared
+44 px control height with no horizontal overflow, console error, or CSP
+violation.
+
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and
 maximum follow only the currently rendered page, neighboring cues remain
