@@ -67,7 +67,12 @@ iHeartRadio, and Deezer.
   and safe RSS-import planning in Overview while one separate bilingual
   Settings tab owns the existing show editor. Episodes and Settings reuse
   synchronized show selectors and one save form/state path; no settings
-  payload or update route is duplicated.
+  payload or update route is duplicated. That single form now covers the
+  Worker-supported primary language, lifecycle, author, category, artwork,
+  explicit-content policy, premium benefits, early-access default, and
+  YouTube destination. Canonical-page and RSS addresses are visible but
+  read-only, and entering the archived lifecycle requires an explicit
+  confirmation.
 - Add a migration path comparable to established podcast hosts. The first
   boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
   bounded public-HTTPS fetches and safe XML reduction report which source

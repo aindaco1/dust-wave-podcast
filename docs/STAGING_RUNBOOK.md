@@ -409,13 +409,20 @@ or provider action.
 Also exercise the separate Settings tab in English and Spanish. Confirm the
 responsive tab controller exposes and selects Settings, the selected show is
 synchronized with the Episodes selector, exactly one show-settings form is
-present, and changing the tab performs no save. At 320 CSS pixels, every text,
-URL, number, textarea, checkbox, and save control must remain inside the panel;
-text controls and the save button must retain at least 44 px height, and
-document `scrollWidth` must equal `clientWidth`. The 2026-07-28 Spanish
-exercise rendered one DRY form, synchronized both selectors, retained 44 px
-text/save controls, and had matching 291 px document widths under Chrome's
-320 px device override with no console errors.
+present, and changing the tab performs no save. Exercise primary language,
+lifecycle, author, category, artwork, explicit-content policy, premium, free
+mini-episode, early-access, and YouTube values through the existing show
+update route. Confirm canonical-page and RSS inputs are read-only and absent
+from the update payload. Entering archived from another lifecycle must raise a
+localized confirmation before any request. At 320 CSS pixels, every text, URL,
+number, textarea, checkbox, select, and save control must remain inside the
+panel; text/select controls and the save button must retain at least 44 px
+height, and document `scrollWidth` must equal `clientWidth`. The 2026-07-28
+Spanish exercise rendered one DRY form, synchronized both selectors, completed
+the existing mock PATCH save, raised the archive confirmation, kept both
+permanent destinations read-only, retained 44 px controls, and had matching
+291 px document widths under Chrome's 320 px device override with no
+horizontal overflow.
 
 After both reviewed transcript languages and an exact working master exist,
 queue an alignment from the Production workbench in isolated staging. Copy the
