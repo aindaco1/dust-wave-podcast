@@ -420,9 +420,27 @@ export async function updateAdminEpisode(
 ): Promise<Response> {
   const episodeId = validIdentifier(episodeIdValue, "episodeId");
   const episode = await env.DB
-    .prepare(`SELECT show_id FROM episodes WHERE id = ?`)
+    .prepare(
+      `SELECT
+         episode.show_id,
+         episode.access,
+         episode.premium_at,
+         episode.public_at,
+         show.early_access_days,
+         show.free_mini_episode_enabled
+       FROM episodes episode
+       JOIN shows show ON show.id = episode.show_id
+       WHERE episode.id = ?`
+    )
     .bind(episodeId)
-    .first<{ show_id: string }>();
+    .first<{
+      show_id: string;
+      access: EpisodeAccess;
+      premium_at: string | null;
+      public_at: string | null;
+      early_access_days: number | null;
+      free_mini_episode_enabled: number;
+    }>();
   if (!episode) {
     return privateJson(
       request,
@@ -439,33 +457,96 @@ export async function updateAdminEpisode(
   if (!auth.ok) return auth.response;
   const body = await readJsonObject(request);
   const updates: Array<{ column: string; value: unknown }> = [];
+  const accessSupplied = "access" in body;
+  const scheduleSupplied = accessSupplied
+    || "premiumAt" in body
+    || "publicAt" in body;
+  const setUpdate = (column: string, value: unknown) => {
+    const existing = updates.findIndex((update) => update.column === column);
+    if (existing >= 0) {
+      updates[existing] = { column, value };
+      return;
+    }
+    updates.push({ column, value });
+  };
   for (const [input, column, maximum, required] of [
     ["title", "title", 240, true],
     ["summary", "summary", 4_000, false],
     ["contentHtml", "content_html", 100_000, false]
   ] as const) {
     if (input in body) {
-      updates.push({
+      setUpdate(
         column,
-        value: required
+        required
           ? requiredText(body[input], input, maximum)
           : optionalText(body[input], input, maximum)
-      });
+      );
     }
   }
+  let nextAccess = episode.access;
   if ("access" in body) {
     const access = requiredText(body.access, "access", 30) as EpisodeAccess;
     if (!["public", "early_access", "premium_bonus", "free_mini"].includes(access)) {
       throw new RequestValidationError("episode access is invalid");
     }
-    updates.push({ column: "access", value: access });
+    nextAccess = access;
+    setUpdate("access", access);
   }
+  let nextPremiumAt = episode.premium_at;
+  let nextPublicAt = episode.public_at;
   for (const [input, column] of [
     ["premiumAt", "premium_at"],
     ["publicAt", "public_at"]
   ] as const) {
     if (input in body) {
-      updates.push({ column, value: validDateTime(body[input], input) });
+      const value = validDateTime(body[input], input);
+      setUpdate(column, value);
+      if (input === "premiumAt") nextPremiumAt = value;
+      if (input === "publicAt") nextPublicAt = value;
+    }
+  }
+  if (
+    scheduleSupplied
+    && nextAccess === "early_access"
+    && nextPublicAt
+    && !nextPremiumAt
+    && episode.early_access_days !== null
+  ) {
+    nextPremiumAt = new Date(
+      new Date(nextPublicAt).getTime()
+      - episode.early_access_days * 86_400_000
+    ).toISOString();
+    setUpdate("premium_at", nextPremiumAt);
+  }
+  if (
+    scheduleSupplied
+    && nextPremiumAt
+    && nextPublicAt
+    && new Date(nextPremiumAt) > new Date(nextPublicAt)
+  ) {
+    throw new RequestValidationError("premiumAt cannot be after publicAt");
+  }
+  if (accessSupplied && nextAccess === "free_mini") {
+    if (episode.free_mini_episode_enabled !== 1) {
+      throw new RequestValidationError(
+        "This show does not allow a free mini episode"
+      );
+    }
+    const existing = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM episodes
+         WHERE show_id = ?
+           AND id != ?
+           AND access = 'free_mini'
+           AND status != 'archived'`
+      )
+      .bind(episode.show_id, episodeId)
+      .first<{ count: number }>();
+    if ((existing?.count ?? 0) >= 1) {
+      throw new RequestValidationError(
+        "This show already has its free mini episode"
+      );
     }
   }
   if ("durationSeconds" in body) {
@@ -473,19 +554,19 @@ export async function updateAdminEpisode(
     if (!Number.isSafeInteger(duration) || duration <= 0 || duration > 86_400) {
       throw new RequestValidationError("durationSeconds is invalid");
     }
-    updates.push({ column: "duration_seconds", value: duration });
+    setUpdate("duration_seconds", duration);
   }
   if ("explicit" in body) {
     if (typeof body.explicit !== "boolean") {
       throw new RequestValidationError("explicit must be a boolean");
     }
-    updates.push({ column: "explicit", value: body.explicit ? 1 : 0 });
+    setUpdate("explicit", body.explicit ? 1 : 0);
   }
   if ("sourceLanguage" in body) {
-    updates.push({
-      column: "source_language",
-      value: episodeSourceLanguage(body.sourceLanguage)
-    });
+    setUpdate(
+      "source_language",
+      episodeSourceLanguage(body.sourceLanguage)
+    );
   }
   if (updates.length === 0) {
     throw new RequestValidationError("No supported episode fields were supplied");
