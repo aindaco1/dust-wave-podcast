@@ -403,9 +403,9 @@ tracer with `--admin-tab production` at both 1440×900 and 390×844. Confirm:
   diagnostic card fits the viewport, and the document has no horizontal
   overflow;
 - no enforced CSP violation or browser console error occurs; and
-- the main unminified admin module remains within its existing 302,000-byte
-  ceiling while the isolated transcript-review module remains within 12,000
-  bytes.
+- the main unminified admin module remains within its existing 304,000-byte
+  ceiling, the isolated transcript-review module remains within 12,000 bytes,
+  and the diagnostic-navigation controller remains within 7,000 bytes.
 
 The review panel is an editing aid only. Do not treat its local product
 thresholds as a transcript approval, accessibility certification,
@@ -525,6 +525,29 @@ text, API request, storage write, dirty-state change, save, or approval may be
 introduced by navigation alone. Repeat in English and Spanish at 320 CSS
 pixels; each action must remain at least 44 px high with no horizontal
 overflow, inaccessible name, CSP violation, or console/page error.
+
+The July 29, 2026 acceptance exercised exact site commit
+`bd6667a7f6955aff074266c9a6bf307af9d8086a` at immutable staging URL
+`https://b2e757b2.dust-wave-website-staging.pages.dev`. The isolated 1,300-cue
+fixture produced 113 short-duration signals. In both English and Spanish,
+ten consecutive next actions moved from cue 12 (signal 1) to cue 122
+(signal 11), crossed from page 1–100 to 101–200, preserved position through
+the rerender, and enabled the previous action without wrapping. Every action
+retained its localized accessible name, `aria-controls` relationship, minimum
+44 px target, and 320 px viewport bounds. The exact commit-pinned main,
+transcript-review, and diagnostic-navigation modules all returned `200`; the
+browser recorded zero page/console errors, failed requests, or API mutation
+methods. The unauthenticated real staging shell separately passed English and
+Spanish localization, noindex/private authentication, exact asset pinning,
+and a 320 px document width. Navigation did not save or approve any content.
+
+The source budgets passed at 303,757 bytes for the main module, 9,935 bytes
+for transcript review, and 5,535 bytes for diagnostic navigation. GitHub run
+`30475974597` passed the exact site commit. The immutable 320×844 Chrome trace
+is
+`.artifacts/performance/podcast-admin-transcript-signals-bd6667a-320x844.json`
+(2,753,739 bytes; SHA-256
+`560dbf781d6be2d5058547c031b3ec03f0e8d1d8cc48ef3fa2cc6a2b236de4c6`).
 
 Create unsaved transcript and chapter edits without saving. For each relevant
 show, episode, transcript-language, and chapter selector, decline the bilingual
