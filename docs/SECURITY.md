@@ -561,6 +561,19 @@ The manual recovery action is show-scoped to Producer/Admin/Super-admin,
 requires trusted origin and CSRF, performs no directory/provider request, and
 audits only result, validator version, item count, or stable failure code.
 
+## Show-settings boundary
+
+The show-settings mutation is limited to a show-scoped Admin or Super-admin,
+requires credentialed allowlisted origin plus the current CSRF token, and
+audits field names rather than submitted values. Browser URL constraints are
+only a usability layer: the Worker independently requires artwork to be
+credential-free, port-free, fragment-free HTTPS and accepts a channel
+destination only when it is a query-free canonical channel path on
+`youtube.com`, `www.youtube.com`, or `m.youtube.com`. Empty optional
+destinations become SQL `NULL`; invalid metadata cannot reach the update.
+Canonical page, feed hostname, feed slug, and Podcasting 2.0 channel identity
+are not accepted by this mutation.
+
 ## Chapter boundary
 
 Chapter editing reuses the original normalized episode rows and adds a

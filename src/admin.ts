@@ -119,8 +119,6 @@ export async function updateAdminShow(
     ["title", "title", 200],
     ["description", "description", 10_000],
     ["descriptionEn", "description_en", 10_000],
-    ["artworkUrl", "artwork_url", 2_000],
-    ["youtubeChannelUrl", "youtube_channel_url", 2_000],
     ["authorName", "author_name", 200],
     ["category", "category", 200]
   ] as const;
@@ -133,6 +131,18 @@ export async function updateAdminShow(
           : optionalText(body[input], input, maximum)
       });
     }
+  }
+  if ("artworkUrl" in body) {
+    updates.push({
+      column: "artwork_url",
+      value: optionalHttpsUrl(body.artworkUrl, "artworkUrl")
+    });
+  }
+  if ("youtubeChannelUrl" in body) {
+    updates.push({
+      column: "youtube_channel_url",
+      value: optionalYouTubeChannelUrl(body.youtubeChannelUrl)
+    });
   }
   if ("language" in body) {
     const language = requiredText(body.language, "language", 12).toLowerCase();
@@ -1011,6 +1021,54 @@ function publicationConflictResponse(
     },
     { status: 409 }
   );
+}
+
+function optionalHttpsUrl(
+  value: unknown,
+  field: string
+): string | null {
+  const text = optionalText(value, field, 2_000);
+  if (!text) return null;
+  try {
+    const url = new URL(text);
+    if (
+      url.protocol !== "https:"
+      || url.username
+      || url.password
+      || url.port
+      || url.hash
+    ) {
+      throw new Error("invalid_https_url");
+    }
+    return url.toString();
+  } catch {
+    throw new RequestValidationError(
+      `${field} must be an HTTPS URL without credentials, a port, or a fragment`
+    );
+  }
+}
+
+function optionalYouTubeChannelUrl(value: unknown): string | null {
+  const urlValue = optionalHttpsUrl(value, "youtubeChannelUrl");
+  if (!urlValue) return null;
+  const url = new URL(urlValue);
+  const permittedHosts = new Set([
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com"
+  ]);
+  if (
+    !permittedHosts.has(url.hostname.toLowerCase())
+    || url.search
+    || !/^\/(?:@[A-Za-z0-9._-]+|channel\/[A-Za-z0-9_-]+|c\/[A-Za-z0-9._-]+|user\/[A-Za-z0-9._-]+)\/?$/u.test(
+      url.pathname
+    )
+  ) {
+    throw new RequestValidationError(
+      "youtubeChannelUrl must be a canonical YouTube channel URL"
+    );
+  }
+  return url.toString();
 }
 
 function presentAdminShow(show: ShowAdminRow): Record<string, unknown> {

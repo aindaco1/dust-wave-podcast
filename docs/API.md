@@ -328,7 +328,7 @@ including under concurrent requests.
 | Method | Path | Roles | Purpose |
 |---|---|---|---|
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview, including the read-only immutable Podcasting 2.0 channel GUID |
-| `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata |
+| `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata; artwork must be canonical HTTPS and the optional channel destination must be a canonical YouTube channel URL |
 | `POST` | `/v1/admin/shows/{id}/rss-import/preview` | recently authenticated super-admin | Fetch and sanitize one explicitly authorized public HTTPS RSS feed without importing episodes or media |
 | `POST` | `/v1/admin/shows/{id}/rss-import/podcast-guid` | recently authenticated super-admin | Deliberately assign a previewed source channel GUID once to an empty coming-soon show |
 | `GET` | `/v1/admin/shows/{id}/rss-import/plans` | analyst+ | List the ten most recent show-scoped immutable migration plans and selected evidence |

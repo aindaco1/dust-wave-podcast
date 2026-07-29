@@ -72,7 +72,9 @@ iHeartRadio, and Deezer.
   explicit-content policy, premium benefits, early-access default, and
   YouTube destination. Canonical-page and RSS addresses are visible but
   read-only, and entering the archived lifecycle requires an explicit
-  confirmation.
+  confirmation. Artwork and channel destinations are enforced again at the
+  Worker boundary as credential-free, port-free, fragment-free HTTPS; the
+  latter accepts only canonical YouTube channel hosts and paths.
 - Add a migration path comparable to established podcast hosts. The first
   boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
   bounded public-HTTPS fetches and safe XML reduction report which source

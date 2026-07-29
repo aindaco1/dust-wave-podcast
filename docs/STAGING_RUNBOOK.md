@@ -424,6 +424,14 @@ permanent destinations read-only, retained 44 px controls, and had matching
 291 px document widths under Chrome's 320 px device override with no
 horizontal overflow.
 
+Repeat the URL checks with the browser constraint disabled or by calling the
+staging API directly: HTTP artwork, credential-bearing artwork, a non-YouTube
+channel host, and a YouTube watch URL must each return private/no-store `400`
+without an `UPDATE shows` or audit insert. Clearing either optional URL should
+store `NULL`. A canonical `https://www.youtube.com/@handle` channel and
+credential-free HTTPS artwork should save through the existing audited
+mutation.
+
 After both reviewed transcript languages and an exact working master exist,
 queue an alignment from the Production workbench in isolated staging. Copy the
 displayed job ID and dispatch only from the reviewed release branch:
