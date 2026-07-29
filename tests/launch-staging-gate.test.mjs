@@ -49,6 +49,7 @@ function readySnapshot() {
       youtube_channel_url: "https://youtube.com/@fixture"
     },
     episodeReport: {
+      nextAction: null,
       summary: {
         passCount: 10,
         blockCount: 0,
@@ -57,6 +58,7 @@ function readySnapshot() {
       }
     },
     stripeReport: {
+      results: [],
       summary: {
         passCount: 15,
         blockerCount: 0,
@@ -129,7 +131,16 @@ describe("launch staging gate", () => {
     const snapshot = readySnapshot();
     snapshot.episodeReport.summary.blockCount = 2;
     snapshot.episodeReport.summary.waitCount = 1;
+    snapshot.episodeReport.nextAction = {
+      label: "Enhancement decision",
+      detail: "listen and promote or reject"
+    };
     snapshot.stripeReport.summary.blockerCount = 1;
+    snapshot.stripeReport.results = [{
+      status: "BLOCK",
+      label: "Accountant-approved tax",
+      detail: "approval remains required"
+    }];
     snapshot.distribution = { feedCurrent: false, certified: 9 };
     snapshot.youtube = { uploadedUnlisted: 0, unresolved: 1 };
     snapshot.resend = { delivered: 0, suppressed: 0, failed: 0 };
@@ -145,6 +156,19 @@ describe("launch staging gate", () => {
     expect(report.summary.launchReady).toBe(false);
     expect(report.summary.blockCount).toBe(6);
     expect(report.nextAction?.id).toBe("episode");
+    expect(report.nextAction?.detail).toContain(
+      "Enhancement decision - listen and promote or reject"
+    );
+  });
+
+  it("prioritizes safety failures ahead of earlier promotion blocks", () => {
+    const snapshot = readySnapshot();
+    snapshot.episodeReport.summary.blockCount = 1;
+    snapshot.foreignKeyViolations = 1;
+
+    const report = evaluateLaunchStagingReadiness(snapshot);
+
+    expect(report.nextAction?.id).toBe("foreign_keys");
   });
 
   it("resolves the validator version from the Worker source of truth", () => {

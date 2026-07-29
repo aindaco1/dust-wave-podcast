@@ -124,7 +124,7 @@ export function evaluateLaunchStagingReadiness(snapshot) {
     add,
     "episode",
     "Episode production gate",
-    snapshot.episodeReport?.summary,
+    snapshot.episodeReport,
     "blockCount",
     "waitCount"
   );
@@ -132,7 +132,7 @@ export function evaluateLaunchStagingReadiness(snapshot) {
     add,
     "stripe",
     "Stripe test-mode gate",
-    snapshot.stripeReport?.summary,
+    snapshot.stripeReport,
     "blockerCount"
   );
 
@@ -346,10 +346,11 @@ function addNestedGate(
   add,
   id,
   label,
-  summary,
+  report,
   blockerField,
   waitField = null
 ) {
+  const summary = report?.summary;
   const failCount = boundedCount(summary?.failCount);
   const blockCount = boundedCount(summary?.[blockerField]);
   const waitCount = waitField ? boundedCount(summary?.[waitField]) : 0;
@@ -360,11 +361,22 @@ function addNestedGate(
       : waitCount > 0
         ? "WAIT"
         : "PASS";
+  const nestedNext = report?.nextAction
+    ?? report?.results?.find(({ status: resultStatus }) =>
+      resultStatus === "FAIL"
+      || resultStatus === "BLOCK"
+      || resultStatus === "WAIT"
+    )
+    ?? null;
+  const counts = `${boundedCount(summary?.passCount)} pass, `
+    + `${blockCount} block, ${waitCount} wait, ${failCount} fail`;
   add(
     status,
     id,
     label,
-    `${boundedCount(summary?.passCount)} pass, ${blockCount} block, ${waitCount} wait, ${failCount} fail`
+    nestedNext
+      ? `${counts}; next: ${nestedNext.label} - ${nestedNext.detail}`
+      : counts
   );
 }
 
@@ -560,9 +572,9 @@ function gitSourceIsCurrent(sourceCommit) {
 }
 
 function presentNextAction(nodes) {
-  const node = nodes.find(({ status }) =>
-    status === "FAIL" || status === "BLOCK" || status === "WAIT"
-  );
+  const node = ["FAIL", "BLOCK", "WAIT"]
+    .map((status) => nodes.find((candidate) => candidate.status === status))
+    .find(Boolean);
   return node
     ? { id: node.id, label: node.label, detail: node.detail }
     : null;
