@@ -256,6 +256,7 @@ import {
   approveAdminEpisodeTranscript,
   listAdminEpisodeTranscripts,
   saveAdminEpisodeTranscript,
+  serveAdminEpisodeTranscriptCaptions,
   servePrivateEpisodeTranscriptVtt,
   servePublicEpisodeTranscriptVtt,
   servePublicEpisodeTranscripts
@@ -432,6 +433,8 @@ const ADMIN_EPISODE_ALIGNMENT_APPROVE_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/alignments\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_EPISODE_TRANSCRIPT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)$/;
+const ADMIN_EPISODE_TRANSCRIPT_CAPTIONS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)\/captions\.(vtt|srt)$/;
 const ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)\/approve$/;
 const ADMIN_EPISODE_CHAPTERS_PATH =
@@ -1693,6 +1696,21 @@ async function routeRequest(
       env,
       adminEpisodeTranscriptMatch[1],
       adminEpisodeTranscriptMatch[2]
+    );
+  }
+  const adminEpisodeTranscriptCaptionsMatch = url.pathname.match(
+    ADMIN_EPISODE_TRANSCRIPT_CAPTIONS_PATH
+  );
+  if (
+    adminEpisodeTranscriptCaptionsMatch
+    && (method === "GET" || method === "HEAD")
+  ) {
+    return serveAdminEpisodeTranscriptCaptions(
+      request,
+      env,
+      adminEpisodeTranscriptCaptionsMatch[1],
+      adminEpisodeTranscriptCaptionsMatch[2],
+      adminEpisodeTranscriptCaptionsMatch[3] as "vtt" | "srt"
     );
   }
   const adminEpisodeTranscriptionJobsMatch = url.pathname.match(

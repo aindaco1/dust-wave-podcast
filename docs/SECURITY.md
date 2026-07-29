@@ -626,6 +626,17 @@ SHA-256 verification before emitting a transcript tag. Oversized or invalid
 rows fail closed, and database reads are byte-capped and processed in bounded
 episode batches.
 
+The separate admin saved-revision export is never a public or entitlement
+projection. It repeats show-scoped Analyst+ authorization, loads only the
+current saved English/Spanish row, reparses and canonicalizes its restricted
+cue payload, and requires the recomputed SHA-256 to match D1. WebVTT/SubRip
+attachments are private/no-store/noindex with credentialed allowlisted CORS,
+ETag/HEAD, exact byte length, language, and revision provenance. Unsaved
+browser edits are absent and unconfirmed speaker labels are omitted. Empty,
+revision-zero, malformed, or digest-drifted evidence returns no caption text.
+The download creates no second transcript, export record, audit content, R2
+object, or provider call.
+
 The validation row fingerprints one exact public RSS body. D1 removes it when
 a show/channel field, public-feed episode field, transcript approval, or
 chapter approval can change that projection; the existing deletion trigger

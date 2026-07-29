@@ -478,6 +478,16 @@ limit. Oversized complete input must fail before the claim with
 `clip_draft_full_transcript_required`. The production dry bundle must retain
 `CLIP_DRAFT_AI_ENABLED=false`.
 
+On that saved synthetic transcript, download both WebVTT and SubRip from the
+Production workbench in English and Spanish. Confirm the filenames identify
+language and revision, the response exposes that same revision, timestamps and
+cue text match the last saved state, and an unconfirmed speaker label is
+omitted. Make an unsaved browser edit and confirm both files remain unchanged;
+save a new revision and confirm both advance together. Re-run with a mismatched
+D1 content digest and verify no caption text returns. At 320 CSS pixels, both
+localized actions must retain at least 44 px height, wrap without horizontal
+overflow, and produce no console or CSP error.
+
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and
 maximum follow only the currently rendered page, neighboring cues remain

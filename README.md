@@ -127,6 +127,9 @@ text with wildcard read-only CORS, short cache validators, and no internal
 transcript/admin identity; premium bonuses and non-public episode states remain
 indistinguishable `404`s. Public clip distribution remains staging-only and
 requires exact render approval plus the same episode visibility boundary.
+The private workbench can also download the exact current saved revision as
+WebVTT or SubRip after recomputing its D1 digest; unsaved edits and unconfirmed
+speaker labels never silently enter those files.
 
 Producer+ episode editing now includes a bilingual, review-only show-notes
 assistant on the existing shared Pool/Store WYSIWYG path. It reuses only the

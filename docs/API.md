@@ -401,6 +401,7 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
+| `GET`, `HEAD` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/captions.{vtt\|srt}` | analyst+ | Download the checksum-verified current saved revision as private WebVTT or SubRip |
 | `POST` | `/v1/admin/episodes/{id}/show-notes/draft` | producer+ | Generate one bounded bilingual review draft from the latest verified approved transcript; never saves or publishes |
 | `GET` | `/v1/admin/episodes/{id}/chapters` | analyst+ | Current normalized chapter rows plus version/approval state |
 | `POST` | `/v1/admin/episodes/{id}/chapters/draft` | producer+ | Propose bounded bilingual chapter markers from every cue in one verified approved transcript; never saves or approves |
@@ -927,6 +928,22 @@ replacement of populated fields. The ordinary clip PUT remains the sole save
 path; H1 alignment, private render, approval, and publication remain separate.
 Staging enables the feature; production keeps
 `CLIP_DRAFT_AI_ENABLED=false`.
+
+### Saved transcript caption export
+
+`GET` and `HEAD`
+`/v1/admin/episodes/{id}/transcripts/{en|es}/captions.{vtt|srt}` require the
+same show-scoped Analyst+ session as transcript review. The Worker loads the
+current saved revision, reparses the restricted cue contract, canonicalizes it,
+and requires its SHA-256 to match D1 before emitting any caption text. Unsaved
+browser edits are deliberately absent. Confirmed speaker labels are included;
+unconfirmed labels are omitted without changing cue text or timing.
+
+Both formats are private/no-store/noindex attachments with exact byte length,
+language, revision, ETag/304, HEAD, credentialed allowlisted CORS, and a
+revision-bearing filename. Missing, revision-zero, empty, malformed, or
+digest-mismatched evidence fails closed. The route writes no transcript,
+approval, export record, audit content, object, or provider state.
 
 ### Word-alignment review
 

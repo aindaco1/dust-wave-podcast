@@ -178,7 +178,10 @@ iHeartRadio, and Deezer.
   transcripts. It changes only visible speaker inputs in the local draft,
   requires a separate explicit confirmation before marking names confirmed,
   and reuses the existing versioned Save path; it cannot alter caption
-  text/timing, call the Worker, or approve a revision. The same approval now
+  text/timing, call the Worker, or approve a revision. The same workbench now
+  exports the exact current saved revision as private checksum-verified WebVTT
+  or SubRip while excluding unsaved edits and unconfirmed speaker labels; no
+  export persistence or provider is introduced. The same approval now
   projects speaker-aware WebVTT and one Podcasting 2.0
   discovery tag per approved English/Spanish language, with tokenized
   entitlement-checked VTT for private early/bonus feeds. The v3 feed validator

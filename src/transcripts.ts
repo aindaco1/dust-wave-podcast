@@ -5,7 +5,8 @@ import {
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import { privateCorsHeaders, privateJson } from "./http";
+import { safeDownloadFilename } from "./media-range";
 import {
   hashPrivateFeedToken,
   privateFeedTokenNeedsTouch,
@@ -19,6 +20,7 @@ import {
   validIdentifier
 } from "./validation";
 import {
+  renderSubRip,
   renderWebVtt,
   timedTextMarkdownToPlainText
 } from "./timed-text";
@@ -479,6 +481,90 @@ export async function listAdminEpisodeTranscripts(
     durationSeconds: authorized.episode.durationSeconds,
     transcripts: transcripts.results.map(presentTranscript)
   });
+}
+
+export async function serveAdminEpisodeTranscriptCaptions(
+  request: Request,
+  env: PodcastEnv,
+  episodeIdValue: string,
+  languageValue: string,
+  format: "vtt" | "srt"
+): Promise<Response> {
+  const authorized = await authorizeAdminEpisode(
+    request,
+    env,
+    episodeIdValue,
+    READ_ROLES
+  );
+  if (authorized instanceof Response) return authorized;
+  const language = validTranscriptLanguage(languageValue);
+  const transcriptId = await stableTranscriptId(
+    authorized.episode.id,
+    language
+  );
+  const transcript = await loadTranscript(env.DB, transcriptId);
+  if (
+    !transcript
+    || transcript.revision < 1
+    || !transcript.content_sha256
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "transcript_not_found" },
+      { status: 404 }
+    );
+  }
+  const content = parseTranscriptContent(
+    transcript.content_json,
+    transcript.language
+  );
+  const contentJson = serializeTranscriptContent(content);
+  if (
+    content.cues.length < 1
+    || await sha256Hex(contentJson) !== transcript.content_sha256
+  ) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "transcript_content_mismatch" },
+      { status: 409 }
+    );
+  }
+  const cues = content.cues.map((cue) => ({
+    startsAtMs: cue.startsAtMs,
+    endsAtMs: cue.endsAtMs,
+    speakerLabel: cue.speakerConfirmed ? cue.speakerLabel : "",
+    text: timedTextMarkdownToPlainText(cue.textMarkdown)
+  }));
+  const body = format === "srt" ? renderSubRip(cues) : renderWebVtt(cues);
+  const etag = `"${await sha256Hex(body)}"`;
+  const headers = new Headers({
+    ...privateCorsHeaders(request, env.ALLOWED_ORIGINS),
+    "access-control-expose-headers":
+      "content-disposition,etag,x-podcast-transcript-revision",
+    "cache-control": "private, no-store, max-age=0",
+    "content-disposition": `attachment; filename="${safeDownloadFilename(
+      `transcript-${language}-revision-${transcript.revision}.${format}`
+    )}"`,
+    "content-language": language,
+    "content-length": String(new TextEncoder().encode(body).byteLength),
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "content-type": format === "srt"
+      ? "application/x-subrip; charset=utf-8"
+      : "text/vtt; charset=utf-8",
+    "cross-origin-resource-policy": "same-site",
+    etag,
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+    "x-podcast-transcript-revision": String(transcript.revision),
+    "x-robots-tag": "noindex, nofollow, noarchive"
+  });
+  if (etagMatches(request.headers.get("if-none-match"), etag)) {
+    headers.delete("content-length");
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(request.method === "HEAD" ? null : body, { headers });
 }
 
 export async function saveAdminEpisodeTranscript(

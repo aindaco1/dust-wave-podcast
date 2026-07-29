@@ -206,6 +206,8 @@ describe("podcast API", () => {
       "/v1/admin/episodes/episode_fixture/audio-qc",
       "/v1/admin/episodes/episode_fixture/transcription-jobs",
       "/v1/admin/episodes/episode_fixture/transcripts",
+      "/v1/admin/episodes/episode_fixture/transcripts/es/captions.vtt",
+      "/v1/admin/episodes/episode_fixture/transcripts/es/captions.srt",
       "/v1/admin/episodes/episode_fixture/clips"
     ]) {
       const response = await handleRequest(
