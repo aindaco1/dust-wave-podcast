@@ -204,6 +204,10 @@ import {
 } from "./pool-redemptions";
 import { getPublicShow, listPublicShows } from "./shows";
 import {
+  previewAdminShowSiteProjection,
+  publishAdminShowSiteProjection
+} from "./show-site-projection";
+import {
   createListenerBillingPortal,
   createSubscriptionCheckout
 } from "./subscription-checkout";
@@ -309,6 +313,8 @@ const MEMBER_SHOW_NOTIFICATIONS_PATH =
 const MEMBER_POOL_REDEMPTION_PATH = "/v1/member/redemptions/pool";
 const INTERNAL_POOL_GRANTS_PATH = "/v1/internal/pool/grants";
 const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
+const ADMIN_SHOW_SITE_PROJECTION_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/site-projection$/;
 const ADMIN_SHOW_AUDIO_QC_POLICY_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/audio-qc-policy$/;
 const ADMIN_SHOW_CLIPS_PATH =
@@ -960,6 +966,25 @@ async function routeRequest(
   const adminShowClipsMatch = url.pathname.match(ADMIN_SHOW_CLIPS_PATH);
   if (adminShowClipsMatch && method === "GET") {
     return listAdminShowClips(request, env, adminShowClipsMatch[1]);
+  }
+  const adminShowSiteProjectionMatch = url.pathname.match(
+    ADMIN_SHOW_SITE_PROJECTION_PATH
+  );
+  if (adminShowSiteProjectionMatch) {
+    if (method === "GET") {
+      return previewAdminShowSiteProjection(
+        request,
+        env,
+        adminShowSiteProjectionMatch[1]
+      );
+    }
+    if (method === "POST") {
+      return publishAdminShowSiteProjection(
+        request,
+        env,
+        adminShowSiteProjectionMatch[1]
+      );
+    }
   }
   const adminShowRssImportPreviewMatch = url.pathname.match(
     ADMIN_SHOW_RSS_IMPORT_PREVIEW_PATH

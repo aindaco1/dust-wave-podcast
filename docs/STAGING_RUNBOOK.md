@@ -432,6 +432,24 @@ store `NULL`. A canonical `https://www.youtube.com/@handle` channel and
 credential-free HTTPS artwork should save through the existing audited
 mutation.
 
+In Settings, preview the site projection for the selected show. Confirm the
+configured owner/repository/ref/path, Git blob SHA, changed Worker-owned
+fields, and an empty blocker list. Verify local artwork variants, wordmark,
+social card, source link, benefit copy, episode override policy, and episode
+fallback remain byte-for-byte unchanged in the projected show. A stale SHA
+must return private/no-store `409`; a missing premium monthly or annual USD
+price and a missing local presentation asset must each block. In staging,
+submit the exact typed confirmation after recent Super-admin authentication:
+the response must report `dryRun: true`, create only an audit event, and make
+no GitHub `PUT`. Do not enable live mode until the reviewed branch and Pages
+build gate are both approved.
+
+Before deploying the staging Worker, verify `GITHUB_REF` names the current
+remote review branch (for this release,
+`release/1.2.0-youtube-preflight`). A deleted or mistyped ref must leave the
+preview unavailable and must never fall back to the repository default
+branch. Production remains pinned to `main`.
+
 After both reviewed transcript languages and an exact working master exist,
 queue an alignment from the Production workbench in isolated staging. Copy the
 displayed job ID and dispatch only from the reviewed release branch:

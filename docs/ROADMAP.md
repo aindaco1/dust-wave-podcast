@@ -75,6 +75,13 @@ iHeartRadio, and Deezer.
   confirmation. Artwork and channel destinations are enforced again at the
   Worker boundary as credential-free, port-free, fragment-free HTTPS; the
   latter accepts only canonical YouTube channel hosts and paths.
+- Keep show pages and feeds DRY through an explicit site-catalog projection.
+  Preview reads the configured Git ref, reports only Worker-owned field drift,
+  and preserves site-owned local artwork variants, wordmark, social card,
+  source link, benefit copy, and episode fallback. Publish is recent
+  Super-admin-only, requires the reviewed Git blob SHA and exact typed
+  confirmation, defaults to dry-run, and uses one optimistic GitHub Contents
+  write only when the environment is deliberately live.
 - Add a migration path comparable to established podcast hosts. The first
   boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
   bounded public-HTTPS fetches and safe XML reduction report which source

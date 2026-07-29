@@ -1,5 +1,9 @@
 import type { PodcastEnv } from "./env";
 import {
+  readGitHubContentFile,
+  writeGitHubContentFile
+} from "./github-content";
+import {
   planEpisodePublication,
   type NewsPublicationMode
 } from "./publication-intent";
@@ -7,12 +11,6 @@ import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import type { EpisodeAccess } from "./types";
 
 const PUBLICATION_DATA_PATH = "src/_data/podcastEpisodePublications.json";
-
-type GitHubFile = {
-  content?: string;
-  encoding?: string;
-  sha?: string;
-};
 
 type PublicationEpisode = {
   id: string;
@@ -117,12 +115,12 @@ export async function publishEpisodeNewsSnapshot(
     String(right.publicAt).localeCompare(String(left.publicAt))
   );
   const payload = `${JSON.stringify(publications, null, 2)}\n`;
-  const result = await putPublicationFile(
-    env,
-    payload,
-    current.sha,
-    `Publish podcast episode ${episode.show_slug}/${episode.slug}`
-  );
+  const result = await writeGitHubContentFile(env, {
+    path: PUBLICATION_DATA_PATH,
+    content: payload,
+    sha: current.sha,
+    message: `Publish podcast episode ${episode.show_slug}/${episode.slug}`
+  });
   return { published: true, dryRun: false, commitSha: result.commitSha };
 }
 
@@ -184,16 +182,9 @@ async function getPublicationFile(
   publications: Array<Record<string, unknown> & { id: string }>;
   sha?: string;
 }> {
-  const response = await fetch(githubContentsUrl(env, PUBLICATION_DATA_PATH, true), {
-    headers: githubHeaders(env)
-  });
-  if (response.status === 404) return { publications: [] };
-  const data = await response.json().catch(() => ({})) as GitHubFile;
-  if (!response.ok || data.encoding !== "base64" || !data.content || !data.sha) {
-    throw new Error(`Unable to read Podcast publication data (${response.status})`);
-  }
-  const decoded = decodeBase64Utf8(data.content);
-  const parsed = JSON.parse(decoded) as unknown;
+  const current = await readGitHubContentFile(env, PUBLICATION_DATA_PATH);
+  if (!current) return { publications: [] };
+  const parsed = JSON.parse(current.content) as unknown;
   if (!Array.isArray(parsed)) throw new Error("Podcast publication data is invalid");
   return {
     publications: parsed.filter(
@@ -202,69 +193,6 @@ async function getPublicationFile(
         && typeof value === "object"
         && typeof (value as { id?: unknown }).id === "string"
     ),
-    sha: data.sha
+    sha: current.sha
   };
-}
-
-async function putPublicationFile(
-  env: PodcastEnv,
-  content: string,
-  sha: string | undefined,
-  message: string
-): Promise<{ commitSha: string }> {
-  const response = await fetch(githubContentsUrl(env, PUBLICATION_DATA_PATH, false), {
-    method: "PUT",
-    headers: {
-      ...githubHeaders(env),
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      message,
-      content: encodeBase64Utf8(content),
-      branch: env.GITHUB_REF || "main",
-      ...(sha ? { sha } : {})
-    })
-  });
-  const payload = await response.json().catch(() => ({})) as {
-    commit?: { sha?: string };
-  };
-  if (!response.ok || !payload.commit?.sha) {
-    throw new Error(`Unable to publish Podcast News snapshot (${response.status})`);
-  }
-  return { commitSha: payload.commit.sha };
-}
-
-function githubContentsUrl(
-  env: PodcastEnv,
-  path: string,
-  includeRef: boolean
-): string {
-  const owner = env.GITHUB_OWNER || "aindaco1";
-  const repo = env.GITHUB_REPO || "dust-wave-new";
-  const ref = encodeURIComponent(env.GITHUB_REF || "main");
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-  const base = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
-  return includeRef ? `${base}?ref=${ref}` : base;
-}
-
-function githubHeaders(env: PodcastEnv): Record<string, string> {
-  return {
-    authorization: `Bearer ${env.GITHUB_TOKEN}`,
-    accept: "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28",
-    "user-agent": "dust-wave-podcast-worker"
-  };
-}
-
-function decodeBase64Utf8(value: string): string {
-  const binary = atob(value.replace(/\s+/g, ""));
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
-function encodeBase64Utf8(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
 }

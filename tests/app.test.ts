@@ -199,6 +199,7 @@ describe("podcast API", () => {
   it("keeps admin routes private without a session", async () => {
     for (const path of [
       "/v1/admin/shows",
+      "/v1/admin/shows/show_opera_en_la_selva/site-projection",
       "/v1/admin/shows/show_opera_en_la_selva/audio-qc-policy",
       "/v1/admin/shows/show_opera_en_la_selva/episodes",
       "/v1/admin/episodes/episode_fixture/audio-qc",

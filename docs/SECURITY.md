@@ -574,6 +574,27 @@ destinations become SQL `NULL`; invalid metadata cannot reach the update.
 Canonical page, feed hostname, feed slug, and Podcasting 2.0 channel identity
 are not accepted by this mutation.
 
+## Show-site projection boundary
+
+The show page remains statically rendered for performance and SEO, while D1
+is authoritative for operational show metadata. An Admin may preview drift
+against the exact configured repository/ref; preview is read-only, bounded to
+one two-megabyte GitHub Contents response, rejects redirects, and times out.
+Only title, bilingual descriptions, language, lifecycle, canonical/feed
+artwork/YouTube destinations, author, category, explicit policy, active USD
+prices, premium/free-mini flags, and the early-access default are projected.
+Local responsive artwork, wordmark, social card, source link, benefit copy,
+episode overrides, and episode fallback remain site-owned and are preserved.
+
+Publishing requires a show-scoped Super-admin session, CSRF, authentication
+within 15 minutes, the exact reviewed Git blob SHA, and the typed
+`PUBLISH_SHOW_CATALOG {show-id}` confirmation. Missing local presentation
+assets or either active USD premium price blocks publication. A fresh read is
+performed before every attempt, SHA conflicts return `409`, submitted content
+is never accepted from the browser, and GitHub write auth is mandatory.
+`GITHUB_PUBLISH_MODE` remains fail-closed as `dry_run` unless explicitly set
+to `live`; audit metadata records only SHAs and changed field names.
+
 ## Chapter boundary
 
 Chapter editing reuses the original normalized episode rows and adds a
