@@ -16,6 +16,9 @@ export interface ShowRow {
   premium_enabled: number;
   early_access_days: number | null;
   free_mini_episode_enabled: number;
+  author_name: string;
+  category: string;
+  explicit: number;
 }
 
 export interface PriceRow {
@@ -45,8 +48,12 @@ export interface PublicShow extends Omit<
   | "early_access_days"
   | "free_mini_episode_enabled"
   | "description_en"
+  | "author_name"
+  | "explicit"
 > {
   descriptionEn: string;
+  authorName: string;
+  explicit: boolean;
   premiumEnabled: boolean;
   earlyAccessDays: number | null;
   freeMiniEpisodeEnabled: boolean;

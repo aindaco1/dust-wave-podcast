@@ -4,7 +4,7 @@ import type { EpisodeRow, PriceRow, PublicShow, ShowRow } from "./types";
 const SHOW_COLUMNS = `
   id, slug, title, description, description_en, language, status, artwork_url,
   canonical_url, youtube_channel_url, premium_enabled, early_access_days,
-  free_mini_episode_enabled
+  free_mini_episode_enabled, author_name, category, explicit
 `;
 
 function presentShow(show: ShowRow, prices: PriceRow[], episodes?: EpisodeRow[]): PublicShow {
@@ -13,12 +13,16 @@ function presentShow(show: ShowRow, prices: PriceRow[], episodes?: EpisodeRow[])
     early_access_days,
     free_mini_episode_enabled,
     description_en,
+    author_name,
+    explicit,
     ...rest
   } = show;
   return {
     ...rest,
     premiumEnabled: premium_enabled === 1,
     descriptionEn: description_en,
+    authorName: author_name,
+    explicit: explicit === 1,
     earlyAccessDays: early_access_days,
     freeMiniEpisodeEnabled: free_mini_episode_enabled === 1,
     prices,

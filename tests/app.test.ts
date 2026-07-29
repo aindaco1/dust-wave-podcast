@@ -28,7 +28,10 @@ function createShowDatabase(): D1Database {
     youtube_channel_url: "https://youtube.com/@dustwavecollective",
     premium_enabled: 1,
     early_access_days: 7,
-    free_mini_episode_enabled: 1
+    free_mini_episode_enabled: 1,
+    author_name: "Jay Renteria",
+    category: "Arts",
+    explicit: 0
   };
   let values: unknown[] = [];
 
@@ -134,6 +137,9 @@ describe("podcast API", () => {
       show: {
         premiumEnabled: boolean;
         descriptionEn: string;
+        authorName: string;
+        category: string;
+        explicit: boolean;
         earlyAccessDays: number;
         freeMiniEpisodeEnabled: boolean;
         prices: Array<{ id: string }>;
@@ -144,6 +150,9 @@ describe("podcast API", () => {
     expect(response.status).toBe(200);
     expect(payload.show.premiumEnabled).toBe(true);
     expect(payload.show.descriptionEn).toBe("Beauty and joy. And a bit of tech from time to time.");
+    expect(payload.show.authorName).toBe("Jay Renteria");
+    expect(payload.show.category).toBe("Arts");
+    expect(payload.show.explicit).toBe(false);
     expect(payload.show.earlyAccessDays).toBe(7);
     expect(payload.show.freeMiniEpisodeEnabled).toBe(true);
     expect(payload.show.prices).toHaveLength(2);

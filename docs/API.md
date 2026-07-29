@@ -33,6 +33,12 @@ Append `?download=1` to the episode media URL for attachment disposition.
 Public audio is available only when the episode is published, due, eligible
 for public access, and backed by ready delivery media.
 
+Public show responses expose the same Worker-owned title, Spanish and English
+descriptions, primary language, lifecycle, artwork and YouTube destinations,
+author, category, explicit policy, premium/free-mini policy, early-access
+default, and active USD price choices used by the feed and Checkout
+boundaries. Presentation-only site assets remain outside this contract.
+
 Public and private RSS expose the same stored Podcasting 2.0
 `<podcast:guid>` channel identity. It is a lowercase UUIDv5 assigned from the
 show's first permanent public feed URL and never recomputed from a private
