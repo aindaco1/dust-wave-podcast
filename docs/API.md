@@ -401,6 +401,7 @@ including under concurrent requests.
 | `GET` | `/v1/admin/episodes/{id}/transcripts` | analyst+ | Versioned English/Spanish cue and matching-alignment state |
 | `PUT` | `/v1/admin/episodes/{id}/transcripts/{en\|es}` | producer+ | Idempotent optimistic transcript-cue revision |
 | `POST` | `/v1/admin/episodes/{id}/transcripts/{en\|es}/approve` | admin+ | Approve one exact reviewed revision |
+| `POST` | `/v1/admin/episodes/{id}/show-notes/draft` | producer+ | Generate one bounded bilingual review draft from the latest verified approved transcript; never saves or publishes |
 | `GET` | `/v1/admin/episodes/{id}/chapters` | analyst+ | Current normalized chapter rows plus version/approval state |
 | `PUT` | `/v1/admin/episodes/{id}/chapters` | producer+ | Idempotent optimistic chapter revision |
 | `POST` | `/v1/admin/episodes/{id}/chapters/approve` | admin+ | Approve one exact chapter revision |
@@ -848,6 +849,33 @@ truth. Editing a newer working revision clears current approval but does not
 rewrite or remove the last approved immutable snapshot. The public endpoint
 changes only after another exact revision is approved, at which point its
 content-derived ETag also changes.
+
+### Review-only AI show notes
+
+`POST /v1/admin/episodes/{id}/show-notes/draft` requires a show-scoped
+Producer/Admin/Super-admin session, the trusted site origin, and the session
+CSRF token. The request selects an approved transcript language and an
+English/Spanish output language. The Worker resolves the latest immutable
+approval row, requires confirmed public speaker labels, reparses the
+restricted cue contract, reserializes it canonically, and verifies its
+SHA-256 before any model call.
+
+The prompt includes episode title/summary context and at most 48,000
+characters of deterministic cue-boundary evidence. Longer transcripts use
+clearly reported head, middle, and tail excerpts. The existing Workers AI
+binding returns a strict JSON schema with a bounded suggested summary,
+show-notes Markdown, and up to ten keywords; the Worker still treats schema
+mode as untrusted and independently rejects oversized, active-HTML, control,
+and bidirectional-override output. The response reports the source
+revision/digest and coverage but never echoes transcript text.
+
+Each admin may request at most six drafts for one episode per hour. Audit rows
+contain only source/output languages, revision/digests, counts, model, bounded
+usage, and result state—not prompt, transcript, or generated draft text. A
+successful response sets `reviewRequired: true` and `saved: false`. The admin
+renders it with text-only DOM sinks; placing the Markdown in the existing
+sanitized WYSIWYG remains a local unsaved action until the normal episode
+PATCH. `SHOW_NOTES_AI_ENABLED=true` is staging-only; production is fail-closed.
 
 ### Word-alignment review
 

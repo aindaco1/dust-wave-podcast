@@ -413,6 +413,31 @@ word-alignment result, or substitute for listening. It must not add a Worker
 request, D1 write, analytics event, browser storage entry, transcript export,
 or provider action.
 
+For the separate AI show-notes review aid, first use the local admin mock so
+no model call or durable write occurs. Edit the fixture episode, generate an
+English and Spanish draft, and confirm the review card reports the exact
+language, revision, cue coverage, summary, Markdown, and keywords. Confirm
+there is no HTML sink, horizontal overflow, console error, or episode PATCH.
+With existing notes present, cancel the replacement confirmation and verify
+the WYSIWYG is unchanged. Accept it and verify only the unsaved editor changes;
+the normal Update draft button remains the sole persistence path.
+
+Then deploy the exact Worker commit to staging only. The current rights-cleared
+fixture transcript is still `needs_review`, so a real request must fail closed
+with `show_notes_approved_transcript_required` and must not call Workers AI.
+After a human separately approves a suitable transcript, generate no more than
+one controlled draft and verify:
+
+- the response is private/no-store and reports `reviewRequired: true`,
+  `saved: false`, exact revision/digest, and full or partial cue coverage;
+- audit metadata includes languages, revision/digest, counts, model, bounded
+  usage, and result only—never transcript, prompt, provider response, or draft;
+- six requests per admin/episode/hour are allowed and the seventh returns a
+  private `429` with `Retry-After: 3600`;
+- no episode, media, News, RSS, YouTube, directory, subscriber, ad, billing, or
+  publication row changes; and
+- the production bundle retains `SHOW_NOTES_AI_ENABLED=false`.
+
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and
 maximum follow only the currently rendered page, neighboring cues remain

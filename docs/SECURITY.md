@@ -527,6 +527,32 @@ monotonic in-duration timing, and supersedes mismatched alignment evidence.
 Only Admin/Super-admin may approve a revision, and approval fails while any
 non-empty speaker label is unconfirmed.
 
+## AI show-notes boundary
+
+Show-note generation is an authenticated Producer+ review aid, not a content
+mutation. It requires trusted-origin CSRF, an exact verified approved
+English/Spanish transcript, and the environment kill switch. The same public
+projection verifier rejects missing approvals, unconfirmed speaker names,
+oversized content, non-canonical serialization, and digest mismatch before the
+transcript can enter a prompt.
+
+Episode and transcript text is explicitly marked as untrusted evidence in the
+model instructions. Input is bounded to 48,000 characters on cue boundaries;
+long transcripts report partial head/middle/tail coverage. JSON schema mode is
+not trusted: the Worker reparses and bounds every field, rejects active HTML,
+control and bidi-override characters, deduplicates keywords, and returns a
+stable private error on any provider or validation failure. The browser again
+validates the response contract and uses only `textContent` until an explicit
+replace action passes Markdown through the shared sanitized WYSIWYG.
+
+The existing audit table enforces six requests per admin/episode/hour using
+content-free metadata. Audits retain transcript and output digests, revision,
+cue counts, language, model, usage, and error class only—never transcript,
+prompt, provider response, or draft text. The result is not stored server-side
+and cannot save an episode, publish News/RSS/YouTube, contact a directory, or
+change media, billing, ads, or subscriber state. Staging is enabled for
+controlled tests; production is disabled until a separate promotion review.
+
 Public transcript reads are slug-addressed and fail closed behind the same
 published/due/public-or-free-or-early-access/ready-media policy as canonical
 News/audio publication. Premium bonuses, drafts, future releases, archived

@@ -143,6 +143,15 @@ iHeartRadio, and Deezer.
   closed, and no host, DNS, provider, R2, episode, publication, directory,
   email, ad, or billing state changes.
 - Reuse the Pool/Store WYSIWYG editor for episode notes and transcript editing.
+- The initial Hilite-value show-notes assistant now reuses that editor and the
+  existing Workers AI binding without a new SaaS or credential. Producer+
+  generation requires the latest immutable, speaker-confirmed, checksum-
+  verified approved English/Spanish transcript, bounds long input to
+  deterministic head/middle/tail cue evidence, validates a strict bilingual
+  JSON/Markdown response, and audits only content-free digests/counts. The
+  separate review card never saves or publishes; “Replace editor notes” is
+  still only an unsaved local edit, with confirmation when notes already
+  exist. Staging is rate-limited and enabled; production remains disabled.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
   speaker labels, Admin approval, and matching-alignment readiness. Canonical

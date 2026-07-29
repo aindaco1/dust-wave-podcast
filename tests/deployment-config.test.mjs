@@ -128,4 +128,11 @@ describe("deployment configuration", () => {
       "disabled"
     );
   });
+
+  it("keeps review-only AI show notes enabled only in staging", () => {
+    expect(config.env.staging.ai).toEqual({ binding: "AI" });
+    expect(config.env.production.ai).toEqual({ binding: "AI" });
+    expect(config.env.staging.vars.SHOW_NOTES_AI_ENABLED).toBe("true");
+    expect(config.env.production.vars.SHOW_NOTES_AI_ENABLED).toBe("false");
+  });
 });

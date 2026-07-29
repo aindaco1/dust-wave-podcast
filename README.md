@@ -128,6 +128,17 @@ transcript/admin identity; premium bonuses and non-public episode states remain
 indistinguishable `404`s. Public clip distribution remains staging-only and
 requires exact render approval plus the same episode visibility boundary.
 
+Producer+ episode editing now includes a bilingual, review-only show-notes
+assistant on the existing shared Pool/Store WYSIWYG path. It reuses only the
+latest immutable, speaker-confirmed, SHA-256-verified approved transcript,
+passes a bounded deterministic head/middle/tail excerpt to the existing
+Workers AI binding, and strictly validates the returned JSON and Markdown.
+Generation is rate-limited and audited without transcript or draft text.
+Results stay in a separate review card until the producer explicitly places
+them in the unsaved editor; no episode, News, RSS, distribution, or provider
+publication state changes. Staging is enabled for controlled review while
+production remains disabled.
+
 Source-language transcription accepts an explicit English/Spanish episode
 language and only the current approved working master. The job fingerprint
 binds the master SHA-256, model, language, and versioned settings; duplicate

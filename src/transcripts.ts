@@ -33,7 +33,7 @@ const MAXIMUM_CUE_DURATION_MS = 120_000;
 const MAXIMUM_CAPTION_LENGTH = 2_000;
 const MAXIMUM_TRANSCRIPT_BYTES = 1_000_000;
 const FEED_TRANSCRIPT_VERIFY_EPISODE_BATCH_SIZE = 10;
-type TranscriptLanguage = "en" | "es";
+export type TranscriptLanguage = "en" | "es";
 
 export type TranscriptCue = {
   id: string;
@@ -83,7 +83,7 @@ type PublicTranscriptRevisionRow = {
   approved_at: string;
 };
 
-type VerifiedPublicTranscript = {
+export type VerifiedApprovedTranscript = {
   language: TranscriptLanguage;
   revision: number;
   approvedAt: string;
@@ -97,7 +97,9 @@ type VerifiedPublicTranscript = {
   }>;
 };
 
-type VerifiedPublicTranscriptRow = VerifiedPublicTranscript & {
+type VerifiedPublicTranscript = VerifiedApprovedTranscript;
+
+type VerifiedPublicTranscriptRow = VerifiedApprovedTranscript & {
   episodeId: string;
 };
 
@@ -304,6 +306,47 @@ async function loadVerifiedPublicTranscripts(
 
   return (await verifyPublicTranscriptRevisions(revisions.results))
     .map(({ episodeId: _episodeId, ...transcript }) => transcript);
+}
+
+export async function loadVerifiedApprovedTranscript(
+  db: D1Database,
+  episodeId: string,
+  language: TranscriptLanguage
+): Promise<VerifiedApprovedTranscript | null> {
+  const revisions = await db
+    .prepare(
+      `SELECT
+         t.episode_id,
+         t.language,
+         r.revision,
+         r.content_json,
+         r.content_sha256,
+         a.created_at AS approved_at
+       FROM transcripts t
+       JOIN transcript_approvals a
+         ON a.transcript_id = t.id
+        AND a.revision = (
+          SELECT MAX(latest.revision)
+          FROM transcript_approvals latest
+          WHERE latest.transcript_id = t.id
+        )
+       JOIN transcript_revisions r
+         ON r.transcript_id = t.id
+        AND r.revision = a.revision
+       WHERE t.episode_id = ?
+         AND t.language = ?
+         AND r.speaker_labels_confirmed = 1
+         AND length(CAST(r.content_json AS BLOB)) <= ?
+       LIMIT 1`
+    )
+    .bind(episodeId, language, MAXIMUM_TRANSCRIPT_BYTES)
+    .all<PublicTranscriptRevisionRow>();
+  const [verified] = await verifyPublicTranscriptRevisions(
+    revisions.results
+  );
+  if (!verified) return null;
+  const { episodeId: _episodeId, ...transcript } = verified;
+  return transcript;
 }
 
 export async function loadVerifiedApprovedTranscriptLanguagesByEpisode(
