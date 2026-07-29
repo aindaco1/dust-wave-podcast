@@ -653,6 +653,10 @@ affected local draft. Show changes and logout cover transcript and chapter
 drafts together, browser exit uses the native `beforeunload` boundary, and
 adapter errors fail closed. The guard never persists draft text or changes a
 Worker record.
+The visual dirty-action control is a separate shared DOM-only primitive. It
+receives only a consumer-owned Boolean and localized label, writes no storage,
+makes no request, and cannot clear or approve a draft. Podcast remains the sole
+authority for transcript/chapter baselines and save authorization.
 
 The validation row fingerprints one exact public RSS body. D1 removes it when
 a show/channel field, public-feed episode field, transcript approval, or

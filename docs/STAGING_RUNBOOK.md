@@ -521,6 +521,12 @@ then dispatch a cancelable `beforeunload` event and verify it is prevented while
 either draft is dirty and not prevented after both drafts are saved or
 discarded. Exercise English and Spanish at 320 CSS pixels with no overflow,
 console error, duplicate confirmation, or inaccessible control.
+Before editing, confirm both visible Save review draft actions report
+`data-dirty-state="clean"` and are disabled. Edit one transcript cue and one
+chapter independently; only the corresponding action may become enabled,
+`is-dirty`, and `data-dirty-state="dirty"`. A successful save must restore the
+clean disabled state, while a rejected save must preserve the dirty enabled
+state so the producer can retry.
 
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and

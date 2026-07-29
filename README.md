@@ -130,10 +130,12 @@ requires exact render approval plus the same episode visibility boundary.
 The private workbench can also download the exact current saved revision as
 WebVTT or SubRip after recomputing its D1 digest; unsaved edits and unconfirmed
 speaker labels never silently enter those files.
-The workbench consumes `@dustwave/admin-shell` 0.8.0 for one fail-closed
+The workbench consumes `@dustwave/admin-shell` 0.8.1 for one fail-closed
 unsaved-change lifecycle boundary. Transcript and chapter dirty state remains
 Podcast-owned; show, episode, language, chapter, logout, and browser-exit
-transitions cannot silently discard a local review draft.
+transitions cannot silently discard a local review draft. The same shared
+primitive used by Pool and Store now marks each dirty review action, exposes a
+machine-readable state, and disables Save while its draft is clean.
 
 Producer+ episode editing now includes a bilingual, review-only show-notes
 assistant on the existing shared Pool/Store WYSIWYG path. It reuses only the

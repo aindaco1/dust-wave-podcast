@@ -190,10 +190,14 @@ iHeartRadio, and Deezer.
   finds caption or public-speaker text with English/Spanish case and accent
   folding, excludes hidden Markdown link destinations, stores nothing, calls
   no API, and changes no cue or approval state.
-  The review workbench also shares the `@dustwave/admin-shell` 0.8.0 lifecycle
+  The review workbench also shares the `@dustwave/admin-shell` 0.8.1 lifecycle
   guard characterized from Pool. Podcast retains transcript/chapter dirty
   baselines and localized policy while show, episode, language, chapter,
   logout, and browser-exit transitions fail closed against accidental loss.
+  Transcript and chapter Save actions now also use Pool/Store's shared
+  dirty-action primitive: clean drafts are disabled, dirty drafts receive the
+  established focus-ring signal and `data-dirty-state`, and labels remain
+  localized by Podcast.
   The same workbench also
   exports the exact current saved revision as private checksum-verified WebVTT
   or SubRip while excluding unsaved edits and unconfirmed speaker labels; no
