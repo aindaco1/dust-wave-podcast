@@ -36,6 +36,9 @@ const stagingPosture = Object.freeze({
   STRIPE_MODE: "test",
   SUBSCRIPTION_CHECKOUT_ENABLED: "false",
   POOL_REDEMPTION_ENABLED: "false",
+  CHECKOUT_TURNSTILE_REQUIRED: "true",
+  ADMIN_TURNSTILE_REQUIRED: "false",
+  LISTENER_TURNSTILE_REQUIRED: "true",
   YOUTUBE_PUBLISH_MODE: "dry_run"
 });
 
@@ -49,6 +52,9 @@ const productionPosture = Object.freeze({
   STRIPE_MODE: "test",
   SUBSCRIPTION_CHECKOUT_ENABLED: "false",
   POOL_REDEMPTION_ENABLED: "false",
+  CHECKOUT_TURNSTILE_REQUIRED: "true",
+  ADMIN_TURNSTILE_REQUIRED: "true",
+  LISTENER_TURNSTILE_REQUIRED: "true",
   SHOW_NOTES_AI_ENABLED: "false",
   CHAPTER_DRAFT_AI_ENABLED: "false",
   CLIP_DRAFT_AI_ENABLED: "false",

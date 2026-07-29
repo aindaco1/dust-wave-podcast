@@ -1327,12 +1327,13 @@ unset TURNSTILE_RESULT
 ```
 
 The final `jq` output is the public site key for the isolated website staging
-build. Put it in `PODCAST_ADMIN_TURNSTILE_SITE_KEY` and
-`PODCAST_MEMBER_TURNSTILE_SITE_KEY` only for that build; do not put the secret
-in a command argument, environment file, GitHub variable, source file, shell
-history, or build artifact. Use a separate Checkout widget/site key when
-Checkout activation begins so its action and hostname policy can change
-independently.
+build. While the owner-approved staging-admin bypass is active, put it in
+`PODCAST_MEMBER_TURNSTILE_SITE_KEY` and
+`PODCAST_CHECKOUT_TURNSTILE_SITE_KEY`, but leave
+`PODCAST_ADMIN_TURNSTILE_SITE_KEY` empty. Do not put the secret in a command
+argument, environment file, GitHub variable, source file, shell history, or
+build artifact. Use a separate Checkout widget/site key when Checkout
+activation begins so its action and hostname policy can change independently.
 
 If widget creation or either JSON assertion fails, keep login closed, delete
 only the exact temporary file created above, and inspect `wrangler whoami`.
@@ -1344,10 +1345,13 @@ Validate a new Resend key against Resend's designated delivered-test address
 before installing it, using a hidden environment or interactive prompt rather
 than a command argument. The Worker records only a closed delivery failure
 code and numeric provider status; it never logs the provider response body,
-destination, login URL, or exception text. Keep login fail-closed until a real
-staging Turnstile widget and matching secret are installed. A dummy Turnstile
-pair is suitable for local/automated tests only, not the public `workers.dev`
-deployment.
+destination, login URL, or exception text. Staging administrator login may
+skip the widget only under the exact committed
+`ENVIRONMENT=staging`/`ADMIN_TURNSTILE_REQUIRED=false` pair. It still requires
+the exact staging origin, dual rate-limit buckets, a registered administrator,
+and a single-use Resend link. Production ignores that bypass, and listener and
+Checkout Turnstile remain required. A dummy Turnstile pair is suitable for
+local/automated tests only, not the public `workers.dev` deployment.
 
 The staging Podcast webhook contract passed its provider-independent
 signature/replay exercise on 2026-07-27. The dedicated active webhook subscribes

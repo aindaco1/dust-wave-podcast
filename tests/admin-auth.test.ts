@@ -49,6 +49,7 @@ describe("admin authentication privacy", () => {
       ADMIN_EMAIL_LOOKUP_PEPPER: "pepper_fixture",
       ADMIN_SESSION_SECRET: "session_fixture",
       ADMIN_TURNSTILE_REQUIRED: "false",
+      TURNSTILE_SECRET_KEY: "shared_turnstile_fixture",
       RESEND_API_KEY: "resend_fixture"
     } as unknown as PodcastEnv;
     const response = await startAdminLogin(
@@ -65,6 +66,8 @@ describe("admin authentication privacy", () => {
     expect(
       boundValues.flat().some((value) => /^[a-f0-9]{64}$/.test(String(value)))
     ).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.resend.com/emails");
     const resendBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(resendBody.to).toEqual(["admin@example.com"]);
     expect(resendBody.text).toContain("#magic-link=");
@@ -73,6 +76,39 @@ describe("admin authentication privacy", () => {
         /^podcast-admin-login\/[a-f0-9]{64}$/
       )
     });
+  });
+
+  it("never lets the staging admin bypass disable production Turnstile", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const env = {
+      ENVIRONMENT: "production",
+      SITE_ORIGIN: "https://dustwave.xyz",
+      ALLOWED_ORIGINS: "https://dustwave.xyz",
+      DB: {},
+      ADMIN_EMAIL_LOOKUP_PEPPER: "pepper_fixture",
+      ADMIN_SESSION_SECRET: "session_fixture",
+      ADMIN_TURNSTILE_REQUIRED: "false",
+      TURNSTILE_SECRET_KEY: "turnstile_fixture",
+      RESEND_API_KEY: "resend_fixture"
+    } as unknown as PodcastEnv;
+
+    const response = await startAdminLogin(
+      new Request("https://feeds.dustwave.xyz/v1/admin/auth/start", {
+        method: "POST",
+        headers: {
+          origin: "https://dustwave.xyz",
+          "content-type": "application/json"
+        }
+      }),
+      env,
+      { email: "admin@example.com" }
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "challenge_required"
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("silently rate-limits login email without looking up an account", async () => {

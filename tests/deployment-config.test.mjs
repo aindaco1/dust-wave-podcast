@@ -102,8 +102,17 @@ describe("deployment configuration", () => {
     expect(config.env.staging.vars.CHECKOUT_TURNSTILE_REQUIRED).toBe(
       "true"
     );
+    expect(config.env.staging.vars.ADMIN_TURNSTILE_REQUIRED).toBe(
+      "false"
+    );
+    expect(config.env.staging.vars.LISTENER_TURNSTILE_REQUIRED).toBe(
+      "true"
+    );
     expect(config.env.production.vars.SUBSCRIPTION_CHECKOUT_ENABLED).toBe(
       "false"
+    );
+    expect(config.env.production.vars.ADMIN_TURNSTILE_REQUIRED).toBe(
+      "true"
     );
   });
 

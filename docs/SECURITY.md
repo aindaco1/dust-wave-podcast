@@ -5,7 +5,11 @@
 - Administrator and listener login are passwordless and
   enumeration-resistant. Their lookup peppers, session secrets, cookies,
   rate-limit tables, Turnstile actions, and URL scopes are independent.
-- Login initiation requires the configured site origin and Turnstile action.
+- Login initiation requires the configured site origin. Listener login and
+  production administrator login also require their Turnstile action. The
+  isolated staging administrator may omit Turnstile only when both
+  `ENVIRONMENT=staging` and `ADMIN_TURNSTILE_REQUIRED=false`; the shared
+  Turnstile secret continues to protect listener and Checkout requests.
   Atomic D1 buckets cap requests per pseudonymous client and normalized-email
   HMAC while preserving the same accepted response for registered and
   unregistered addresses. Token exchange has an independent client cap.

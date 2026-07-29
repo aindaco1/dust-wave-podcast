@@ -93,6 +93,13 @@ async function emailLookupHash(env: PodcastEnv, email: string): Promise<string> 
   return hmacSha256(email, env.ADMIN_EMAIL_LOOKUP_PEPPER || "", "hex");
 }
 
+function adminTurnstileSecretEnvNames(env: PodcastEnv): string[] {
+  const stagingBypass = env.ENVIRONMENT === "staging"
+    && String(env.ADMIN_TURNSTILE_REQUIRED ?? "").trim().toLowerCase()
+      === "false";
+  return stagingBypass ? [] : ["TURNSTILE_SECRET_KEY"];
+}
+
 export async function startAdminLogin(
   request: Request,
   env: PodcastEnv,
@@ -121,6 +128,7 @@ export async function startAdminLogin(
     String(body.turnstileToken ?? request.headers.get("x-turnstile-token") ?? ""),
     {
       action: "podcast_admin_login",
+      secretEnvNames: adminTurnstileSecretEnvNames(env),
       requiredEnvName: "ADMIN_TURNSTILE_REQUIRED"
     }
   );

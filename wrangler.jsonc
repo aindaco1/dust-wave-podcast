@@ -66,7 +66,7 @@
         "CLIP_DRAFT_AI_ENABLED": "true",
         "CHECKOUT_TURNSTILE_REQUIRED": "true",
         "ADMIN_AUTH_EXPOSE_LOGIN_LINK": "false",
-        "ADMIN_TURNSTILE_REQUIRED": "true",
+        "ADMIN_TURNSTILE_REQUIRED": "false",
         "LISTENER_AUTH_EXPOSE_LOGIN_LINK": "false",
         "LISTENER_TURNSTILE_REQUIRED": "true"
       },
