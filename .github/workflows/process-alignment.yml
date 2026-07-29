@@ -78,12 +78,25 @@ jobs:
           node scripts/prepare-alignment-workflow.mjs
           work/alignment/manifest-response.json
 
-      - name: Verify pinned runner checkout
+      - name: Check out exact runner execution revision
         env:
           EXPECTED_RUNNER_REVISION: ${{ steps.alignment.outputs.runner_revision }}
         run: |
+          test "$EXPECTED_RUNNER_REVISION" \
+            = "3c5ab054fdad375901eb186f32d7aed6cdb40413"
+          test "$(git -C alignment-runner remote get-url origin)" \
+            = "https://github.com/aindaco1/dust-wave-alignment-runner.git"
+          git -C alignment-runner fetch \
+            --no-tags \
+            --depth=1 \
+            origin \
+            "$EXPECTED_RUNNER_REVISION"
+          git -C alignment-runner checkout \
+            --detach \
+            "$EXPECTED_RUNNER_REVISION"
           test "$(git -C alignment-runner rev-parse HEAD)" \
             = "$EXPECTED_RUNNER_REVISION"
+          test -z "$(git -C alignment-runner status --porcelain)"
 
       - name: Sign private source request
         id: source_signature
