@@ -210,7 +210,11 @@ iHeartRadio, and Deezer.
   operational import path now requires recent Super-admin authentication,
   re-evaluates the closed pinned-runner submission server-side, stores raw
   evidence privately by input digest, and exposes only replay-safe,
-  content-free summaries.
+  content-free summaries. The parent now pins the green runner `release/0.2.0`
+  benchmark-bundle assembler while the staging workflow separately verifies,
+  fetches, and detaches at the exact reviewed model-execution commit selected
+  by the Worker; updating benchmark tooling cannot silently change execution
+  identity.
 - Generate captioned clips and audiograms locally or on existing Cloudflare
   infrastructure, with templates and safe-area previews.
 - The first clip contract now versions approved-transcript cue selections,

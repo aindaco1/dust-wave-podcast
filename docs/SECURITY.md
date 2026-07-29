@@ -278,8 +278,12 @@
   Worker's private R2 binding. Both processors use the dedicated staging
   callback secret; Pool/Store deployment secrets are not copied or exposed.
 - Forced alignment runs outside the public Worker in the pinned
-  `alignment-runner` submodule. It accepts only checksummed, bounded local
-  inputs, prevents path/model-reference traversal, rechecks audio after model
+  `alignment-runner` repository. The parent submodule pins the reviewed
+  benchmark-bundle release, while the staging workflow accepts only the
+  Worker's compile-time execution revision, verifies the expected GitHub
+  remote, and performs a shallow exact-SHA detached checkout before installing
+  an adapter. The runner accepts only checksummed, bounded local inputs,
+  prevents path/model-reference traversal, rechecks audio after model
   execution, imports heavyweight libraries only inside selected adapters, and
   atomically refuses conflicting result writes. Raw transcripts and audio are
   not included in GitHub Actions or committed benchmark evidence.

@@ -481,13 +481,17 @@ gh workflow run process-alignment.yml \
   -f job_id="alignment_job_REPLACE_WITH_QUEUED_ID"
 ```
 
-Before dispatch, confirm the runner submodule is the exact revision displayed
-by the API and the repository secret is only
-`MEDIA_PROCESSOR_CALLBACK_SECRET`. The run must use Ubuntu 24.04, install the
-selected adapter from the committed `uv.lock`, fetch the exact signed
-manifest/source, and retain only content-free evidence. Confirm the source
-audio, transcript projection, raw result, and callback are absent from
-artifacts and logs.
+Before dispatch, confirm the parent pins the green runner `release/0.2.0`
+submodule containing the private benchmark-bundle assembler. The API must
+display execution revision
+`3c5ab054fdad375901eb186f32d7aed6cdb40413`; the workflow must validate that
+constant, verify the expected GitHub remote, and detach the submodule at that
+exact content-addressed commit before installing an adapter. The repository
+secret must still be only `MEDIA_PROCESSOR_CALLBACK_SECRET`. The run must use
+Ubuntu 24.04, install the selected adapter from that execution revision's
+committed `uv.lock`, fetch the exact signed manifest/source, and retain only
+content-free evidence. Confirm the source audio, transcript projection, raw
+result, and callback are absent from artifacts and logs.
 
 Refresh the workbench and verify the job reaches `ready` while the alignment
 revision stops at `needs_review`. Check every stored word belongs to the exact
