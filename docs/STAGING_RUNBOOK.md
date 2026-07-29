@@ -512,6 +512,16 @@ results. Exercise both locales at 320 CSS pixels; the input and all three
 actions must retain at least 44 px height, stack without horizontal overflow,
 and produce no console or CSP error.
 
+Create unsaved transcript and chapter edits without saving. For each relevant
+show, episode, transcript-language, and chapter selector, decline the bilingual
+discard prompt and confirm the prior value and draft remain unchanged with no
+load or write request. Accept the prompt and confirm only the affected local
+draft is discarded before the ordinary read loader runs. Repeat with Logout,
+then dispatch a cancelable `beforeunload` event and verify it is prevented while
+either draft is dirty and not prevented after both drafts are saved or
+discarded. Exercise English and Spanish at 320 CSS pixels with no overflow,
+console error, duplicate confirmation, or inaccessible control.
+
 On the same synthetic draft, exercise the separate speaker-range aid on the
 first and second 100-cue pages in English and Spanish. Confirm its minimum and
 maximum follow only the currently rendered page, neighboring cues remain

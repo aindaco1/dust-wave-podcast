@@ -646,6 +646,13 @@ link destinations, and limits the query to 160 characters. Neither feature
 uses network/storage APIs, creates HTML, changes approval state, or bypasses
 the ordinary versioned transcript Save action. Episode/language context
 changes clear pending file/search state.
+Those context changes pass through the shared admin-shell lifecycle guard
+before any loader runs. A declined confirmation restores the accepted select
+value and stops later handlers; an accepted confirmation clears only the
+affected local draft. Show changes and logout cover transcript and chapter
+drafts together, browser exit uses the native `beforeunload` boundary, and
+adapter errors fail closed. The guard never persists draft text or changes a
+Worker record.
 
 The validation row fingerprints one exact public RSS body. D1 removes it when
 a show/channel field, public-feed episode field, transcript approval, or
