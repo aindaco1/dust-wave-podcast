@@ -1,19 +1,13 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
-const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  ".."
-);
-const wrangler = path.resolve(
-  repositoryRoot,
-  "node_modules/.bin/wrangler"
-);
-const workerConfigPath = path.resolve(repositoryRoot, "wrangler.jsonc");
+import {
+  loadWorkerConfig,
+  runJson,
+  wrangler
+} from "./staging-gate-runtime.mjs";
 const requiredWebhookEvents = [
   "checkout.session.completed",
   "checkout.session.expired",
@@ -205,7 +199,7 @@ export function evaluateStripeStagingReadiness(snapshot) {
 }
 
 export function loadStripeStagingSnapshot() {
-  const config = JSON.parse(readFileSync(workerConfigPath, "utf8"));
+  const config = loadWorkerConfig();
   const staging = config.env?.staging;
   if (!staging || staging.vars?.ENVIRONMENT !== "staging") {
     throw new Error("Exact staging configuration is required.");
@@ -215,7 +209,7 @@ export function loadStripeStagingSnapshot() {
     throw new Error("Staging D1 binding is missing.");
   }
 
-  const d1 = runJson(wrangler, [
+  const d1 = runProviderJson(wrangler, [
     "d1",
     "execute",
     database.database_name,
@@ -251,7 +245,7 @@ export function loadStripeStagingSnapshot() {
   const queryResults = d1.map(({ results }) => results ?? []);
   const shows = queryResults[0] ?? [];
   const prices = queryResults[1] ?? [];
-  const installedSecrets = runJson(wrangler, [
+  const installedSecrets = runProviderJson(wrangler, [
     "secret",
     "list",
     "--env",
@@ -318,32 +312,13 @@ export function loadStripeStagingSnapshot() {
 }
 
 function runStripeJson(args) {
-  return runJson("stripe", [...args, "--color", "off"]);
+  return runProviderJson("stripe", [...args, "--color", "off"]);
 }
 
-function runJson(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    timeout: 30_000,
-    maxBuffer: 4 * 1024 * 1024,
-    env: {
-      ...process.env,
-      NO_COLOR: "1"
-    }
+function runProviderJson(command, args) {
+  return runJson(command, args, {
+    failureLabel: "read-only provider command"
   });
-  if (result.error || result.status !== 0) {
-    throw new Error(
-      `${path.basename(command)} read-only provider command failed.`
-    );
-  }
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    throw new Error(
-      `${path.basename(command)} returned invalid JSON.`
-    );
-  }
 }
 
 function requiredIdentifier(value, label) {

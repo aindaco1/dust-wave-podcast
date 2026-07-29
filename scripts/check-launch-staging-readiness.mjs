@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 import {
   evaluateEpisodeStagingGate,
@@ -13,16 +13,13 @@ import {
   evaluateStripeStagingReadiness,
   loadStripeStagingSnapshot
 } from "./check-stripe-staging-readiness.mjs";
-
-const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  ".."
-);
-const wrangler = path.resolve(
+import {
+  loadWorkerConfig,
   repositoryRoot,
-  "node_modules/.bin/wrangler"
-);
-const workerConfigPath = path.resolve(repositoryRoot, "wrangler.jsonc");
+  runJson,
+  wrangler
+} from "./staging-gate-runtime.mjs";
+
 const feedValidationSourcePath = path.resolve(
   repositoryRoot,
   "src/feed-validation.ts"
@@ -224,7 +221,7 @@ export function loadLaunchStagingSnapshot(
   virtualAudioEvidencePath = null
 ) {
   const episodeId = requiredIdentifier(episodeIdValue, "Episode");
-  const config = JSON.parse(readFileSync(workerConfigPath, "utf8"));
+  const config = loadWorkerConfig();
   const staging = config.env?.staging;
   const production = config.env?.production;
   if (
@@ -242,7 +239,7 @@ export function loadLaunchStagingSnapshot(
   );
   const escapedEpisodeId = sqlLiteral(episodeId);
   const escapedValidatorVersion = sqlLiteral(validatorVersion);
-  const response = runJson(wrangler, [
+  const response = runLaunchJson(wrangler, [
     "d1",
     "execute",
     database.database_name,
@@ -257,7 +254,7 @@ export function loadLaunchStagingSnapshot(
     throw new Error("D1 returned an incomplete launch-state snapshot.");
   }
   const results = response.map((entry) => entry.results ?? []);
-  const installedSecrets = runJson(wrangler, [
+  const installedSecrets = runLaunchJson(wrangler, [
     "secret",
     "list",
     "--env",
@@ -601,27 +598,11 @@ function sqlLiteral(value) {
   return String(value).replaceAll("'", "''");
 }
 
-function runJson(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    timeout: 45_000,
-    maxBuffer: 4 * 1024 * 1024,
-    env: {
-      ...process.env,
-      NO_COLOR: "1"
-    }
+function runLaunchJson(command, args) {
+  return runJson(command, args, {
+    failureLabel: "read-only launch command",
+    timeoutMs: 45_000
   });
-  if (result.error || result.status !== 0) {
-    throw new Error(
-      `${path.basename(command)} read-only launch command failed.`
-    );
-  }
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    throw new Error(`${path.basename(command)} returned invalid JSON.`);
-  }
 }
 
 async function main() {

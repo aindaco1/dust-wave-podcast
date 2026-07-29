@@ -1,19 +1,13 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
-const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  ".."
-);
-const wrangler = path.resolve(
-  repositoryRoot,
-  "node_modules/.bin/wrangler"
-);
-const workerConfigPath = path.resolve(repositoryRoot, "wrangler.jsonc");
+import {
+  loadWorkerConfig,
+  runJson,
+  wrangler
+} from "./staging-gate-runtime.mjs";
 
 export function evaluateEpisodeStagingGate(snapshot) {
   const nodes = [];
@@ -202,7 +196,7 @@ export function evaluateEpisodeStagingGate(snapshot) {
 
 export function loadEpisodeStagingSnapshot(episodeIdValue) {
   const episodeId = requiredEpisodeId(episodeIdValue);
-  const config = JSON.parse(readFileSync(workerConfigPath, "utf8"));
+  const config = loadWorkerConfig();
   const staging = config.env?.staging;
   if (!staging || staging.vars?.ENVIRONMENT !== "staging") {
     throw new Error("Exact staging configuration is required.");
@@ -222,7 +216,7 @@ export function loadEpisodeStagingSnapshot(episodeIdValue) {
     "--json",
     "--command",
     statements
-  ]);
+  ], { failureLabel: "read-only episode command" });
   if (!Array.isArray(response) || response.length !== 21) {
     throw new Error("D1 returned an incomplete staging-gate snapshot.");
   }
@@ -396,29 +390,6 @@ function stagingGateStatements(episodeId) {
     SELECT show_id FROM episodes WHERE id = '${episodeId}'
   );
   PRAGMA foreign_key_check;`;
-}
-
-function runJson(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    timeout: 30_000,
-    maxBuffer: 4 * 1024 * 1024,
-    env: {
-      ...process.env,
-      NO_COLOR: "1"
-    }
-  });
-  if (result.error || result.status !== 0) {
-    throw new Error(
-      `${path.basename(command)} read-only staging command failed.`
-    );
-  }
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    throw new Error(`${path.basename(command)} returned invalid JSON.`);
-  }
 }
 
 async function main() {
