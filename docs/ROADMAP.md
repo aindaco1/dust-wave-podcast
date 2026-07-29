@@ -254,6 +254,14 @@ iHeartRadio, and Deezer.
   identity.
 - Generate captioned clips and audiograms locally or on existing Cloudflare
   infrastructure, with templates and safe-area previews.
+- The first responsive safe-area preview is now live in the bilingual clip
+  recipe editor. It reuses the exact `captioned-waveform-v1` aspect,
+  high-contrast caption, waveform, and 8%/18% safe-area contract for 9:16,
+  1:1, and 16:9 without creating another media template or persistence path.
+  Only the current approved transcript revision can populate it; authored cue
+  content is inserted with DOM text nodes, and the UI labels the preview as
+  layout-only because the private checksummed FFmpeg render remains
+  authoritative.
 - The first clip contract now versions approved-transcript cue selections,
   locks word cuts behind matching passed alignment, and accepts only signed
   checksummed private-R2 MP4 evidence. The deterministic staging FFmpeg
