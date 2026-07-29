@@ -62,7 +62,12 @@ iHeartRadio, and Deezer.
 ### H1 — launch production workbench
 
 - Build the common admin shell at `/admin/podcasts/` with Shows, Episodes,
-  Distribution, Marketing, Analytics, Sponsors, Subscribers, and Settings.
+  Production, Distribution, Marketing, Sponsors, Analytics, Subscribers,
+  Premium, and Settings. The single-show launch UI now keeps the show catalog
+  and safe RSS-import planning in Overview while one separate bilingual
+  Settings tab owns the existing show editor. Episodes and Settings reuse
+  synchronized show selectors and one save form/state path; no settings
+  payload or update route is duplicated.
 - Add a migration path comparable to established podcast hosts. The first
   boundary is a recent-Super-admin, explicit-rights, no-write RSS preview:
   bounded public-HTTPS fetches and safe XML reduction report which source

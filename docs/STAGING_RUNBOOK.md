@@ -406,6 +406,17 @@ word-alignment result, or substitute for listening. It must not add a Worker
 request, D1 write, analytics event, browser storage entry, transcript export,
 or provider action.
 
+Also exercise the separate Settings tab in English and Spanish. Confirm the
+responsive tab controller exposes and selects Settings, the selected show is
+synchronized with the Episodes selector, exactly one show-settings form is
+present, and changing the tab performs no save. At 320 CSS pixels, every text,
+URL, number, textarea, checkbox, and save control must remain inside the panel;
+text controls and the save button must retain at least 44 px height, and
+document `scrollWidth` must equal `clientWidth`. The 2026-07-28 Spanish
+exercise rendered one DRY form, synchronized both selectors, retained 44 px
+text/save controls, and had matching 291 px document widths under Chrome's
+320 px device override with no console errors.
+
 After both reviewed transcript languages and an exact working master exist,
 queue an alignment from the Production workbench in isolated staging. Copy the
 displayed job ID and dispatch only from the reviewed release branch:
