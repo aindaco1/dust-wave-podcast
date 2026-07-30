@@ -1,15 +1,30 @@
+import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import type { EpisodeRow, PriceRow, PublicShow, ShowRow } from "./types";
 
 const SHOW_COLUMNS = `
-  id, slug, title, description, language, status, artwork_url,
-  canonical_url, youtube_channel_url, premium_enabled, early_access_days
+  id, slug, title, description, description_en, language, status, artwork_url,
+  canonical_url, youtube_channel_url, premium_enabled, early_access_days,
+  free_mini_episode_enabled, author_name, category, explicit
 `;
 
 function presentShow(show: ShowRow, prices: PriceRow[], episodes?: EpisodeRow[]): PublicShow {
-  const { premium_enabled, ...rest } = show;
+  const {
+    premium_enabled,
+    early_access_days,
+    free_mini_episode_enabled,
+    description_en,
+    author_name,
+    explicit,
+    ...rest
+  } = show;
   return {
     ...rest,
     premiumEnabled: premium_enabled === 1,
+    descriptionEn: description_en,
+    authorName: author_name,
+    explicit: explicit === 1,
+    earlyAccessDays: early_access_days,
+    freeMiniEpisodeEnabled: free_mini_episode_enabled === 1,
     prices,
     ...(episodes ? { episodes } : {})
   };
@@ -22,7 +37,7 @@ export async function listPublicShows(db: D1Database): Promise<PublicShow[]> {
 
   const priceResult = await db
     .prepare(
-      `SELECT show_id, billing_period, amount_cents, currency
+      `SELECT id, show_id, billing_period, amount_cents, currency
        FROM show_prices WHERE active = 1 ORDER BY amount_cents`
     )
     .all<PriceRow & { show_id: string }>();
@@ -52,7 +67,7 @@ export async function getPublicShow(db: D1Database, slug: string): Promise<Publi
   const [priceResult, episodeResult] = await Promise.all([
     db
       .prepare(
-        `SELECT billing_period, amount_cents, currency
+        `SELECT id, billing_period, amount_cents, currency
          FROM show_prices WHERE show_id = ? AND active = 1 ORDER BY amount_cents`
       )
       .bind(show.id)
@@ -62,7 +77,9 @@ export async function getPublicShow(db: D1Database, slug: string): Promise<Publi
         `SELECT id, slug, title, summary, episode_number, season_number, access,
                 public_at, premium_at, canonical_url, duration_seconds
          FROM episodes
-         WHERE show_id = ? AND status = 'published' AND public_at <= datetime('now')
+         WHERE show_id = ?
+           AND status = 'published'
+           AND public_at <= ${SQL_UTC_NOW_RFC3339}
          ORDER BY public_at DESC`
       )
       .bind(show.id)
@@ -71,4 +88,3 @@ export async function getPublicShow(db: D1Database, slug: string): Promise<Publi
 
   return presentShow(show, priceResult.results, episodeResult.results);
 }
-

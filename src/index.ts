@@ -1,16 +1,41 @@
 import { handleRequest } from "./app";
+import { pruneAdminAuthState } from "./admin-auth";
+import type { PodcastEnv } from "./env";
+import { processPodcastJob, scheduleDuePublications } from "./jobs";
+import { pruneListenerAuthState } from "./listener-auth";
+import {
+  pruneSubscriptionBillingRateLimits
+} from "./subscription-checkout";
+import { pruneTaxQuoteRateLimits } from "./tax-quotes";
+import { schedulePendingTranscriptions } from "./transcription-jobs";
 import type { PodcastJob } from "./types";
+import {
+  schedulePendingAnnouncementDeliveries
+} from "./announcement-delivery";
+import { cleanupPodcastAnalytics } from "./podcast-analytics";
+import {
+  cleanupVirtualAudioDiagnosticLeases
+} from "./diagnostics";
+import {
+  scheduleRssImportExecutions
+} from "./rss-import-executions";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: PodcastEnv,
+    ctx: ExecutionContext
+  ): Promise<Response> {
     try {
-      return await handleRequest(request, env);
+      return await handleRequest(request, env, ctx);
     } catch (error) {
       console.error(
         JSON.stringify({
           level: "error",
           event: "request_failed",
-          message: error instanceof Error ? error.message : "unknown_error"
+          method: request.method,
+          rayId: request.headers.get("cf-ray"),
+          errorName: error instanceof Error ? error.name : "UnknownError"
         })
       );
 
@@ -24,7 +49,7 @@ export default {
     }
   },
 
-  async queue(batch: MessageBatch<PodcastJob>): Promise<void> {
+  async queue(batch: MessageBatch<PodcastJob>, env: PodcastEnv): Promise<void> {
     for (const message of batch.messages) {
       console.log(
         JSON.stringify({
@@ -33,11 +58,48 @@ export default {
           jobId: message.body.id,
           jobType: message.body.type,
           showId: message.body.showId,
-          episodeId: message.body.episodeId ?? null
+          episodeId: message.body.episodeId ?? null,
+          queueMessageId: message.id,
+          attempt: message.attempts
         })
       );
-      message.ack();
+      try {
+        await processPodcastJob(env, message.body);
+        message.ack();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "job_failed",
+            jobId: message.body.id,
+            jobType: message.body.type,
+            showId: message.body.showId,
+            episodeId: message.body.episodeId ?? null,
+            queueMessageId: message.id,
+            attempt: message.attempts,
+            errorName: error instanceof Error ? error.name : "UnknownError"
+          })
+        );
+        message.retry();
+      }
     }
-  }
-} satisfies ExportedHandler<Env, PodcastJob>;
+  },
 
+  async scheduled(
+    _controller: ScheduledController,
+    env: PodcastEnv
+  ): Promise<void> {
+    await Promise.all([
+      scheduleDuePublications(env),
+      scheduleRssImportExecutions(env),
+      pruneAdminAuthState(env.DB),
+      pruneListenerAuthState(env.DB),
+      pruneSubscriptionBillingRateLimits(env.DB),
+      pruneTaxQuoteRateLimits(env.DB),
+      cleanupPodcastAnalytics(env.DB),
+      cleanupVirtualAudioDiagnosticLeases(env.DB),
+      schedulePendingAnnouncementDeliveries(env),
+      schedulePendingTranscriptions(env)
+    ]);
+  }
+} satisfies ExportedHandler<PodcastEnv, PodcastJob>;

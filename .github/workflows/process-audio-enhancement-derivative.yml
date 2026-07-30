@@ -1,0 +1,68 @@
+name: Process staging Podcast audio enhancement derivative
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Queued full-length derivative job ID from staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-audio-enhancement-derivative-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: podcast-staging
+    outputs:
+      qc_run_id: ${{ steps.derivative.outputs.qc_run_id }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify media tools
+        run: |
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Render, checksum, and upload private derivative
+        id: derivative
+        env:
+          DERIVATIVE_ID: ${{ inputs.job_id }}
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: node scripts/process-audio-enhancement-derivative.mjs
+
+      - name: Retain bounded private derivative evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audio-enhancement-derivative-report
+          path: |
+            work/audio-enhancement-derivative/processor-evidence.json
+            work/audio-enhancement-derivative/manifest.json
+            work/audio-enhancement-derivative/callback.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  quality-control:
+    needs: render
+    uses: ./.github/workflows/process-audio-qc.yml
+    with:
+      run_id: ${{ needs.render.outputs.qc_run_id }}

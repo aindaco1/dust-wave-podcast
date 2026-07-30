@@ -1,0 +1,263 @@
+name: Process staging Podcast audio enhancement preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Queued enhancement preview job ID from isolated staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-audio-enhancement-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: podcast-staging
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Validate preview request
+        id: request
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+        run: node scripts/prepare-audio-enhancement-request.mjs
+
+      - name: Sign private manifest request
+        id: manifest_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-enhancement/manifest-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Fetch private checksummed manifest
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.manifest_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.manifest_signature.outputs.timestamp }}
+          MANIFEST_URL: ${{ steps.request.outputs.manifest_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-enhancement/manifest-request.json \
+            --output work/audio-enhancement/manifest-response.json \
+            "$MANIFEST_URL"
+
+      - name: Validate isolated-staging manifest
+        id: enhancement
+        run: >-
+          node scripts/prepare-audio-enhancement-workflow.mjs
+          work/audio-enhancement/manifest-response.json
+
+      - name: Sign private source request
+        id: source_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-enhancement/source-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream immutable private source
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.source_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.source_signature.outputs.timestamp }}
+          SOURCE_URL: ${{ steps.request.outputs.source_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 1800 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-enhancement/source-request.json \
+            --output work/audio-enhancement/source.bin \
+            "$SOURCE_URL"
+
+      - name: Verify media tools
+        run: |
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Render byte-bound A/B previews
+        run: >-
+          node scripts/render-audio-enhancement-preview.mjs
+          --manifest work/audio-enhancement/manifest.json
+          --source work/audio-enhancement/source.bin
+          --output work/audio-enhancement/output
+          --callback-body work/audio-enhancement/callback.json
+
+      - name: Validate private upload contracts
+        id: upload
+        run: >-
+          node scripts/prepare-audio-enhancement-uploads.mjs
+          work/audio-enhancement/manifest.json
+          work/audio-enhancement/callback.json
+
+      - name: Sign original upload descriptor
+        id: original_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-enhancement/original-upload-payload.txt
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream checksummed private original preview
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.original_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.original_signature.outputs.timestamp }}
+          UPLOAD_PAYLOAD: ${{ steps.upload.outputs.original_upload_payload }}
+          UPLOAD_URL: ${{ steps.request.outputs.original_output_url }}
+        run: |
+          curl --http1.1 --fail-with-body --silent --show-error \
+            --max-time 300 \
+            --retry 3 \
+            --retry-all-errors \
+            --request PUT \
+            --header "Expect:" \
+            --header "content-type: audio/mpeg" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --header "x-podcast-processor-upload-payload: $UPLOAD_PAYLOAD" \
+            --upload-file work/audio-enhancement/output/original.mp3 \
+            --output work/audio-enhancement/original-upload-response.json \
+            "$UPLOAD_URL"
+
+      - name: Sign enhanced upload descriptor
+        id: enhanced_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-enhancement/enhanced-upload-payload.txt
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream checksummed private enhanced preview
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.enhanced_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.enhanced_signature.outputs.timestamp }}
+          UPLOAD_PAYLOAD: ${{ steps.upload.outputs.enhanced_upload_payload }}
+          UPLOAD_URL: ${{ steps.request.outputs.enhanced_output_url }}
+        run: |
+          curl --http1.1 --fail-with-body --silent --show-error \
+            --max-time 300 \
+            --retry 3 \
+            --retry-all-errors \
+            --request PUT \
+            --header "Expect:" \
+            --header "content-type: audio/mpeg" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --header "x-podcast-processor-upload-payload: $UPLOAD_PAYLOAD" \
+            --upload-file work/audio-enhancement/output/enhanced.mp3 \
+            --output work/audio-enhancement/enhanced-upload-response.json \
+            "$UPLOAD_URL"
+
+      - name: Verify both output checksums and metadata
+        id: ready
+        run: |
+          node scripts/verify-audio-enhancement-uploads.mjs \
+            work/audio-enhancement/callback.json \
+            work/audio-enhancement/original-upload-response.json \
+            work/audio-enhancement/enhanced-upload-response.json
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sign success evidence
+        if: ${{ success() }}
+        id: success_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-enhancement/callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit ready evidence
+        if: ${{ success() }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.success_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.success_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.enhancement.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-enhancement/callback.json \
+            "$CALLBACK_URL"
+
+      - name: Build bounded failure evidence
+        if: ${{ failure() && steps.enhancement.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        run: >-
+          node scripts/build-audio-enhancement-failure-callback.mjs
+          work/audio-enhancement/manifest.json
+          work/audio-enhancement/failure-callback.json
+
+      - name: Sign failure evidence
+        if: ${{ failure() && steps.enhancement.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        id: failure_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-enhancement/failure-callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit failure evidence
+        if: ${{ failure() && steps.enhancement.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.failure_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.failure_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.enhancement.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-enhancement/failure-callback.json \
+            "$CALLBACK_URL"
+
+      - name: Retain non-secret processing evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audio-enhancement-preview-report
+          path: |
+            work/audio-enhancement/callback.json
+            work/audio-enhancement/failure-callback.json
+            work/audio-enhancement/original-upload-response.json
+            work/audio-enhancement/enhanced-upload-response.json
+          if-no-files-found: warn
+          retention-days: 30

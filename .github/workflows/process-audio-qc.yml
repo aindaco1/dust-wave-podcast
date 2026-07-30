@@ -1,0 +1,194 @@
+name: Process staging Podcast audio QC
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Queued source-audio QC run ID from isolated staging
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      run_id:
+        description: Queued audio QC run ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-audio-qc-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: podcast-staging
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Validate QC request
+        id: request
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+        run: node scripts/prepare-audio-qc-request.mjs
+
+      - name: Sign private manifest request
+        id: manifest_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-qc/manifest-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Fetch private checksummed manifest
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.manifest_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.manifest_signature.outputs.timestamp }}
+          MANIFEST_URL: ${{ steps.request.outputs.manifest_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-qc/manifest-request.json \
+            --output work/audio-qc/manifest-response.json \
+            "$MANIFEST_URL"
+
+      - name: Validate isolated-staging manifest
+        id: qc
+        run: >-
+          node scripts/prepare-audio-qc-workflow.mjs
+          work/audio-qc/manifest-response.json
+
+      - name: Sign private source request
+        id: source_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-qc/source-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream immutable private source
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.source_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.source_signature.outputs.timestamp }}
+          SOURCE_URL: ${{ steps.request.outputs.source_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 1800 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-qc/source-request.json \
+            --output work/audio-qc/source.bin \
+            "$SOURCE_URL"
+
+      - name: Verify media tools
+        run: |
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Analyze and fully decode source
+        run: >-
+          node scripts/analyze-audio-qc.mjs
+          --manifest work/audio-qc/manifest.json
+          --source work/audio-qc/source.bin
+          --callback-body work/audio-qc/callback.json
+
+      - name: Mark ready callback
+        id: ready
+        run: echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sign success evidence
+        if: ${{ success() }}
+        id: success_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-qc/callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit measured QC evidence
+        if: ${{ success() }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.success_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.success_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.qc.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-qc/callback.json \
+            "$CALLBACK_URL"
+
+      - name: Build bounded failure evidence
+        if: ${{ failure() && steps.qc.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        run: >-
+          node scripts/build-audio-qc-failure-callback.mjs
+          work/audio-qc/manifest.json
+          work/audio-qc/failure-callback.json
+
+      - name: Sign failure evidence
+        if: ${{ failure() && steps.qc.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        id: failure_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/audio-qc/failure-callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit failure evidence
+        if: ${{ failure() && steps.qc.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.failure_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.failure_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.qc.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/audio-qc/failure-callback.json \
+            "$CALLBACK_URL"
+
+      - name: Retain non-secret QC report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audio-qc-report
+          path: |
+            work/audio-qc/callback.json
+            work/audio-qc/failure-callback.json
+          if-no-files-found: warn
+          retention-days: 30

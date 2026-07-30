@@ -7,6 +7,7 @@ export interface ShowRow {
   slug: string;
   title: string;
   description: string;
+  description_en: string;
   language: string;
   status: ShowStatus;
   artwork_url: string | null;
@@ -14,9 +15,14 @@ export interface ShowRow {
   youtube_channel_url: string | null;
   premium_enabled: number;
   early_access_days: number | null;
+  free_mini_episode_enabled: number;
+  author_name: string;
+  category: string;
+  explicit: number;
 }
 
 export interface PriceRow {
+  id: string;
   billing_period: "month" | "year";
   amount_cents: number;
   currency: string;
@@ -36,8 +42,21 @@ export interface EpisodeRow {
   duration_seconds: number | null;
 }
 
-export interface PublicShow extends Omit<ShowRow, "premium_enabled"> {
+export interface PublicShow extends Omit<
+  ShowRow,
+  | "premium_enabled"
+  | "early_access_days"
+  | "free_mini_episode_enabled"
+  | "description_en"
+  | "author_name"
+  | "explicit"
+> {
+  descriptionEn: string;
+  authorName: string;
+  explicit: boolean;
   premiumEnabled: boolean;
+  earlyAccessDays: number | null;
+  freeMiniEpisodeEnabled: boolean;
   prices: PriceRow[];
   episodes?: EpisodeRow[];
 }
@@ -48,11 +67,21 @@ export interface PodcastJob {
     | "transcribe"
     | "align-transcript"
     | "render-clip"
+    | "publish-news"
     | "publish-rss"
     | "publish-youtube"
-    | "send-premium-notification";
+    | "publish-youtube-clip"
+    | "execute-rss-import-item"
+    | "send-premium-notification"
+    | "send-announcement";
   showId: string;
   episodeId?: string;
+  announcementId?: string;
+  announcementDeliveryId?: string;
+  clipRenderId?: string;
+  clipPublicationId?: string;
+  rssImportExecutionId?: string;
+  rssImportSourceIdentitySha256?: string;
+  publicationRevision?: number;
   requestedAt: string;
 }
-

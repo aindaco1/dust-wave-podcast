@@ -5,6 +5,8 @@ function createEnv(overrides: Partial<Env> = {}): Env {
   return {
     ENVIRONMENT: "staging",
     SITE_ORIGIN: "https://dustwave.xyz",
+    FEED_ORIGIN: "https://feeds.dustwave.xyz",
+    MEDIA_ORIGIN: "https://media.dustwave.xyz",
     ALLOWED_ORIGINS: "https://dustwave.xyz,http://localhost:8080",
     MEDIA_KEY_PREFIX: "podcasts/",
     YOUTUBE_CHANNEL_URL: "https://youtube.com/@dustwavecollective",
@@ -17,14 +19,19 @@ function createShowDatabase(): D1Database {
     id: "show_opera_en_la_selva",
     slug: "opera-en-la-selva",
     title: "Ópera en la Selva",
-    description: "Beauty and joy.",
+    description: "Belleza y alegría. Y un poco de tecnología de vez en cuando. / Beauty and joy. And a bit of tech from time to time.",
+    description_en: "Beauty and joy. And a bit of tech from time to time.",
     language: "es",
     status: "coming_soon",
     artwork_url: "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
     canonical_url: "https://dustwave.xyz/podcasts/opera-en-la-selva/",
     youtube_channel_url: "https://youtube.com/@dustwavecollective",
     premium_enabled: 1,
-    early_access_days: null
+    early_access_days: 7,
+    free_mini_episode_enabled: 1,
+    author_name: "Jay Renteria",
+    category: "Arts",
+    explicit: 0
   };
   let values: unknown[] = [];
 
@@ -40,8 +47,18 @@ function createShowDatabase(): D1Database {
       if (query.includes("FROM show_prices")) {
         return {
           results: [
-            { billing_period: "month", amount_cents: 500, currency: "USD" },
-            { billing_period: "year", amount_cents: 5000, currency: "USD" }
+            {
+              id: "price_opera_monthly_usd",
+              billing_period: "month",
+              amount_cents: 500,
+              currency: "USD"
+            },
+            {
+              id: "price_opera_annual_usd",
+              billing_period: "year",
+              amount_cents: 5000,
+              currency: "USD"
+            }
           ]
         };
       }
@@ -116,12 +133,311 @@ describe("podcast API", () => {
       createEnv({ DB: createShowDatabase() })
     );
     const payload = await response.json() as {
-      show: { premiumEnabled: boolean; prices: unknown[]; episodes: unknown[] };
+      checkoutEnabled: boolean;
+      show: {
+        premiumEnabled: boolean;
+        descriptionEn: string;
+        authorName: string;
+        category: string;
+        explicit: boolean;
+        earlyAccessDays: number;
+        freeMiniEpisodeEnabled: boolean;
+        prices: Array<{ id: string }>;
+        episodes: unknown[];
+      };
     };
 
     expect(response.status).toBe(200);
     expect(payload.show.premiumEnabled).toBe(true);
+    expect(payload.show.descriptionEn).toBe("Beauty and joy. And a bit of tech from time to time.");
+    expect(payload.show.authorName).toBe("Jay Renteria");
+    expect(payload.show.category).toBe("Arts");
+    expect(payload.show.explicit).toBe(false);
+    expect(payload.show.earlyAccessDays).toBe(7);
+    expect(payload.show.freeMiniEpisodeEnabled).toBe(true);
     expect(payload.show.prices).toHaveLength(2);
+    expect(payload.show.prices[0].id).toBe("price_opera_monthly_usd");
     expect(payload.show.episodes).toEqual([]);
+    expect(payload.checkoutEnabled).toBe(false);
+  });
+
+  it("routes public transcript slugs and conceals unavailable episodes", async () => {
+    let lookupCount = 0;
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/shows/opera-en-la-selva/"
+        + "episodes/unavailable-episode/transcripts"
+      ),
+      createEnv({
+        DB: {
+          prepare(query: string) {
+            expect(query).toContain("FROM episodes e");
+            expect(query).toContain("e.media_status = 'ready'");
+            return {
+              bind(showSlug: string, episodeSlug: string) {
+                expect(showSlug).toBe("opera-en-la-selva");
+                expect(episodeSlug).toBe("unavailable-episode");
+                return this;
+              },
+              async first() {
+                lookupCount += 1;
+                return null;
+              }
+            };
+          }
+        } as unknown as D1Database
+      })
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await response.json()).toEqual({ error: "episode_not_found" });
+    expect(lookupCount).toBe(1);
+  });
+
+  it("keeps admin routes private without a session", async () => {
+    for (const path of [
+      "/v1/admin/shows",
+      "/v1/admin/shows/show_opera_en_la_selva/site-projection",
+      "/v1/admin/shows/show_opera_en_la_selva/premium-prices",
+      "/v1/admin/shows/show_opera_en_la_selva/audio-qc-policy",
+      "/v1/admin/shows/show_opera_en_la_selva/episodes",
+      "/v1/admin/episodes/episode_fixture/audio-qc",
+      "/v1/admin/episodes/episode_fixture/transcription-jobs",
+      "/v1/admin/episodes/episode_fixture/transcripts",
+      "/v1/admin/episodes/episode_fixture/transcripts/es/captions.vtt",
+      "/v1/admin/episodes/episode_fixture/transcripts/es/captions.srt",
+      "/v1/admin/episodes/episode_fixture/clips"
+    ]) {
+      const response = await handleRequest(
+        new Request(`https://podcast.example${path}`),
+        createEnv()
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toContain("private");
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("keeps transcript mutations private before loading an episode", async () => {
+    for (const [path, method, body] of [
+      [
+        "/v1/admin/episodes/episode_fixture/transcription-jobs",
+        "POST",
+        {
+          requestId: "transcription_request_fixture",
+          expectedWorkingMasterId: "master_fixture",
+          language: "es"
+        }
+      ],
+      [
+        "/v1/admin/episodes/episode_fixture/transcripts/es",
+        "PUT",
+        { mutationId: "mutation_fixture", baseRevision: 0, cues: [] }
+      ],
+      [
+        "/v1/admin/episodes/episode_fixture/transcripts/es/approve",
+        "POST",
+        { approvalId: "approval_fixture", expectedRevision: 1 }
+      ]
+    ] as const) {
+      const response = await handleRequest(
+        new Request(`https://podcast.example${path}`, {
+          method,
+          headers: {
+            origin: "https://dustwave.xyz",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(body)
+        }),
+        createEnv()
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("keeps clip revisions and render requests private before D1 or R2", async () => {
+    for (const [path, method, body] of [
+      [
+        "/v1/admin/episodes/episode_fixture/clips/clip_fixture",
+        "PUT",
+        {
+          mutationId: "clip_mutation_fixture",
+          baseRevision: 0,
+          title: "Fixture",
+          captionLanguage: "es",
+          aspectRatio: "9:16",
+          boundaryMode: "segment",
+          startCueId: "cue_001",
+          endCueId: "cue_001"
+        }
+      ],
+      [
+        "/v1/admin/clips/clip_fixture/render",
+        "POST",
+        { renderId: "clip_render_fixture", expectedRevision: 1 }
+      ],
+      [
+        "/v1/admin/shows/show_opera_en_la_selva/marketing/announcements/dry-run",
+        "POST",
+        {
+          language: "es",
+          subject: "Nuevo episodio",
+          bodyMarkdown: "Escucha ahora."
+        }
+      ]
+    ] as const) {
+      const response = await handleRequest(
+        new Request(`https://podcast.example${path}`, {
+          method,
+          headers: {
+            origin: "https://dustwave.xyz",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(body)
+        }),
+        createEnv()
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("rejects unsigned clip processor reads and evidence before D1 lookup", async () => {
+    for (const [suffix, method, contentType, body] of [
+      [
+        "manifest",
+        "POST",
+        "application/json",
+        JSON.stringify({ renderId: "render_fixture", action: "manifest" })
+      ],
+      [
+        "source",
+        "POST",
+        "application/json",
+        JSON.stringify({ renderId: "render_fixture", action: "source" })
+      ],
+      [
+        "output",
+        "PUT",
+        "video/mp4",
+        "not-a-real-mp4"
+      ],
+      [
+        "complete",
+        "POST",
+        "application/json",
+        JSON.stringify({ renderId: "render_fixture" })
+      ]
+    ] as const) {
+      const response = await handleRequest(
+        new Request(
+          `https://podcast.example/v1/processor/clip-renders/render_fixture/${suffix}`,
+          {
+            method,
+            headers: { "content-type": contentType },
+            body
+          }
+        ),
+        createEnv({
+          ENVIRONMENT: "staging",
+          MEDIA_PROCESSOR_CALLBACK_SECRET: "processor_secret_fixture"
+        })
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        error: "invalid_processor_signature"
+      });
+    }
+  });
+
+  it("keeps private-feed creation behind the listener session", async () => {
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/member/shows/opera-en-la-selva/feed",
+        {
+          method: "POST",
+          headers: { origin: "https://dustwave.xyz" }
+        }
+      ),
+      createEnv()
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("keeps sponsor operations private before loading inventory", async () => {
+    for (const [path, body] of [
+      ["/v1/admin/ads/preview", { episodeId: "episode_fixture" }],
+      ["/v1/admin/ads/campaigns", { showId: "show_fixture" }],
+      ["/v1/admin/ads/campaigns/campaign-fixture/creatives", {}],
+      ["/v1/admin/episodes/episode-fixture/ad-plan", { markers: [] }],
+      ["/v1/admin/ads/plans/adplan-fixture/approve", {}],
+      ["/v1/admin/ads/campaigns/campaign-fixture/kill", {}]
+    ] as const) {
+      const response = await handleRequest(
+        new Request(`https://podcast.example${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body)
+        }),
+        createEnv()
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("keeps ready clip media and captions private before lookup", async () => {
+    for (const suffix of ["media", "captions.vtt", "captions.srt"]) {
+      const response = await handleRequest(
+        new Request(
+          "https://podcast.example/v1/admin/clip-renders/"
+          + `render_fixture/${suffix}`
+        ),
+        createEnv()
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toContain("private");
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("allows credentialed conditional range requests from the site origin", async () => {
+    const response = await handleRequest(
+      new Request(
+        "https://podcast.example/v1/admin/clip-renders/render_fixture/media",
+        {
+          method: "OPTIONS",
+          headers: {
+            origin: "https://dustwave.xyz",
+            "access-control-request-method": "GET",
+            "access-control-request-headers": "range,if-range"
+          }
+        }
+      ),
+      createEnv()
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin"))
+      .toBe("https://dustwave.xyz");
+    expect(response.headers.get("access-control-allow-credentials"))
+      .toBe("true");
+    expect(response.headers.get("access-control-allow-headers"))
+      .toContain("if-range");
+    expect(response.headers.get("access-control-allow-headers"))
+      .toContain("range");
   });
 });

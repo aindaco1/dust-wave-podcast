@@ -1,0 +1,129 @@
+name: Process staging Podcast ad plan
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan_manifest:
+        description: Signed-in admin processorManifest JSON from isolated staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-ad-plan
+  cancel-in-progress: false
+
+jobs:
+  segment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: podcast-staging
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Validate isolated-staging manifest
+        id: plan
+        env:
+          PLAN_MANIFEST: ${{ inputs.plan_manifest }}
+        run: node scripts/prepare-ad-plan-workflow.mjs
+
+      - name: Verify media tools
+        run: |
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Download private episode source
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_BUCKET: ${{ steps.plan.outputs.bucket_name }}
+          SOURCE_KEY: ${{ steps.plan.outputs.source_key }}
+        run: |
+          npx wrangler r2 object get \
+            "$R2_BUCKET/$SOURCE_KEY" \
+            --file work/ad-plan/source \
+            --remote \
+            --env staging
+
+      - name: Normalize and split at approved marker intent
+        run: >-
+          node scripts/build-ad-plan-segments.mjs
+          --manifest work/ad-plan/plan.json
+          --source work/ad-plan/source
+          --output work/ad-plan/segments
+          --callback-body work/ad-plan/callback.json
+
+      - name: Upload private frame-aligned program segments
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_BUCKET: ${{ steps.plan.outputs.bucket_name }}
+        run: |
+          # JavaScript template literals below are intentionally single-quoted.
+          # shellcheck disable=SC2016
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const body = JSON.parse(readFileSync("work/ad-plan/callback.json", "utf8"));
+            writeFileSync(
+              "work/ad-plan/uploads.tsv",
+              body.segments.map((segment) =>
+                `${segment.objectKey}\twork/ad-plan/segments/program-${segment.sequence}-${segment.sha256}.mp3`
+              ).join("\n") + "\n"
+            );
+          '
+          while IFS=$'\t' read -r object_key source_file; do
+            npx wrangler r2 object put \
+              "$R2_BUCKET/$object_key" \
+              --file "$source_file" \
+              --content-type audio/mpeg \
+              --remote \
+              --env staging \
+              --force
+          done < work/ad-plan/uploads.tsv
+
+      - name: Sign validation evidence
+        id: signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-ad-plan-callback.mjs
+          work/ad-plan/callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit evidence for human review
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.plan.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/ad-plan/callback.json \
+            "$CALLBACK_URL"
+
+      - name: Retain non-secret processing report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ad-plan-${{ steps.plan.outputs.plan_id }}-report
+          path: work/ad-plan/callback.json
+          if-no-files-found: error
+          retention-days: 30

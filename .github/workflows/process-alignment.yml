@@ -1,0 +1,230 @@
+name: Process staging Podcast word alignment
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Queued staging alignment job ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-alignment-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  align:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: podcast-staging
+    steps:
+      - name: Check out exact source and runner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install locked JavaScript dependencies
+        run: npm ci
+
+      - name: Validate alignment request
+        id: request
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+        run: node scripts/prepare-alignment-request.mjs
+
+      - name: Sign private manifest request
+        id: manifest_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/alignment/manifest-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Fetch exact private alignment manifest
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.manifest_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.manifest_signature.outputs.timestamp }}
+          MANIFEST_URL: ${{ steps.request.outputs.manifest_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/alignment/manifest-request.json \
+            --output work/alignment/manifest-response.json \
+            "$MANIFEST_URL"
+
+      - name: Validate manifest and build runner request
+        id: alignment
+        run: >-
+          node scripts/prepare-alignment-workflow.mjs
+          work/alignment/manifest-response.json
+
+      - name: Check out exact runner execution revision
+        env:
+          EXPECTED_RUNNER_REVISION: ${{ steps.alignment.outputs.runner_revision }}
+        run: |
+          test "$EXPECTED_RUNNER_REVISION" \
+            = "3c5ab054fdad375901eb186f32d7aed6cdb40413"
+          test "$(git -C alignment-runner remote get-url origin)" \
+            = "https://github.com/aindaco1/dust-wave-alignment-runner.git"
+          git -C alignment-runner fetch \
+            --no-tags \
+            --depth=1 \
+            origin \
+            "$EXPECTED_RUNNER_REVISION"
+          git -C alignment-runner checkout \
+            --detach \
+            "$EXPECTED_RUNNER_REVISION"
+          test "$(git -C alignment-runner rev-parse HEAD)" \
+            = "$EXPECTED_RUNNER_REVISION"
+          test -z "$(git -C alignment-runner status --porcelain)"
+
+      - name: Sign private source request
+        id: source_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/alignment/source-request.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Stream immutable private working master
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.source_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.source_signature.outputs.timestamp }}
+          SOURCE_URL: ${{ steps.request.outputs.source_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 3600 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/alignment/source-request.json \
+            --output work/alignment/source.audio \
+            "$SOURCE_URL"
+
+      - name: Install only the pinned selected adapter
+        working-directory: alignment-runner
+        env:
+          ALIGNMENT_ADAPTER: ${{ steps.alignment.outputs.adapter }}
+        run: |
+          case "$ALIGNMENT_ADAPTER" in
+            whisperx) uv sync --locked --extra whisperx ;;
+            stable-ts) uv sync --locked --extra stable-ts ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Run exact forced-alignment contract
+        working-directory: alignment-runner
+        env:
+          ALIGNMENT_ADAPTER: ${{ steps.alignment.outputs.adapter }}
+          RUNNER_DIGEST: ${{ steps.alignment.outputs.runner_digest }}
+        run: |
+          uv run dustwave-align run \
+            --adapter "$ALIGNMENT_ADAPTER" \
+            --request ../work/alignment/runner-request.json \
+            --input-root ../work/alignment \
+            --output ../work/alignment/result.json \
+            --runner-digest "$RUNNER_DIGEST"
+
+      - name: Validate result and build content-free evidence
+        run: >-
+          node scripts/build-alignment-callback.mjs
+          work/alignment/manifest.json
+          work/alignment/result.json
+          work/alignment/callback.json
+          work/alignment/evidence.json
+
+      - name: Sign private result
+        id: success_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/alignment/callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit immutable private alignment result
+        id: submit
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.success_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.success_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.alignment.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 120 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/alignment/callback.json \
+            "$CALLBACK_URL"
+
+      - name: Mark private result submitted
+        id: ready
+        run: echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build bounded failure evidence
+        if: ${{ failure() && steps.alignment.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        run: >-
+          node scripts/build-alignment-failure-callback.mjs
+          work/alignment/manifest.json
+          work/alignment/failure-callback.json
+
+      - name: Sign bounded failure evidence
+        if: ${{ failure() && steps.alignment.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        id: failure_signature
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+        run: >-
+          node scripts/sign-media-processor-body.mjs
+          work/alignment/failure-callback.json
+          >> "$GITHUB_OUTPUT"
+
+      - name: Submit bounded failure evidence
+        if: ${{ failure() && steps.alignment.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
+        env:
+          CALLBACK_SIGNATURE: ${{ steps.failure_signature.outputs.signature }}
+          CALLBACK_TIMESTAMP: ${{ steps.failure_signature.outputs.timestamp }}
+          CALLBACK_URL: ${{ steps.alignment.outputs.callback_url }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 30 \
+            --retry 3 \
+            --request POST \
+            --header "content-type: application/json" \
+            --header "x-podcast-processor-timestamp: $CALLBACK_TIMESTAMP" \
+            --header "x-podcast-processor-signature: $CALLBACK_SIGNATURE" \
+            --data-binary @work/alignment/failure-callback.json \
+            "$CALLBACK_URL"
+
+      - name: Retain content-free evidence only
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: alignment-evidence
+          path: work/alignment/evidence.json
+          if-no-files-found: warn
+          retention-days: 30
