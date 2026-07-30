@@ -115,6 +115,39 @@
     },
     "production": {
       "name": "dust-wave-podcast",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "feeds.dustwave.xyz",
+          "custom_domain": true
+        },
+        {
+          "pattern": "media.dustwave.xyz",
+          "custom_domain": true
+        }
+      ],
+      "secrets": {
+        "required": [
+          "AD_DECISION_SIGNING_SECRET",
+          "AD_QUALIFICATION_CALLBACK_SECRET",
+          "ADMIN_EMAIL_LOOKUP_PEPPER",
+          "ADMIN_SESSION_SECRET",
+          "ANALYTICS_HASH_SECRET",
+          "ANNOUNCEMENT_DESTINATION_SECRET",
+          "FEED_TOKEN_PEPPER",
+          "LISTENER_EMAIL_LOOKUP_PEPPER",
+          "LISTENER_SESSION_SECRET",
+          "MEDIA_PROCESSOR_CALLBACK_SECRET",
+          "RESEND_API_KEY",
+          "RESEND_WEBHOOK_SECRET",
+          "RSS_IMPORT_URL_SECRET",
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET",
+          "TAX_QUOTE_HASH_SECRET",
+          "TURNSTILE_SECRET_KEY"
+        ]
+      },
       "vars": {
         "ENVIRONMENT": "production",
         "SITE_ORIGIN": "https://dustwave.xyz",

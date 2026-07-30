@@ -63,6 +63,21 @@ describe("deployment configuration", () => {
     );
   });
 
+  it("serves production only through the two owned podcast hostnames", () => {
+    expect(config.env.production.workers_dev).toBe(false);
+    expect(config.env.production.preview_urls).toBe(false);
+    expect(config.env.production.routes).toEqual([
+      {
+        pattern: "feeds.dustwave.xyz",
+        custom_domain: true
+      },
+      {
+        pattern: "media.dustwave.xyz",
+        custom_domain: true
+      }
+    ]);
+  });
+
   it("uses duplicate-free, exact origins without paths or credentials", () => {
     expectExactOrigins(configuredOrigins("staging"));
     expectExactOrigins(configuredOrigins("production"));
@@ -114,6 +129,31 @@ describe("deployment configuration", () => {
     expect(config.env.production.vars.ADMIN_TURNSTILE_REQUIRED).toBe(
       "true"
     );
+  });
+
+  it("declares every production launch secret without storing values", () => {
+    const requiredSecrets = config.env.production.secrets.required;
+
+    expect(new Set(requiredSecrets).size).toBe(requiredSecrets.length);
+    expect(requiredSecrets).toEqual([
+      "AD_DECISION_SIGNING_SECRET",
+      "AD_QUALIFICATION_CALLBACK_SECRET",
+      "ADMIN_EMAIL_LOOKUP_PEPPER",
+      "ADMIN_SESSION_SECRET",
+      "ANALYTICS_HASH_SECRET",
+      "ANNOUNCEMENT_DESTINATION_SECRET",
+      "FEED_TOKEN_PEPPER",
+      "LISTENER_EMAIL_LOOKUP_PEPPER",
+      "LISTENER_SESSION_SECRET",
+      "MEDIA_PROCESSOR_CALLBACK_SECRET",
+      "RESEND_API_KEY",
+      "RESEND_WEBHOOK_SECRET",
+      "RSS_IMPORT_URL_SECRET",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "TAX_QUOTE_HASH_SECRET",
+      "TURNSTILE_SECRET_KEY"
+    ]);
   });
 
   it("keeps public clip delivery isolated to staging preview", () => {
