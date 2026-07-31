@@ -61,13 +61,18 @@ iHeartRadio, and Deezer.
 
 ### H1 — launch production workbench
 
-- Build the common admin shell at `/admin/podcasts/` with Shows, Episodes,
-  Production, Distribution, Marketing, Sponsors, Analytics, Subscribers,
-  Premium, and Settings. The single-show launch UI now keeps the show catalog
-  and safe RSS-import planning in Overview while one separate bilingual
-  Settings tab owns the existing show editor. Episodes and Settings reuse
-  synchronized show selectors and one save form/state path; no settings
-  payload or update route is duplicated. That single form now covers the
+- Build the common admin shell at `/admin/podcasts/` around six task-oriented
+  sections: Episodes, Distribution, Marketing, Audience, Monetization, and
+  Settings. Episodes opens first and contains contextual Production tools;
+  Audience groups analytics with subscribers; Monetization groups sponsors
+  with premium evidence; and Settings owns show overview, configuration, and
+  migration. The single-show launch UI presents the current show as compact
+  context while the same controller restores the synchronized show selector
+  automatically when a second show exists. The show catalog and safe RSS-
+  import planning remain in Settings beside the bilingual show editor. The
+  Settings editor and Episodes reuse synchronized show selectors and one save
+  form/state path; no settings payload or update route is duplicated. That
+  single form now covers the
   Worker-supported primary language, lifecycle, author, category, artwork,
   explicit-content policy, premium benefits, early-access default, and
   YouTube destination. Canonical-page and RSS addresses are visible but
@@ -78,6 +83,14 @@ iHeartRadio, and Deezer.
   destinations are enforced again at the
   Worker boundary as credential-free, port-free, fragment-free HTTPS; the
   latter accepts only canonical YouTube channel hosts and paths.
+- Keep publishing episode-centered rather than exposing the readiness graph as
+  the primary interaction model. One bilingual current-episode context
+  synchronizes every episode-scoped production tool and preserves unsaved
+  transcript/chapter guards. The six-step workflow derives one exact next
+  required action from immutable readiness evidence, and its primary Continue
+  action opens and focuses the matching production tool. Secondary blockers
+  remain available in one collapsed list; complete technical evidence stays
+  inside progressive disclosures and never disappears from the operator view.
 - Keep show pages and feeds DRY through an explicit site-catalog projection.
   Preview reads the configured Git ref, reports only Worker-owned field drift,
   and preserves site-owned local artwork variants, wordmark, social card,
