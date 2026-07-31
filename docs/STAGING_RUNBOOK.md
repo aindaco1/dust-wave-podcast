@@ -1281,11 +1281,11 @@ prefix-wide R2 delete. The scheduled Worker cleanup also removes expired
 leases, but it does not replace the manual object audit.
 
 The complete wrapper passed on July 31, 2026 against source commit
-`b0e5799ca7285b6518ccf6d38d7a5d1c3a14225e`. All 24 protocol probes passed;
+`af1ef817466d646aad6ca9ed64fb611813d4f20f`. All 24 protocol probes passed;
 5,000 paired requests produced 10,000 successful measured requests with zero
-errors and zero content mismatches. Virtual p95 was 282.93 ms, the
-byte-identical private-R2 baseline was 206.27 ms, and the added p95 was
-76.66 ms against the 250 ms ceiling. The wrapper reported both exact-object
+errors and zero content mismatches. Virtual p95 was 838.34 ms, the
+byte-identical private-R2 baseline was 794.47 ms, and the added p95 was
+43.87 ms against the 250 ms ceiling. The wrapper reported both exact-object
 and exact-lease cleanup complete, and a follow-up aggregate query returned
 zero diagnostic leases. The redacted evidence deliberately records
 `nativeClientValidation: false`; keep `AD_DECISION_MODE=staging_validate`,
@@ -1686,12 +1686,16 @@ dynamic-ad node to the current runtime-sensitive source. Evidence is accepted
 only for the signed 5,000-pair/10,000-request exercise, full cleanup, a
 seven-day freshness window, and no relevant source drift.
 
-The 2026-07-29 isolated rerun passed all 24 protocol probes and 10,000 paired
-requests with zero errors, zero content mismatches, and 27.97 ms p95 added
-latency. The signed diagnostic lease and every temporary object were removed.
-The composed report then returned six safe passes, six expected promotion
-blocks, and zero failures. The dynamic-ad block narrowed to the real isolated
-client pilot; production remained disabled.
+The 2026-07-31 current-source rerun passed all 24 protocol probes and 10,000
+paired requests with zero errors, zero content mismatches, and 43.87 ms p95
+added latency. The signed diagnostic lease and every temporary object were
+removed. A transient operator-side IPv6 connection failure during an earlier
+attempt left three exact synthetic fixture objects after the lease was removed;
+each object was downloaded, matched byte-for-byte to the generated contract,
+deleted by exact key, and rechecked as absent before the clean IPv4-preferred
+rerun. The composed report then returned six safe passes, six expected
+promotion blocks, and zero failures. The dynamic-ad block narrowed to the real
+isolated client pilot; production remained disabled.
 
 Live GitHub publication targets only the release branch and requires a reviewed
 fixture.

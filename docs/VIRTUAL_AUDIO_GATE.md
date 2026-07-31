@@ -152,7 +152,7 @@ runbook.
 ## Isolated synthetic staging evidence
 
 On July 31, 2026, source commit
-`b0e5799ca7285b6518ccf6d38d7a5d1c3a14225e` passed the complete wrapper
+`af1ef817466d646aad6ca9ed64fb611813d4f20f` passed the complete wrapper
 against `dust-wave-podcast-staging.jogo.workers.dev` with 5,000 request pairs
 at concurrency 12:
 
@@ -161,8 +161,8 @@ at concurrency 12:
   unsatisfiable/multipart rejection, and concurrent range reads;
 - all 10,000 measured requests completed with zero request errors and zero
   content mismatches;
-- virtual delivery measured 282.93 ms p95 versus 206.27 ms for the
-  byte-identical private-R2 baseline, an added p95 of 76.66 ms against the
+- virtual delivery measured 838.34 ms p95 versus 794.47 ms for the
+  byte-identical private-R2 baseline, an added p95 of 43.87 ms against the
   250 ms ceiling; and
 - the wrapper confirmed removal of every object uploaded by the run and its
   exact D1 lease. A follow-up aggregate query found zero diagnostic leases.
