@@ -33,6 +33,7 @@ import {
 import {
   scheduleAutomatedDeliveryAudioJobs
 } from "./delivery-audio";
+import { scheduleAutomaticAlignmentJobs } from "./alignment-jobs";
 
 export default {
   async fetch(
@@ -113,7 +114,8 @@ export default {
   ): Promise<void> {
     await Promise.all([
       scheduleAutomatedDeliveryAudioJobs(env),
-      scheduleAutomaticTranscriptionJobs(env)
+      scheduleAutomaticTranscriptionJobs(env),
+      scheduleAutomaticAlignmentJobs(env)
     ]);
     await Promise.all([
       scheduleDuePublications(env),

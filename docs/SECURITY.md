@@ -319,6 +319,14 @@
   signed routes expose only one exact private source and accept one bounded
   result. The workflow does not retain source audio, transcript projections,
   callback bodies, or raw results as artifacts.
+- Automatic alignment discovery exits before D1 in production. In staging it
+  requires the same explicit final-master predicate as delivery audio and
+  transcription, an exact approved transcript revision/content digest, the
+  current adapter/model/settings/runner identity, and clean source QC. It
+  stores no new content in the scheduler path: the shared queue primitive owns
+  the immutable projection, manifest, job, and content-free audit. One exact
+  active/ready job suppresses reruns; retryable failures reopen only that job
+  and stop after the existing five-attempt ceiling.
 - The Worker treats alignment output as untrusted. It revalidates exact
   source/transcript/projection/adapter/runner hashes, stable word identity and
   order, cue/source bounds, monotonic intervals, confidence, provenance,
