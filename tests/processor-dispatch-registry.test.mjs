@@ -55,6 +55,9 @@ describe("processor dispatch registry", () => {
     expect(setupAction).toMatch(
       /uses:\s+actions\/setup-node@[a-f0-9]{40}\b/
     );
+    expect(setupAction).toContain(
+      "cache: ${{ inputs.install-dependencies == 'true' && 'npm' || '' }}"
+    );
     expect(setupAction).toContain("run: npm ci");
 
     const workflowNames = [
