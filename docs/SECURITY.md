@@ -638,6 +638,18 @@ confirmation before replacing existing unsaved rows. Generation cannot write a
 chapter revision or approval, publish a feed or News page, contact a provider,
 or mutate any other domain. Staging is enabled; production is fail-closed.
 
+Automatic chapter proposals add stricter prerequisites than manual drafting:
+the final working master must remain current, the latest immutable approved
+transcript revision/digest must remain exact, and a human-approved `passed`
+word-alignment revision must pin that same master and transcript. The durable
+private row includes the alignment revision in its foreign key and fingerprint.
+The shared editorial claim/lease/completion/failure primitive bounds retries
+and makes show-notes and chapter recovery identical without sharing business
+eligibility rules. Current-only reads recheck master, transcript, alignment,
+episode title, and duration before returning a proposal. Production exits
+before D1 under `CHAPTER_DRAFT_AUTOMATION_MODE=disabled`; the separate Workers
+AI flag is also off.
+
 ## AI clip-candidate boundary
 
 Clip discovery reuses the Producer+ authentication, trusted-origin CSRF,

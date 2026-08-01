@@ -167,7 +167,12 @@ iHeartRadio, and Deezer.
   exact cue identities, derives times server-side, and reruns the normal
   chapter contract. The bilingual review card can replace only unsaved editor
   state; versioned save and Admin approval remain separate. Staging is enabled
-  and production remains disabled.
+  and production remains disabled. Staging automation waits for the final
+  working master, exact approved transcript, and its human-approved passing
+  word-alignment revision. It reuses the show-notes private proposal ledger,
+  exact fingerprints, four-claim cron budget, four-minute leases, three-attempt
+  ceiling, content-minimal system audits, and current-only Admin reads. It
+  never saves or approves chapter rows.
 - The first Hilite-value social discovery assistant now reuses that same
   verified-transcript and Workers AI core. It proposes at most six
   chronological, non-overlapping 15–90 second ranges using exact cue

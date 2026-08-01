@@ -192,6 +192,12 @@ describe("deployment configuration", () => {
     expect(config.env.production.ai).toEqual({ binding: "AI" });
     expect(config.env.staging.vars.SHOW_NOTES_AI_ENABLED).toBe("true");
     expect(config.env.production.vars.SHOW_NOTES_AI_ENABLED).toBe("false");
+    expect(config.env.staging.vars.CHAPTER_DRAFT_AUTOMATION_MODE).toBe(
+      "staging_generate"
+    );
+    expect(config.env.production.vars.CHAPTER_DRAFT_AUTOMATION_MODE).toBe(
+      "disabled"
+    );
     expect(config.env.staging.vars.CHAPTER_DRAFT_AI_ENABLED).toBe("true");
     expect(config.env.production.vars.CHAPTER_DRAFT_AI_ENABLED).toBe("false");
     expect(config.env.staging.vars.CLIP_DRAFT_AI_ENABLED).toBe("true");

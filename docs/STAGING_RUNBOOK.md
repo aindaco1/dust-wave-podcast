@@ -478,6 +478,15 @@ to `failed`; retries reuse the same row and stop at attempt three. No episode,
 News, RSS, YouTube, distribution, media, billing, ad, or subscriber row may
 change.
 
+Migration `0073` losslessly extends the same private proposal ledger with the
+`chapters` kind and an exact alignment-revision foreign key. Before deploying,
+prepare `AUTOMATED_CHAPTER_SOURCES_SQL` against a zero-to-current schema and
+confirm existing show-notes rows survive the rebuild. Record only aggregate
+kind/status/attempt counts and `PRAGMA foreign_key_check`; never select draft,
+transcript, prompt, provider, email, or token content. Production must remain
+unmigrated with `CHAPTER_DRAFT_AUTOMATION_MODE=disabled` and
+`CHAPTER_DRAFT_AI_ENABLED=false`.
+
 Exercise the companion chapter assistant first against the local mock. Select
 the same episode in Production, generate English and Spanish proposals, and
 confirm the evidence reports the exact approved revision and all reviewed
@@ -495,6 +504,17 @@ request/completion audits, no chapter revision/approval write, and the
 separate six-request rate limit. A transcript over 48,000 prompt characters
 must return `chapter_draft_full_transcript_required` before an audit claim.
 The production dry bundle must retain `CHAPTER_DRAFT_AI_ENABLED=false`.
+
+After an exact transcript has separately passed human alignment review, the
+next five-minute staging boundary may create at most one chapter proposal per
+output language and exact input fingerprint. Verify that every row pins the
+current master, transcript revision/digest, and passed alignment revision;
+attempts never exceed three; expired leases recover in place; and system audit
+metadata contains only identifiers, digests, counts, model/version, usage, and
+error class. A second boundary must not duplicate the row or audit. The Admin
+must load but not apply the newest proposal, and saving/approving the chapter
+set must remain separate explicit actions. Before any qualifying alignment,
+the scheduler must create zero chapter rows, audits, or model calls.
 
 Exercise the social clip-candidate assistant against the local mock with
 `PODCAST_ADMIN_MOCK_TRANSCRIPT_CUES=24` and
