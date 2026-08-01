@@ -372,7 +372,8 @@ describe("streamlined publishing directory registry", () => {
     expect(
       fixture.queries.some(({ query, values }) =>
         query.includes("UPDATE episode_publications")
-        && query.includes("evidence_source = 'manual_review'")
+        && query.includes("evidence_source = ?")
+        && values.includes("manual_review")
         && values.includes(
           "https://open.spotify.com/episode/dust-wave-fixture"
         )
@@ -638,6 +639,19 @@ async function distributionFixture({
           return this;
         },
         async first() {
+          if (query.includes(
+            "LEFT JOIN distribution_observation_events event"
+          )) {
+            return {
+              status: "observed",
+              evidence_url:
+                "https://open.spotify.com/episode/dust-wave-fixture",
+              evidence_source: "manual_review",
+              last_error: null,
+              event_id: values[0],
+              audit_id: values[1]
+            };
+          }
           if (query.includes("SELECT s.admin_user_id")) {
             return {
               admin_user_id: "admin_distribution_fixture",
