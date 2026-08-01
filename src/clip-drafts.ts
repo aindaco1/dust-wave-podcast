@@ -9,6 +9,7 @@ import {
   generatedAiText,
   parseAiProviderJsonObject,
   projectTranscriptForAiDraft,
+  safeAiDraftFailureCode,
   safeAiUsage
 } from "./ai-drafts";
 import { recordAdminAudit } from "./audit";
@@ -496,8 +497,10 @@ async function generateAutomaticClipDraft(
     });
     return completed ? "ready" : "failed";
   } catch (error) {
+    const failureCode = safeAiDraftFailureCode(error);
     await failEditorialAiDraft(env.DB, claim, {
       auditAction: "clip_draft.automatic_failed",
+      failureCode,
       auditMetadata: {
         automated: true,
         episodeId: source.episode_id,
@@ -509,7 +512,8 @@ async function generateAutomaticClipDraft(
         inputFingerprint,
         model: AI_DRAFT_MODEL,
         promptVersion: CLIP_DRAFT_PROMPT_VERSION,
-        errorName: error instanceof Error ? error.name : "UnknownError"
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        failureCode
       }
     });
     return "failed";
