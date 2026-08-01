@@ -53,6 +53,12 @@ describe("AI show-notes drafts", () => {
     expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).toContain(
       '"speakerAttributions":{"type":"array","maxItems":0'
     );
+    expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).toContain(
+      '"sections":{"type":"array","minItems":1,"maxItems":6'
+    );
+    expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).not.toContain(
+      "showNotesMarkdown"
+    );
     expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).not.toContain(
       "confirmedSpeakerLabels"
     );
@@ -77,7 +83,7 @@ describe("AI show-notes drafts", () => {
     fixture.aiRun.mockResolvedValueOnce({
       response: JSON.stringify({
         summary: "A draft that needs repair.",
-        showNotesMarkdown: "Notes",
+        sections: [{ heading: "Notes", bullets: ["Alonzo"] }],
         keywords: [],
         grounding: {
           namedEntities: [{ name: "Alonzo", evidence: "Alonzo" }],
@@ -134,7 +140,10 @@ describe("AI show-notes drafts", () => {
       providerResponse: {
         response: JSON.stringify({
           summary: "Safe",
-          showNotesMarkdown: "<script>alert(1)</script>",
+          sections: [{
+            heading: "Notes",
+            bullets: ["<script>alert(1)</script>"]
+          }],
           keywords: [],
           grounding: { namedEntities: [], speakerAttributions: [] }
         })
@@ -172,7 +181,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-      prompt_version: "show-notes-v6-grounded-quality",
+      prompt_version: "show-notes-v7-structured-sections",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -222,7 +231,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-        promptVersion: "show-notes-v6-grounded-quality",
+        promptVersion: "show-notes-v7-structured-sections",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
@@ -271,14 +280,11 @@ describe("show-notes model boundaries", () => {
     expect(parseShowNotesProviderResponse({
       response: JSON.stringify({
         summary: "  Resumen revisable.  ",
-        showNotesMarkdown: "## Temas\r\n\r\n- Uno  ",
+        sections: [{ heading: "  Temas  ", bullets: ["  Uno  "] }],
         keywords: ["Cine", "cine", "Selva"],
         grounding: {
           namedEntities: [{ name: "Selva", evidence: "Cine en la Selva" }],
-          speakerAttributions: [{
-            speakerLabel: "Jay",
-            evidence: "Jay: Cine en la Selva"
-          }]
+          speakerAttributions: []
         }
       })
     }, { episode, projection })).toEqual({
@@ -289,15 +295,18 @@ describe("show-notes model boundaries", () => {
     expect(() => parseShowNotesProviderResponse({
       response: JSON.stringify({
         summary: "Resumen",
-        showNotesMarkdown: "<img src=x onerror=alert(1)>",
+        sections: [{
+          heading: "Temas",
+          bullets: ["<img src=x onerror=alert(1)>"]
+        }],
         keywords: [],
         grounding: { namedEntities: [], speakerAttributions: [] }
       })
-    }, { episode, projection })).toThrow(/showNotesMarkdown is invalid/);
+    }, { episode, projection })).toThrow(/sections\[0\]\.bullets\[0\] is invalid/);
     expect(() => parseShowNotesProviderResponse({
       response: JSON.stringify({
         summary: "Resumen\u202eespoofed",
-        showNotesMarkdown: "Safe",
+        sections: [{ heading: "Temas", bullets: ["Seguro"] }],
         keywords: [],
         grounding: { namedEntities: [], speakerAttributions: [] }
       })
@@ -318,7 +327,7 @@ describe("show-notes model boundaries", () => {
     }]));
     const base = {
       summary: "Resumen",
-      showNotesMarkdown: "Notas",
+      sections: [{ heading: "Temas", bullets: ["Notas"] }],
       keywords: []
     };
 
@@ -345,7 +354,7 @@ describe("show-notes model boundaries", () => {
     }, { episode, projection })).toThrow(/speaker grounding is invalid/);
   });
 
-  it("rejects attribution prose and unreadable flat Markdown", () => {
+  it("rejects attribution prose and invalid structured sections", () => {
     const episode = {
       title: "Dust Don't Settle",
       summary: "David Jennings and Alonzo explore independent film."
@@ -374,7 +383,10 @@ describe("show-notes model boundaries", () => {
     expect(() => parseShowNotesProviderResponse({
       response: {
         summary: "David Jennings and Alonzo explore independent film.",
-        showNotesMarkdown: "## Topics\n\n- Local infrastructure",
+        sections: [{
+          heading: "Topics",
+          bullets: ["Local infrastructure"]
+        }],
         keywords: ["film"],
         grounding
       }
@@ -382,11 +394,19 @@ describe("show-notes model boundaries", () => {
     expect(() => parseShowNotesProviderResponse({
       response: {
         summary: "A neutral overview of independent film.",
-        showNotesMarkdown: "# Episode Summary with no list",
+        sections: [],
         keywords: ["film"],
         grounding: { namedEntities: [], speakerAttributions: [] }
       }
-    }, { episode, projection })).toThrow(/Markdown structure is invalid/);
+    }, { episode, projection })).toThrow(/sections are invalid/);
+    expect(() => parseShowNotesProviderResponse({
+      response: {
+        summary: "A neutral overview of independent film.",
+        sections: [{ heading: "Topics", bullets: ["- Preformatted"] }],
+        keywords: ["film"],
+        grounding: { namedEntities: [], speakerAttributions: [] }
+      }
+    }, { episode, projection })).toThrow(/must be plain text/);
   });
 });
 
@@ -397,7 +417,10 @@ async function showNotesFixture({
   providerResponse = {
     response: JSON.stringify({
       summary: "A factual summary.",
-      showNotesMarkdown: "## In this episode\n\n- A reviewed point",
+      sections: [{
+        heading: "In this episode",
+        bullets: ["A reviewed point"]
+      }],
       keywords: ["Ópera en la Selva"],
       grounding: {
         namedEntities: [{

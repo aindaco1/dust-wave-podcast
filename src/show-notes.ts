@@ -39,11 +39,15 @@ const MAXIMUM_SUMMARY_CHARACTERS = 1_200;
 const MAXIMUM_SHOW_NOTES_CHARACTERS = 8_000;
 const MAXIMUM_KEYWORDS = 10;
 const MAXIMUM_KEYWORD_CHARACTERS = 60;
+const MAXIMUM_SECTIONS = 6;
+const MAXIMUM_SECTION_HEADING_CHARACTERS = 120;
+const MAXIMUM_SECTION_BULLETS = 8;
+const MAXIMUM_SECTION_BULLET_CHARACTERS = 700;
 const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
 export const SHOW_NOTES_MODEL =
   "@cf/meta/llama-4-scout-17b-16e-instruct";
 export const SHOW_NOTES_PROMPT_VERSION =
-  "show-notes-v6-grounded-quality";
+  "show-notes-v7-structured-sections";
 
 const GENERIC_SPEAKER_ATTRIBUTION = new RegExp(
   String.raw`\b(?:he|she|they|hosts?|guests?|speakers?|`
@@ -684,7 +688,7 @@ export function parseShowNotesProviderResponse(
     ],
     confirmedSpeakerLabels: projection.confirmedSpeakerLabels
   });
-  const draft = parseShowNotesDraftObject(result);
+  const draft = parseProviderShowNotesDraftObject(result);
   validateShowNotesDraftQuality(draft);
   return draft;
 }
@@ -710,12 +714,80 @@ function parseShowNotesDraftObject(
     "showNotesMarkdown",
     MAXIMUM_SHOW_NOTES_CHARACTERS
   );
-  if (!Array.isArray(result.keywords) || result.keywords.length > MAXIMUM_KEYWORDS) {
+  return {
+    summary,
+    showNotesMarkdown,
+    keywords: parseShowNotesKeywords(result.keywords)
+  };
+}
+
+function parseProviderShowNotesDraftObject(
+  result: Record<string, unknown>
+): ShowNotesDraft {
+  const summary = generatedAiText(
+    result.summary,
+    "summary",
+    MAXIMUM_SUMMARY_CHARACTERS
+  );
+  if (
+    !Array.isArray(result.sections)
+    || result.sections.length < 1
+    || result.sections.length > MAXIMUM_SECTIONS
+  ) {
+    throw new TypeError("AI draft provider sections are invalid");
+  }
+  const sections: Array<{ heading: string; bullets: string[] }> = [];
+  for (const [sectionIndex, sectionValue] of result.sections.entries()) {
+    if (
+      !sectionValue
+      || typeof sectionValue !== "object"
+      || Array.isArray(sectionValue)
+    ) {
+      throw new TypeError("AI draft provider section is invalid");
+    }
+    const section = sectionValue as Record<string, unknown>;
+    const heading = plainShowNotesSectionText(
+      section.heading,
+      `sections[${sectionIndex}].heading`,
+      MAXIMUM_SECTION_HEADING_CHARACTERS
+    );
+    if (
+      !Array.isArray(section.bullets)
+      || section.bullets.length < 1
+      || section.bullets.length > MAXIMUM_SECTION_BULLETS
+    ) {
+      throw new TypeError("AI draft provider section bullets are invalid");
+    }
+    const bullets = section.bullets.map((bullet, bulletIndex) =>
+      plainShowNotesSectionText(
+        bullet,
+        `sections[${sectionIndex}].bullets[${bulletIndex}]`,
+        MAXIMUM_SECTION_BULLET_CHARACTERS
+      )
+    );
+    sections.push({ heading, bullets });
+  }
+  const showNotesMarkdown = generatedAiText(
+    sections.map(({ heading, bullets }) =>
+      `## ${heading}\n\n${bullets.map((bullet) => `- ${bullet}`).join("\n")}`
+    ).join("\n\n"),
+    "showNotesMarkdown",
+    MAXIMUM_SHOW_NOTES_CHARACTERS
+  );
+  return {
+    summary,
+    showNotesMarkdown,
+    keywords: parseShowNotesKeywords(result.keywords)
+  };
+}
+
+function parseShowNotesKeywords(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > MAXIMUM_KEYWORDS) {
     throw new TypeError("Show-notes provider keywords are invalid");
   }
   const keywords: string[] = [];
   const seen = new Set<string>();
-  for (const keywordValue of result.keywords) {
+  for (const keywordValue of value) {
     const keyword = generatedAiText(
       keywordValue,
       "keyword",
@@ -728,7 +800,21 @@ function parseShowNotesDraftObject(
       keywords.push(keyword);
     }
   }
-  return { summary, showNotesMarkdown, keywords };
+  return keywords;
+}
+
+function plainShowNotesSectionText(
+  value: unknown,
+  field: string,
+  maximumCharacters: number
+): string {
+  const text = generatedAiText(value, field, maximumCharacters, {
+    allowNewlines: false
+  });
+  if (/^(?:#{1,6}\s|[-*+]\s|\d+\.\s)/u.test(text)) {
+    throw new TypeError(`AI draft provider ${field} must be plain text`);
+  }
+  return text;
 }
 
 function validateShowNotesDraftQuality(draft: ShowNotesDraft): void {
@@ -780,9 +866,9 @@ function showNotesMessages({
         + "always return speakerAttributions as an empty array. Never use a "
         + "person's name, a pronoun, host, guest, or speaker as the subject "
         + "of a speech verb such as discuss, explore, talk, say, explain, "
-        + "share, describe, emphasize, highlight, mention, or reflect. Use "
-        + "H2 headings and Markdown lists separated by newlines; never use "
-        + "an H1 heading. "
+        + "share, describe, emphasize, highlight, mention, or reflect. Return "
+        + "plain section headings and plain bullet text in the structured "
+        + "sections array; do not add Markdown syntax. "
         + (repairFailureCode
           ? `A prior response failed ${repairFailureCode}. Regenerate from `
             + "the supplied source only; do not reuse its output. Every "
@@ -797,8 +883,8 @@ function showNotesMessages({
         task: {
           outputLanguage,
           format:
-            "Concise summary plus useful Markdown show notes with optional "
-            + "H2 headings and bullet lists. Do not repeat the episode title.",
+            "Concise summary plus one to six topic sections with one to eight "
+            + "plain-text bullets each. Do not repeat the episode title.",
           transcriptCoverage: projection.truncated
             ? "partial_head_middle_tail"
             : "complete",
@@ -824,10 +910,32 @@ function showNotesResponseSchema(): Record<string, unknown> {
         minLength: 1,
         maxLength: MAXIMUM_SUMMARY_CHARACTERS
       },
-      showNotesMarkdown: {
-        type: "string",
-        minLength: 1,
-        maxLength: MAXIMUM_SHOW_NOTES_CHARACTERS
+      sections: {
+        type: "array",
+        minItems: 1,
+        maxItems: MAXIMUM_SECTIONS,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            heading: {
+              type: "string",
+              minLength: 1,
+              maxLength: MAXIMUM_SECTION_HEADING_CHARACTERS
+            },
+            bullets: {
+              type: "array",
+              minItems: 1,
+              maxItems: MAXIMUM_SECTION_BULLETS,
+              items: {
+                type: "string",
+                minLength: 1,
+                maxLength: MAXIMUM_SECTION_BULLET_CHARACTERS
+              }
+            }
+          },
+          required: ["heading", "bullets"]
+        }
       },
       keywords: {
         type: "array",
@@ -888,6 +996,6 @@ function showNotesResponseSchema(): Record<string, unknown> {
         required: ["namedEntities", "speakerAttributions"]
       }
     },
-    required: ["summary", "showNotesMarkdown", "keywords", "grounding"]
+    required: ["summary", "sections", "keywords", "grounding"]
   };
 }
