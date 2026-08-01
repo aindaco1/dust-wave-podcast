@@ -29,6 +29,7 @@ export type PodcastEnv = Env & {
   CLIP_DRAFT_AUTOMATION_MODE?: string;
   CLIP_DRAFT_AI_ENABLED?: string;
   CLIP_PUBLICATION_MODE?: string;
+  DISTRIBUTION_OBSERVATION_MODE?: string;
   PODCAST_EMAIL_FROM?: string;
   PODCAST_OWNER_EMAIL?: string;
   POOL_PODCAST_BRIDGE_SECRET?: string;

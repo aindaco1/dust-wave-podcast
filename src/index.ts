@@ -37,6 +37,9 @@ import { scheduleAutomaticAlignmentJobs } from "./alignment-jobs";
 import { scheduleAutomaticShowNotesDrafts } from "./show-notes";
 import { scheduleAutomaticChapterDrafts } from "./chapter-drafts";
 import { scheduleAutomaticClipDrafts } from "./clip-drafts";
+import {
+  scheduleAutomaticDistributionObservations
+} from "./distribution-observations";
 
 export default {
   async fetch(
@@ -126,6 +129,7 @@ export default {
     await Promise.all([
       scheduleDuePublications(env),
       scheduleRssImportExecutions(env),
+      scheduleAutomaticDistributionObservations(env),
       pruneAdminAuthState(env.DB),
       pruneListenerAuthState(env.DB),
       pruneSubscriptionBillingRateLimits(env.DB),
