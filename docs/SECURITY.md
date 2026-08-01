@@ -588,13 +588,28 @@ stable private error on any provider or validation failure. The browser again
 validates the response contract and uses only `textContent` until an explicit
 replace action passes Markdown through the shared sanitized WYSIWYG.
 
-The existing audit table enforces six requests per admin/episode/hour using
-content-free metadata. Audits retain transcript and output digests, revision,
-cue counts, language, model, usage, and error class only—never transcript,
-prompt, provider response, or draft text. The result is not stored server-side
-and cannot save an episode, publish News/RSS/YouTube, contact a directory, or
-change media, billing, ads, or subscriber state. Staging is enabled for
-controlled tests; production is disabled until a separate promotion review.
+The existing audit table enforces six manual requests per admin/episode/hour
+using content-free metadata. Audits retain transcript and output digests,
+revision, cue counts, language, model, prompt version, usage, and error class
+only—never transcript, prompt, provider response, or draft text.
+
+Staging automation stores the validated draft text only in the private
+`editorial_ai_drafts` table. Each row is bound to the final working master,
+approved transcript identity/revision/digest, episode-copy digest, output
+language, model, and prompt version. A unique input fingerprint prevents
+duplicates; a four-minute lease recovers interrupted generation; four claims
+per cron run and three attempts per fingerprint bound cost and retries.
+Ready rows require valid JSON, a draft digest, and completion evidence. Admin
+reads revalidate the bounded draft fields before returning them as private,
+no-store JSON. System audits use a null actor and content-free hashes/counts.
+The browser renders text only, and loading or applying a proposal never issues
+an episode update. Production exits before reading D1 under
+`SHOW_NOTES_AUTOMATION_MODE=disabled`, and Workers AI is independently off.
+
+Neither manual nor automatic generation can save an episode, publish
+News/RSS/YouTube, contact a directory, or change media, billing, ads, or
+subscriber state. An admin must explicitly apply the proposal to the unsaved
+shared editor and then separately save the episode.
 
 ## AI chapter-draft boundary
 

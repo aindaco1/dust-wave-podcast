@@ -151,7 +151,16 @@ iHeartRadio, and Deezer.
   JSON/Markdown response, and audits only content-free digests/counts. The
   separate review card never saves or publishes; “Replace editor notes” is
   still only an unsaved local edit, with confirmation when notes already
-  exist. Staging is rate-limited and enabled; production remains disabled.
+  exist. Staging now discovers final-master, checksum-verified approved
+  transcripts and persists exact-version private proposals automatically for
+  the transcript language and, when different, the show language. The
+  fingerprint includes the working master, transcript revision/digest,
+  episode-copy digest, model, and prompt version. Four claims per scheduler
+  run, three lifetime attempts, expiring leases, strict output validation, and
+  content-minimal conditional audits bound recovery. The Admin loads the
+  newest proposal automatically; manual generation is secondary. Neither path
+  applies or publishes content. Production exits before D1 and remains
+  disabled.
 - The companion Hilite-value chapter assistant reuses the same verified
   transcript, Workers AI, audit, language, and rate-limit primitives without a
   new provider. It requires complete bounded cue coverage, accepts only ordered
