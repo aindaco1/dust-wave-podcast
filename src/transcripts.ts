@@ -123,6 +123,14 @@ export type TranscriptRevisionCommitEvidence = {
   speakerLabelsConfirmed: boolean;
 };
 
+export type TranscriptApprovalCommitEvidence = {
+  transcriptId: string;
+  approvalId: string;
+  auditId: string;
+  revision: number;
+  adminUserId: string;
+};
+
 export async function verifyTranscriptRevisionCommit(
   db: D1Database,
   evidence: TranscriptRevisionCommitEvidence
@@ -164,6 +172,40 @@ export async function verifyTranscriptRevisionCommit(
     evidence.targetRevision,
     evidence.contentSha256,
     evidence.speakerLabelsConfirmed ? 1 : 0
+  ).first<{ id: string }>();
+  return committed?.id === evidence.transcriptId;
+}
+
+export async function verifyTranscriptApprovalCommit(
+  db: D1Database,
+  evidence: TranscriptApprovalCommitEvidence
+): Promise<boolean> {
+  const committed = await db.prepare(
+    `SELECT transcript.id
+     FROM transcripts transcript
+     JOIN transcript_approvals approval
+       ON approval.id = ?
+      AND approval.transcript_id = transcript.id
+      AND approval.revision = transcript.revision
+      AND approval.admin_user_id = ?
+     JOIN admin_audit_events audit
+       ON audit.id = ?
+      AND audit.admin_user_id = approval.admin_user_id
+      AND audit.action = 'transcript.approved'
+      AND audit.target_type = 'transcript'
+      AND audit.target_id = transcript.id
+     WHERE transcript.id = ?
+       AND transcript.revision = ?
+       AND transcript.status = 'approved'
+       AND transcript.approved_revision = transcript.revision
+       AND transcript.speaker_labels_confirmed = 1
+       AND transcript.approved_by_admin_user_id = approval.admin_user_id`
+  ).bind(
+    evidence.approvalId,
+    evidence.adminUserId,
+    evidence.auditId,
+    evidence.transcriptId,
+    evidence.revision
   ).first<{ id: string }>();
   return committed?.id === evidence.transcriptId;
 }
@@ -925,7 +967,7 @@ export async function approveAdminEpisodeTranscript(
   }
 
   const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
-  const results = await env.DB.batch([
+  await env.DB.batch([
     env.DB.prepare(
       `INSERT OR IGNORE INTO transcript_approvals (
          id, transcript_id, revision, admin_user_id
@@ -988,7 +1030,14 @@ export async function approveAdminEpisodeTranscript(
     ),
     prepareResolveTranscriptReviewAction(env.DB, transcriptId)
   ]);
-  if (Number(results[1]?.meta?.changes ?? 0) !== 1) {
+  const committed = await verifyTranscriptApprovalCommit(env.DB, {
+    transcriptId,
+    approvalId,
+    auditId,
+    revision: expectedRevision,
+    adminUserId: authorized.authorization.identity.id
+  });
+  if (!committed) {
     return conflict(request, env, "transcript_approval_conflict");
   }
   const approved = await loadTranscript(env.DB, transcriptId);

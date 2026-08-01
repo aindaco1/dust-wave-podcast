@@ -4,6 +4,7 @@ import {
   canonicalTranscriptContent,
   normalizeTranscriptCues,
   serializeTranscriptContent,
+  verifyTranscriptApprovalCommit,
   verifyTranscriptRevisionCommit
 } from "../src/transcripts";
 
@@ -163,6 +164,38 @@ describe("transcript review contract", () => {
       transcriptRevisionCommitEvidence()
     )).resolves.toBe(false);
   });
+
+  it("verifies exact transcript approval evidence instead of D1 batch metadata", async () => {
+    const queries: Array<{ query: string; values: unknown[] }> = [];
+    const evidence = transcriptApprovalCommitEvidence();
+
+    await expect(verifyTranscriptApprovalCommit(
+      transcriptRevisionVerificationDatabase(queries, evidence.transcriptId),
+      evidence
+    )).resolves.toBe(true);
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0].query).toContain("JOIN transcript_approvals approval");
+    expect(queries[0].query).toContain("JOIN admin_audit_events audit");
+    expect(queries[0].query).toContain("transcript.status = 'approved'");
+    expect(queries[0].query).toContain(
+      "transcript.approved_revision = transcript.revision"
+    );
+    expect(queries[0].values).toEqual([
+      evidence.approvalId,
+      evidence.adminUserId,
+      evidence.auditId,
+      evidence.transcriptId,
+      evidence.revision
+    ]);
+  });
+
+  it("fails closed when exact transcript approval evidence is absent", async () => {
+    await expect(verifyTranscriptApprovalCommit(
+      transcriptRevisionVerificationDatabase([], null),
+      transcriptApprovalCommitEvidence()
+    )).resolves.toBe(false);
+  });
 });
 
 function transcriptRevisionCommitEvidence() {
@@ -175,6 +208,16 @@ function transcriptRevisionCommitEvidence() {
     targetRevision: 4,
     contentSha256: "a".repeat(64),
     speakerLabelsConfirmed: true
+  };
+}
+
+function transcriptApprovalCommitEvidence() {
+  return {
+    transcriptId: "transcript_fixture",
+    approvalId: "transcript_approval_fixture",
+    auditId: "audit_fixture",
+    revision: 4,
+    adminUserId: "admin_fixture"
   };
 }
 
