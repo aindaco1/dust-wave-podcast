@@ -26,8 +26,10 @@ jobs:
       - name: Set up locked Podcast runtime
         uses: ./.github/actions/setup-processor-node
 
-      - name: Verify media tools
+      - name: Install the required media tool
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
           ffmpeg -version
           ffprobe -version
 
