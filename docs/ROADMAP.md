@@ -552,9 +552,11 @@ them as launch blockers.
   staleness, and non-enforcing readiness before a later publication gate.
 - Keep the implemented read-only publication snapshot DRY with the current
   Publish prerequisites while explaining strict launch-candidate state across
-  release timing, bilingual transcript/alignment, chapters, every current
-  review target, clip/ad freshness, News/RSS/YouTube, and directory setup.
-  Preserve stable evidence hashing and no external I/O.
+  release timing, launch-critical production reviews, ad freshness,
+  News/RSS/YouTube, and directory setup. Keep transcript/alignment/chapter
+  state visible as post-launch warnings, prove that unapproved resources are
+  absent from public projections, and preserve stable evidence hashing with no
+  external I/O.
 - Keep the implemented exact-snapshot gate behind `legacy|shadow|enforce`:
   staging observes digest/revision matches in shadow; production remains
   legacy. Bind the final D1 batch to monotonic episode/show/global evidence,
@@ -579,6 +581,9 @@ them as launch blockers.
 ### Post-launch
 
 - Expose the multi-show/network interface already supported by the data model.
+- Review and approve public Spanish/English transcripts, complete the
+  bilingual H1 benchmark and exact alignment approval, then enable word-level
+  controls and transcript-dependent chapter/clip publication.
 - Add saved and scheduled reports, richer campaign pacing, live/video clips,
   collaboration workflows, listener Q&A, and deeper transcript
   discovery.
