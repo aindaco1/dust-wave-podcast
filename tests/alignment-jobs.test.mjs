@@ -13,6 +13,7 @@ import { hmacSha256 } from "@dustwave/worker-core/crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  AUTOMATED_ALIGNMENT_CANDIDATES_SQL,
   completeAlignmentProcessorJob,
   getAlignmentProcessorManifest,
   getAlignmentProcessorSource
@@ -80,6 +81,25 @@ const cues = [
 ];
 
 describe("word-alignment orchestration", () => {
+  it("prepares the automatic exact-revision candidate query on the real schema", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      applyMigrations(database);
+      expect(database.prepare(AUTOMATED_ALIGNMENT_CANDIDATES_SQL).all(
+        "whisperx",
+        "3.8.6",
+        "default",
+        "default-en-es-v1",
+        "whisperx-align-v1",
+        runnerRevision,
+        runnerDigest,
+        10
+      )).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
   it("routes the admin alignment collection before the method fallback", async () => {
     const response = await handleRequest(
       new Request(

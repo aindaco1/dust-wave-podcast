@@ -305,8 +305,14 @@ iHeartRadio, and Deezer.
   immutable artifact, chunking, Queue-retry, and conditional audit primitive
   as the Admin route. Direct jobs flow through the existing Queue scheduler;
   large jobs flow through the existing normalized processor dispatcher.
-  Production exits before reading D1. The signed staging alignment bridge now
-  binds the exact approved transcript,
+  Production exits before reading D1. Staging now discovers approved
+  English/Spanish transcript revisions after that same final-master decision,
+  reuses the existing immutable alignment queue primitive with a null system
+  actor, and defers execution to the durable normalized processor dispatcher.
+  Exact input fingerprints, current runner identity, retry ceilings, and
+  conditional audits keep scheduled reruns idempotent; the Admin action is
+  retained as audited recovery. The signed staging alignment bridge binds the
+  exact approved transcript,
   working master, normalized projection, adapter, and pinned runner; validates
   every returned word; and stops at human review. Approval has no override:
   it requires a matching real English/Spanish benchmark and clean-environment

@@ -686,9 +686,12 @@ warning, error, or inspector issue. Site run `30477544602` and shared run
 `30477269242` passed their exact commits. Production Pages, Worker, routes,
 data, and DNS remained untouched.
 
-After both reviewed transcript languages and an exact working master exist,
-queue an alignment from the Production workbench in isolated staging. Copy the
-displayed job ID and dispatch only from the reviewed release branch:
+After either reviewed transcript language and an exact final working master
+exist, wait through one staging schedule boundary. The Worker should queue the
+exact alignment automatically and the durable processor dispatcher should
+claim it without an Admin click or CLI dispatch. Use the following only as an
+audited break-glass recovery from a dispatcher outage, with the displayed job
+ID and reviewed release branch:
 
 ```sh
 gh workflow run process-alignment.yml \

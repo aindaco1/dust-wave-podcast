@@ -209,9 +209,13 @@ The working master and public enclosure are never changed. Production
 processor routes remain absent until the owner-controlled large-source gate
 passes.
 
-Forced alignment is a separate immutable job after transcript approval. It
-binds the exact approved transcript content/projection hashes, current
-working-master bytes, adapter/model/settings, and pinned runner revision. The
+Forced alignment is a separate immutable job after transcript approval.
+Staging discovers each approved English/Spanish transcript only after the
+shared final-master decision, queues the exact job with a system-owned audit,
+and lets the existing durable processor dispatcher claim it; the Admin queue
+action remains break glass. It binds the exact approved transcript
+content/projection hashes, current working-master bytes,
+adapter/model/settings, and pinned runner revision. The
 credential-minimized `process-alignment.yml` workflow receives no Cloudflare
 or R2 token: signed purpose-bound Worker routes provide the exact private
 source and accept one bounded result. The Worker independently validates every
