@@ -50,6 +50,12 @@ describe("AI show-notes drafts", () => {
     expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).toContain(
       "speakerAttributions"
     );
+    expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).toContain(
+      '"speakerAttributions":{"type":"array","maxItems":0'
+    );
+    expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).not.toContain(
+      "confirmedSpeakerLabels"
+    );
     expect(
       fixture.writes.some(({ query }) => query.includes("UPDATE episodes"))
     ).toBe(false);
@@ -166,7 +172,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-      prompt_version: "show-notes-v4-grounded-llama4",
+      prompt_version: "show-notes-v5-grounded-neutral",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -216,7 +222,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-        promptVersion: "show-notes-v4-grounded-llama4",
+        promptVersion: "show-notes-v5-grounded-neutral",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
