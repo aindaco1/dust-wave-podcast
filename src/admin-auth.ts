@@ -47,6 +47,12 @@ export interface AdminAuthorization {
   sessionTokenHash: string;
 }
 
+export type IssuedAdminLoginToken = {
+  adminUserId: string;
+  deliveryKey: string;
+  loginUrl: string;
+};
+
 export function hasAdminRoleForShow(
   identity: AdminIdentity,
   allowedRoles?: AdminRole[],
@@ -91,6 +97,106 @@ function clearSessionCookie(env: PodcastEnv): string {
 
 async function emailLookupHash(env: PodcastEnv, email: string): Promise<string> {
   return hmacSha256(email, env.ADMIN_EMAIL_LOOKUP_PEPPER || "", "hex");
+}
+
+function adminLoginUrl(
+  env: PodcastEnv,
+  returnPath: string,
+  token: string
+): string | null {
+  if (!env.SITE_ORIGIN || returnPath.length > 768) return null;
+  try {
+    const site = new URL(env.SITE_ORIGIN);
+    const target = new URL(returnPath, site);
+    if (
+      target.origin !== site.origin
+      || !["/admin/podcasts/", "/es/admin/podcasts/"].includes(
+        target.pathname
+      )
+      || target.username
+      || target.password
+      || target.hash
+    ) {
+      return null;
+    }
+    target.hash = `magic-link=${encodeURIComponent(token)}`;
+    return target.toString();
+  } catch {
+    return null;
+  }
+}
+
+export async function issueAdminLoginToken(
+  env: PodcastEnv,
+  {
+    allowedRoles,
+    email: rawEmail,
+    returnPath = "/admin/podcasts/",
+    showId,
+    stableSeed
+  }: {
+    allowedRoles?: AdminRole[];
+    email: string;
+    returnPath?: string;
+    showId?: string | null;
+    stableSeed?: string;
+  }
+): Promise<IssuedAdminLoginToken | null> {
+  if (!env.ADMIN_EMAIL_LOOKUP_PEPPER || !env.ADMIN_SESSION_SECRET) {
+    return null;
+  }
+  const email = normalizeEmail(rawEmail);
+  if (!isValidEmailAddress(email)) return null;
+  if (stableSeed && !/^[a-f0-9]{64}$/.test(stableSeed)) return null;
+  if (!adminLoginUrl(env, returnPath, "validation")) return null;
+
+  const admin = await env.DB
+    .prepare(
+      `SELECT id
+       FROM admin_users
+       WHERE email_lookup_hash = ? AND status IN ('invited', 'active')`
+    )
+    .bind(await emailLookupHash(env, email))
+    .first<{ id: string }>();
+  if (!admin) return null;
+  if (
+    allowedRoles
+    && !hasAdminRoleForShow(
+      await loadAdminIdentity(env.DB, admin.id),
+      allowedRoles,
+      showId
+    )
+  ) {
+    return null;
+  }
+
+  const token = stableSeed
+    ? await hmacSha256(
+      `podcast-admin-action:${stableSeed}`,
+      env.ADMIN_SESSION_SECRET,
+      "hex"
+    )
+    : randomToken(32);
+  const loginUrl = adminLoginUrl(env, returnPath, token);
+  if (!loginUrl) return null;
+  const tokenHash = await sha256Hex(`${env.ADMIN_SESSION_SECRET}:${token}`);
+  await env.DB
+    .prepare(
+      `INSERT INTO admin_login_tokens (
+         token_hash, admin_user_id, expires_at
+       ) VALUES (?, ?, datetime('now', '+15 minutes'))
+       ON CONFLICT(token_hash) DO UPDATE SET
+         expires_at = excluded.expires_at
+       WHERE admin_login_tokens.admin_user_id = excluded.admin_user_id
+         AND admin_login_tokens.consumed_at IS NULL`
+    )
+    .bind(tokenHash, admin.id)
+    .run();
+  return {
+    adminUserId: admin.id,
+    deliveryKey: stableSeed ?? tokenHash,
+    loginUrl
+  };
 }
 
 function adminTurnstileSecretEnvNames(env: PodcastEnv): string[] {
@@ -177,46 +283,26 @@ export async function startAdminLogin(
       { status: 202, headers: { "retry-after": "900" } }
     );
   }
-  const admin = await env.DB
-    .prepare(
-      `SELECT id
-       FROM admin_users
-       WHERE email_lookup_hash = ? AND status IN ('invited', 'active')`
-    )
-    .bind(lookupHash)
-    .first<{ id: string }>();
-
   let exposedLoginUrl: string | undefined;
-  if (admin) {
-    const token = randomToken(32);
-    const tokenHash = await sha256Hex(`${env.ADMIN_SESSION_SECRET}:${token}`);
-    await env.DB
-      .prepare(
-        `INSERT INTO admin_login_tokens (
-           token_hash, admin_user_id, expires_at
-         ) VALUES (?, ?, datetime('now', '+15 minutes'))`
-      )
-      .bind(tokenHash, admin.id)
-      .run();
-
+  const issued = await issueAdminLoginToken(env, { email });
+  if (issued) {
     const language = normalizeLoginLanguage(body.preferredLanguage);
-    const loginUrl = `${env.SITE_ORIGIN.replace(/\/$/, "")}/admin/podcasts/#magic-link=${token}`;
     const exposeLink = env.ENVIRONMENT === "staging"
       && isTruthy(env.ADMIN_AUTH_EXPOSE_LOGIN_LINK);
     if (exposeLink) {
-      exposedLoginUrl = loginUrl;
+      exposedLoginUrl = issued.loginUrl;
     } else {
       const delivery = await sendAdminMagicLink(env, {
         email,
-        loginUrl,
+        loginUrl: issued.loginUrl,
         language,
-        deliveryKey: tokenHash
+        deliveryKey: issued.deliveryKey
       });
       if (!delivery.sent) {
         console.error(JSON.stringify({
           level: "error",
           event: "admin_login_delivery_failed",
-          adminUserId: admin.id,
+          adminUserId: issued.adminUserId,
           failureCode: delivery.failureCode ?? "provider_unavailable",
           providerStatus: delivery.providerStatus ?? null,
           diagnosticCode: delivery.diagnosticCode ?? null

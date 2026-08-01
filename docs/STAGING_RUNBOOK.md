@@ -793,6 +793,29 @@ playback/download, current-policy and digest-match indicators, and that the
 promote and reject forms appear only to a recently authenticated Super-admin
 after zero-blocker QC.
 
+With `ADMIN_ACTION_NOTIFICATION_MODE=live`, install `PODCAST_ACTION_EMAIL` as
+a staging Worker secret containing an existing Super-admin address. Keep the
+raw address out of D1, logs, screenshots, and this repository. The next
+five-minute trigger discovers the same exact ready/QC evidence, creates one
+content-free `admin_action_notifications` row, and sends a bilingual Resend
+link to `?show=...&episode=...&step=media&target=working_master`. Confirm:
+
+- one accepted request uses `podcast-admin-action/<action-digest>` as its
+  idempotency key and a 15-minute single-use magic link;
+- repeated scheduled runs do not send a second accepted message;
+- the link selects the expected show/episode and focuses Working master without
+  horizontal overflow at phone, tablet, and desktop sizes;
+- non-Super-admin or unknown recipient setup fails closed without disclosing
+  whether an account exists;
+- three provider failures reuse byte-identical content and end in `failed`;
+- promote/reject, current-master change, or QC-policy drift moves the row to
+  `resolved`; and
+- D1 contains no email, usable token, login URL, media key, transcript, or
+  provider response body.
+
+Production keeps `ADMIN_ACTION_NOTIFICATION_MODE=disabled`; do not install its
+recipient secret or enable the mode during this staging exercise.
+
 Exercise both terminal choices against separate disposable candidates:
 
 - Promote with the exact displayed base revision and a bounded operational
@@ -1828,3 +1851,6 @@ For the full-episode YouTube test, use a separate fixture publication:
 - A Worker-code rollback after migration `0059` must leave the immutable
   cutover-packet table and triggers in place. Older code ignores the packet;
   it cannot activate a redirect or authorize a provider action.
+- A Worker-code rollback after migration `0069` must leave the content-free
+  admin action ledger in place. Disable `ADMIN_ACTION_NOTIFICATION_MODE` first;
+  older code ignores the additive table and cannot issue a link from it.

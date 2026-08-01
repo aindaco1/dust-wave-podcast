@@ -108,7 +108,9 @@ describe("deployment configuration", () => {
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
       "TAX_QUOTE_HASH_SECRET",
-      "TURNSTILE_SECRET_KEY"
+      "TURNSTILE_SECRET_KEY",
+      "PODCAST_ACTION_EMAIL",
+      "RESEND_API_KEY"
     ]));
     expect(config.env.staging.vars.STRIPE_MODE).toBe("test");
     expect(config.env.staging.vars.SUBSCRIPTION_CHECKOUT_ENABLED).toBe(
@@ -123,11 +125,17 @@ describe("deployment configuration", () => {
     expect(config.env.staging.vars.LISTENER_TURNSTILE_REQUIRED).toBe(
       "true"
     );
+    expect(config.env.staging.vars.ADMIN_ACTION_NOTIFICATION_MODE).toBe(
+      "live"
+    );
     expect(config.env.production.vars.SUBSCRIPTION_CHECKOUT_ENABLED).toBe(
       "false"
     );
     expect(config.env.production.vars.ADMIN_TURNSTILE_REQUIRED).toBe(
       "true"
+    );
+    expect(config.env.production.vars.ADMIN_ACTION_NOTIFICATION_MODE).toBe(
+      "disabled"
     );
   });
 
@@ -146,6 +154,7 @@ describe("deployment configuration", () => {
       "LISTENER_EMAIL_LOOKUP_PEPPER",
       "LISTENER_SESSION_SECRET",
       "MEDIA_PROCESSOR_CALLBACK_SECRET",
+      "PODCAST_ACTION_EMAIL",
       "RESEND_API_KEY",
       "RESEND_WEBHOOK_SECRET",
       "RSS_IMPORT_URL_SECRET",
