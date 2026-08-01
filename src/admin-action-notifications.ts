@@ -39,11 +39,11 @@ type PendingAdminAction = {
   attempt_count: number;
 };
 
-const WORKING_MASTER_DECISION_EVIDENCE_SELECT = `
+export const WORKING_MASTER_DECISION_EVIDENCE_SELECT = `
   SELECT
     audio_enhancement_derivatives.id AS target_id,
     audio_enhancement_derivatives.episode_id,
-    audio_enhancement_derivatives.show_id,
+    episode.show_id,
     audio_enhancement_derivatives.source_master_id,
     audio_enhancement_derivatives.output_sha256,
     audio_enhancement_derivatives.processor_report_sha256,
@@ -51,6 +51,8 @@ const WORKING_MASTER_DECISION_EVIDENCE_SELECT = `
     qc.policy_revision AS quality_control_policy_revision,
     state.revision AS working_master_revision
   FROM audio_enhancement_derivatives
+  JOIN episodes episode
+    ON episode.id = audio_enhancement_derivatives.episode_id
   JOIN episode_working_master_states state
     ON state.episode_id = audio_enhancement_derivatives.episode_id
   JOIN audio_qc_runs qc
