@@ -122,12 +122,12 @@ export function evaluateEpisodeStagingGate(snapshot) {
     && Number(transcript.speaker_labels_confirmed) === 1
   );
   add(
-    transcriptReady ? "PASS" : "BLOCK",
+    transcriptReady ? "PASS" : "DEFER",
     "transcript",
-    "Transcript review",
+    "Post-launch transcript review",
     transcriptReady
       ? "a current speaker-confirmed revision is approved"
-      : "review, confirm public speaker labels, save, and approve the current revision"
+      : "segment captions may launch privately; public transcript approval is deferred"
   );
 
   const alignmentReady = statusCount(
@@ -135,12 +135,12 @@ export function evaluateEpisodeStagingGate(snapshot) {
     "passed"
   ) > 0;
   add(
-    alignmentReady ? "PASS" : "BLOCK",
+    alignmentReady ? "PASS" : "DEFER",
     "alignment",
-    "Word-alignment quality gate",
+    "Post-launch word alignment",
     alignmentReady
       ? "a benchmark-bound alignment revision passed"
-      : "requires approved transcript, real corpus benchmark, clean reproduction, and human approval"
+      : "word-level controls stay disabled until the reviewed H1 benchmark passes"
   );
 
   const chapters = snapshot.chapters ?? null;
@@ -149,12 +149,12 @@ export function evaluateEpisodeStagingGate(snapshot) {
     && Number(chapters.approved_revision) === Number(chapters.revision)
     && Number(snapshot.chapterCount) > 0;
   add(
-    chaptersReady ? "PASS" : "BLOCK",
+    chaptersReady ? "PASS" : "DEFER",
     "chapters",
-    "Chapter review",
+    "Post-launch chapter review",
     chaptersReady
       ? `${snapshot.chapterCount} approved chapter(s)`
-      : "author and approve at least one current chapter revision"
+      : "chapters remain optional and unpublished until a revision is approved"
   );
 
   const foreignKeysClean = Number(snapshot.foreignKeyViolations ?? 0) === 0;
@@ -170,6 +170,7 @@ export function evaluateEpisodeStagingGate(snapshot) {
   const failCount = nodes.filter(({ status }) => status === "FAIL").length;
   const blockCount = nodes.filter(({ status }) => status === "BLOCK").length;
   const waitCount = nodes.filter(({ status }) => status === "WAIT").length;
+  const deferredCount = nodes.filter(({ status }) => status === "DEFER").length;
   const nextAction = nodes.find(
     ({ status }) => status === "BLOCK" || status === "WAIT"
   ) ?? null;
@@ -188,6 +189,7 @@ export function evaluateEpisodeStagingGate(snapshot) {
       failCount,
       blockCount,
       waitCount,
+      deferredCount,
       safeToContinue: failCount === 0,
       launchReady: failCount === 0 && blockCount === 0 && waitCount === 0
     }
@@ -423,6 +425,7 @@ async function main() {
       `\nSummary: ${report.summary.passCount} pass, `
       + `${report.summary.blockCount} block, `
       + `${report.summary.waitCount} wait, `
+      + `${report.summary.deferredCount} deferred, `
       + `${report.summary.failCount} fail\n`
     );
     if (report.nextAction) {

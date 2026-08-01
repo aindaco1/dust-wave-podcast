@@ -61,6 +61,16 @@ iHeartRadio, and Deezer.
 
 ### H1 — launch production workbench
 
+Launch scope was narrowed on August 1, 2026: reviewed public transcripts,
+bilingual transcript completion, H1 word alignment, and chapters are
+post-launch enhancements. Audio, canonical News, RSS, premium delivery, and
+the existing segment player may launch without them. An unapproved transcript
+remains private, public transcript/chapter resources remain absent until their
+existing approval gates pass, and word-level controls stay disabled until the
+real bilingual H1 benchmark and exact human alignment approval succeed. The
+readiness graph keeps these nodes visible as warnings instead of representing
+them as launch blockers.
+
 - Build the common admin shell at `/admin/podcasts/` with Shows, Episodes,
   Production, Distribution, Marketing, Sponsors, Analytics, Subscribers,
   Premium, and Settings. The single-show launch UI now keeps the show catalog

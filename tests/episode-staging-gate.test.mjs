@@ -11,8 +11,9 @@ describe("content-free staging episode gate", () => {
     expect(report.summary).toEqual({
       passCount: 4,
       failCount: 0,
-      blockCount: 5,
+      blockCount: 2,
       waitCount: 1,
+      deferredCount: 3,
       safeToContinue: true,
       launchReady: false
     });
@@ -62,6 +63,7 @@ describe("content-free staging episode gate", () => {
       failCount: 0,
       blockCount: 0,
       waitCount: 0,
+      deferredCount: 0,
       safeToContinue: true,
       launchReady: true
     });
@@ -85,6 +87,40 @@ describe("content-free staging episode gate", () => {
       label: "Read-only boundary",
       detail: "a remote statement reported database mutation"
     });
+  });
+
+  it("keeps deferred editorial enhancements outside launch readiness", () => {
+    const fixture = stagingFixture();
+    fixture.workingMaster.origin_kind = "enhanced_derivative";
+    fixture.enhancementDerivatives = [{ status: "approved", count: 1 }];
+    fixture.episode.media_status = "ready";
+    fixture.episode.delivery_selected = 1;
+    fixture.deliveryAudioJobs = [{
+      status: "approved",
+      count: 1,
+      current_selected: 1
+    }];
+    fixture.productionReviews = [{
+      target_type: "source_audio",
+      status: "approved",
+      count: 1
+    }];
+    fixture.openReviewBlockers = 0;
+
+    const report = evaluateEpisodeStagingGate(fixture);
+
+    expect(report.summary).toEqual({
+      passCount: 7,
+      failCount: 0,
+      blockCount: 0,
+      waitCount: 0,
+      deferredCount: 3,
+      safeToContinue: true,
+      launchReady: true
+    });
+    expect(report.nextAction).toBeNull();
+    expect(report.nodes.filter(({ status }) => status === "DEFER"))
+      .toHaveLength(3);
   });
 
   it("fails closed when D1 statement metadata is incomplete", () => {

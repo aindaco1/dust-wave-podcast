@@ -366,6 +366,7 @@ function addNestedGate(
   const failCount = boundedCount(summary?.failCount);
   const blockCount = boundedCount(summary?.[blockerField]);
   const waitCount = waitField ? boundedCount(summary?.[waitField]) : 0;
+  const deferredCount = boundedCount(summary?.deferredCount);
   const status = failCount > 0
     ? "FAIL"
     : blockCount > 0
@@ -381,7 +382,8 @@ function addNestedGate(
     )
     ?? null;
   const counts = `${boundedCount(summary?.passCount)} pass, `
-    + `${blockCount} block, ${waitCount} wait, ${failCount} fail`;
+    + `${blockCount} block, ${waitCount} wait, `
+    + `${deferredCount} deferred, ${failCount} fail`;
   add(
     status,
     id,
