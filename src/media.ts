@@ -58,6 +58,35 @@ export async function servePublicEpisodeAudio(
   return serveEpisodeAudio(request, env, episode, episodeId, "public", ctx);
 }
 
+/**
+ * Exercises the immutable public enclosure fallback without issuing a dynamic
+ * ad decision or recording a listener delivery. This is intentionally an
+ * internal Worker primitive, not an application route.
+ */
+export async function servePublicEpisodeAudioPreflight(
+  request: Request,
+  env: PodcastEnv,
+  episodeId: string
+): Promise<Response> {
+  const episode = await env.DB
+    .prepare(
+      `SELECT
+         id, show_id, duration_seconds, audio_key, audio_bytes,
+         audio_mime_type, audio_filename, audio_etag
+       FROM episodes
+       WHERE id = ?
+         AND status = 'published'
+         AND public_at <= ${SQL_UTC_NOW_RFC3339}
+         AND access IN ('public', 'early_access', 'free_mini')
+         AND media_status = 'ready'
+         AND audio_key IS NOT NULL`
+    )
+    .bind(episodeId)
+    .first<MediaEpisode>();
+  if (!episode) return mediaError("media_not_found", 404);
+  return serveEpisodeAudio(request, env, episode, episodeId, "public");
+}
+
 export async function servePrivateEpisodeAudio(
   request: Request,
   env: PodcastEnv,

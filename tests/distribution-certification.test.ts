@@ -18,7 +18,7 @@ describe("shared distribution launch certification", () => {
             return {
               status: "valid",
               feed_url: "https://feeds.dustwave.xyz/opera/rss.xml",
-              validator_version: "dustwave-rss-launch-v3",
+              validator_version: "dustwave-rss-launch-v4",
               feed_sha256: "a".repeat(64),
               item_count: 1,
               failure_code: null,

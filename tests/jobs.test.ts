@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   processPodcastJob,
@@ -8,6 +8,10 @@ import type { PodcastEnv } from "../src/env";
 import type { PodcastJob } from "../src/types";
 
 describe("publication job revisions", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("queues the revision stored on the durable job, not a later episode value", async () => {
     const sent: PodcastJob[] = [];
     const queries: string[] = [];
@@ -65,6 +69,22 @@ describe("publication job revisions", () => {
 
   it("loads a queued job only when its immutable revision matches", async () => {
     const statements: Array<{ query: string; values: unknown[] }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (new Headers(init?.headers).has("range")) {
+        return new Response(pngHeader(1_400, 1_400), {
+          status: 206,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "24",
+            "content-range": "bytes 0-23/24"
+          }
+        });
+      }
+      return new Response(null, {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    }));
     const env = {
       DB: {
         prepare(query: string) {
@@ -125,6 +145,7 @@ describe("publication job revisions", () => {
           };
         }
       },
+      SITE_ORIGIN: "https://dustwave.xyz",
       FEED_ORIGIN: "https://feeds.dustwave.xyz",
       MEDIA_ORIGIN: "https://media.dustwave.xyz",
       PODCAST_AUTHOR_NAME: "Dust Wave",
@@ -357,3 +378,12 @@ describe("publication job revisions", () => {
     expect(queries).toHaveLength(1);
   });
 });
+
+function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}

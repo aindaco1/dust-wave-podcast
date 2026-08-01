@@ -1,5 +1,5 @@
 import { sha256Hex } from "@dustwave/worker-core/crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   listDistributionDestinations,
@@ -12,6 +12,10 @@ import { handleRequest } from "../src/app";
 import type { PodcastEnv } from "../src/env";
 
 describe("streamlined publishing directory registry", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("returns one role-scoped show feed and normalized directory readiness", async () => {
     const fixture = await distributionFixture({ role: "analyst" });
     const response = await listDistributionDestinations(
@@ -143,6 +147,22 @@ describe("streamlined publishing directory registry", () => {
 
   it("revalidates the exact show feed through the CSRF-scoped admin route", async () => {
     const fixture = await distributionFixture({ role: "producer" });
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (new Headers(init?.headers).has("range")) {
+        return new Response(pngHeader(1_400, 1_400), {
+          status: 206,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "24",
+            "content-range": "bytes 0-23/24"
+          }
+        });
+      }
+      return new Response(null, {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    }));
     const response = await handleRequest(
       fixture.request(
         "/v1/admin/shows/show_opera_en_la_selva/feed-validation",
@@ -154,7 +174,7 @@ describe("streamlined publishing directory registry", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       valid: true,
-      validatorVersion: "dustwave-rss-launch-v3",
+      validatorVersion: "dustwave-rss-launch-v4",
       itemCount: 1
     });
     expect(
@@ -762,6 +782,22 @@ async function distributionFixture({
             };
           }
           if (
+            query.includes("FROM episodes")
+            && query.includes("WHERE id = ?")
+            && query.includes("audio_etag")
+          ) {
+            return {
+              id: "episode_opera",
+              show_id: "show_opera_en_la_selva",
+              duration_seconds: 600,
+              audio_key: "podcasts/episode.mp3",
+              audio_bytes: 1_000,
+              audio_mime_type: "audio/mpeg",
+              audio_filename: "opera.mp3",
+              audio_etag: '"etag"'
+            };
+          }
+          if (
             query.includes("rss_slug, podcast_guid, author_name")
             && query.includes("WHERE rss_slug = ?")
           ) {
@@ -786,7 +822,7 @@ async function distributionFixture({
               status: "valid",
               feed_url:
                 "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
-              validator_version: "dustwave-rss-launch-v3",
+              validator_version: "dustwave-rss-launch-v4",
               feed_sha256: "a".repeat(64),
               item_count: 1,
               failure_code: null,
@@ -934,6 +970,28 @@ async function distributionFixture({
       async send(job: Record<string, unknown>) {
         sentJobs.push(job);
       }
+    },
+    MEDIA_BUCKET: {
+      async head() {
+        return {
+          size: 1_000,
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "audio/mpeg");
+          }
+        };
+      },
+      async get() {
+        return {
+          body: new Blob([new Uint8Array([0])]).stream(),
+          size: 1,
+          range: { offset: 0, length: 1 },
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "audio/mpeg");
+          }
+        };
+      }
     }
   } as unknown as PodcastEnv;
   return {
@@ -963,6 +1021,15 @@ async function distributionFixture({
       });
     }
   };
+}
+
+function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
 }
 
 function destinationRow(

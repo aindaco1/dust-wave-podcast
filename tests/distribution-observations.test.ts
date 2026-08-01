@@ -205,7 +205,7 @@ describe("automatic directory observation", () => {
     )).resolves.toBe(1);
     expect(queries.some(({ query, values }) =>
       query.includes("FROM episode_publications publication")
-      && values.includes("dustwave-rss-launch-v3")
+      && values.includes("dustwave-rss-launch-v4")
       && values.includes(4)
     )).toBe(true);
     expect(queries.some(({ query, values }) =>
