@@ -126,7 +126,7 @@ describe("automatic show-notes drafts", () => {
       "es",
       3,
       transcriptSha256,
-      "@cf/meta/llama-3.2-3b-instruct",
+      "@cf/meta/llama-3.1-8b-instruct-fast",
       "show-notes-v1"
     ]));
     expect(statements.some(({ query }) => query.includes("UPDATE episodes")))

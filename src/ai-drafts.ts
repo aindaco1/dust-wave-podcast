@@ -4,7 +4,7 @@ import {
   requiredText
 } from "./validation";
 
-export const AI_DRAFT_MODEL = "@cf/meta/llama-3.2-3b-instruct";
+export const AI_DRAFT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 export const MAXIMUM_AI_DRAFT_TRANSCRIPT_CHARACTERS = 48_000;
 export const AI_DRAFT_LIMIT_PER_EPISODE_PER_ADMIN_PER_HOUR = 6;
 
@@ -147,18 +147,39 @@ export function parseAiProviderJsonObject(
     throw new TypeError("AI draft provider response must be an object");
   }
   const response = (value as { response?: unknown }).response;
-  if (
-    typeof response !== "string"
-    || response.length < 2
-    || response.length > maximumResponseCharacters
-  ) {
-    throw new TypeError("AI draft provider response is invalid");
-  }
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(response);
-  } catch {
-    throw new TypeError("AI draft provider response is not valid JSON");
+  if (typeof response === "string") {
+    if (
+      response.length < 2
+      || response.length > maximumResponseCharacters
+    ) {
+      throw new TypeError("AI draft provider response is invalid");
+    }
+    try {
+      parsed = JSON.parse(response);
+    } catch {
+      throw new TypeError("AI draft provider response is not valid JSON");
+    }
+  } else if (
+    response
+    && typeof response === "object"
+    && !Array.isArray(response)
+  ) {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(response);
+    } catch {
+      throw new TypeError("AI draft provider response is invalid");
+    }
+    if (
+      serialized.length < 2
+      || serialized.length > maximumResponseCharacters
+    ) {
+      throw new TypeError("AI draft provider response is invalid");
+    }
+    parsed = response;
+  } else {
+    throw new TypeError("AI draft provider response is invalid");
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new TypeError("AI draft provider output must be an object");

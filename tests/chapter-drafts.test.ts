@@ -53,7 +53,7 @@ describe("AI chapter review drafts", () => {
     });
     expect(fixture.aiRun).toHaveBeenCalledTimes(1);
     expect(fixture.aiRun.mock.calls[0][0]).toBe(
-      "@cf/meta/llama-3.2-3b-instruct"
+      "@cf/meta/llama-3.1-8b-instruct-fast"
     );
     expect(fixture.aiRun.mock.calls[0][1]).toMatchObject({
       max_tokens: 1_200,
@@ -172,7 +172,7 @@ describe("AI chapter review drafts", () => {
       current_episode_title: "Ópera en la Selva",
       current_duration_seconds: 90,
       output_language: "es",
-      model: "@cf/meta/llama-3.2-3b-instruct",
+      model: "@cf/meta/llama-3.1-8b-instruct-fast",
       prompt_version: "chapter-draft-v1",
       draft_json: JSON.stringify({
         chapters: [
