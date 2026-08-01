@@ -53,10 +53,14 @@ remain unchanged.
    states. The scheduled Action writes those counts to its run summary and
    emits a GitHub warning when terminal dispatch failures exist, so routine
    health no longer requires an operator D1 query.
+8. A terminal failure opens or updates one marker-owned, content-free GitHub
+   issue. A healthy later run closes that issue automatically. The issue
+   contains only aggregate counts and its Actions evidence URL; the dispatcher
+   will not modify a similarly titled human-authored issue.
 
 The Worker receives no long-lived GitHub token. The scheduled workflow has only
-`actions: write` and `contents: read`. All external actions are commit-SHA
-pinned; every processor uses the shared local Node setup action.
+`actions: write`, `issues: write`, and `contents: read`. All external actions
+are commit-SHA pinned; every processor uses the shared local Node setup action.
 
 ## Retry and idempotency rules
 

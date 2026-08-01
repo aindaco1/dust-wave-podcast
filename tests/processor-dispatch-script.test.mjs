@@ -50,7 +50,7 @@ describe("GitHub processor dispatcher", () => {
           }]
         });
       }
-      if (url.includes("api.github.com")) {
+      if (url.includes("/actions/workflows/")) {
         expect(init.headers.authorization).toBe("Bearer github_token_fixture");
         expect(JSON.parse(init.body)).toEqual({
           ref: "main",
@@ -67,6 +67,9 @@ describe("GitHub processor dispatcher", () => {
         });
         return Response.json({ dispatch: { status: "dispatched" } });
       }
+      if (url.includes("/search/issues?")) {
+        return Response.json({ items: [] });
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
 
@@ -81,7 +84,7 @@ describe("GitHub processor dispatcher", () => {
         leased: 1
       }
     });
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(4);
   });
 
   it("records a bounded dispatch failure without leaking a provider body", async () => {
@@ -105,7 +108,7 @@ describe("GitHub processor dispatcher", () => {
           }]
         });
       }
-      if (url.includes("api.github.com")) {
+      if (url.includes("/actions/workflows/")) {
         return new Response("provider payload must not be forwarded", {
           status: 503
         });
@@ -119,6 +122,9 @@ describe("GitHub processor dispatcher", () => {
           failureCode: "github_dispatch_http_503"
         });
         return Response.json({ dispatch: { status: "retry_scheduled" } });
+      }
+      if (url.includes("/search/issues?")) {
+        return Response.json({ items: [] });
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -150,7 +156,7 @@ describe("GitHub processor dispatcher", () => {
           }]
         });
       }
-      if (url.includes("api.github.com")) {
+      if (url.includes("/actions/workflows/")) {
         return Response.json({ workflow_run_id: 123456789 });
       }
       if (url.endsWith("/dispatched")) {
@@ -158,6 +164,9 @@ describe("GitHub processor dispatcher", () => {
       }
       if (url.endsWith("/failed")) {
         throw new Error("accepted workflows must not be rejected");
+      }
+      if (url.includes("/search/issues?")) {
+        return Response.json({ items: [] });
       }
       throw new Error(`Unexpected request: ${url}`);
     });

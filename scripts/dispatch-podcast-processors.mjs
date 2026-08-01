@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 
 import registry from "../config/processor-dispatch-registry.json"
   with { type: "json" };
+import {
+  reconcileProcessorDispatchIncident
+} from "./lib/processor-dispatch-incident.mjs";
 
 const TIMESTAMP_HEADER = "x-podcast-processor-timestamp";
 const SIGNATURE_HEADER = "x-podcast-processor-signature";
@@ -115,7 +118,17 @@ export async function dispatchPodcastProcessors({
       + `${dispatches.length - failures.length} dispatched; `
       + `${failures.length} failed.\n`
   );
-  if (ledger) await publishLedgerEvidence({ environment, ledger });
+  if (ledger) {
+    await publishLedgerEvidence({ environment, ledger });
+    await reconcileProcessorDispatchIncident({
+      fetchImpl,
+      githubToken,
+      repository,
+      ledger,
+      runId: environment.GITHUB_RUN_ID,
+      serverUrl: String(environment.GITHUB_SERVER_URL || "https://github.com")
+    });
+  }
   if (failures.length) {
     throw new Error(
       `Processor dispatch failed for ${failures.length} claimed job(s)`
