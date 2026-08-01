@@ -15,6 +15,7 @@ import {
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { describeProcessorAvailability } from "./processor-mode";
 import { readSignedJsonBody } from "./signed-callback";
 import {
   positiveInteger,
@@ -148,11 +149,10 @@ export async function getAdminEpisodeAudioQc(
     runs: runs.results.map((run, index) =>
       presentRun(run, { includeReport: index === 0 })
     ),
-    processor: {
-      available: env.ENVIRONMENT === "staging"
-        && Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET),
-      mode: env.ENVIRONMENT === "staging" ? "staging_manual" : "unavailable"
-    }
+    processor: describeProcessorAvailability(
+      env,
+      Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET)
+    )
   });
 }
 

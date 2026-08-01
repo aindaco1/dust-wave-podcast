@@ -22,6 +22,7 @@ import {
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import { putImmutablePrivateArtifact } from "./private-artifacts";
+import { describeProcessorAvailability } from "./processor-mode";
 import { readSignedJsonBody } from "./signed-callback";
 import { normalizeTranscriptCues } from "./transcripts";
 import {
@@ -144,11 +145,10 @@ export async function listAdminEpisodeAlignmentJobs(
     candidates: sources.results.map(presentAlignmentSource),
     jobs: jobs.results.map(presentAlignmentJob),
     processor: {
-      available: env.ENVIRONMENT === "staging"
-        && Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET),
-      mode: env.ENVIRONMENT === "staging"
-        ? "staging_manual"
-        : "unavailable",
+      ...describeProcessorAvailability(
+        env,
+        Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET)
+      ),
       workflow: "process-alignment.yml",
       runnerRepository: ALIGNMENT_RUNNER_REPOSITORY,
       runnerRevision: ALIGNMENT_RUNNER_REVISION

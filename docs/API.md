@@ -388,6 +388,13 @@ including under concurrent requests.
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/subscribers` | super-admin | Bounded privacy-minimized aggregate and multi-source subscriber operations view as JSON or CSV |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
+
+Processor readiness responses reuse one environment projection. Their `mode`
+is `staging_automatic` when the durable GitHub Actions pull dispatcher owns
+routine execution, `staging_manual` only for explicit break-glass staging, and
+`unavailable` when the environment or processor prerequisites fail closed.
+Queue responses that expose `manualDispatchOnly` derive it from that same
+projection rather than maintaining processor-specific UI policy.
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
 | `POST` | `/v1/admin/episodes/{id}/distribution/{rss\|news\|youtube\|email}/retry` | producer+ | Requeue one failed job for the exact current publication revision |
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific enabled/setup state plus a credential-free owner/submission checklist |

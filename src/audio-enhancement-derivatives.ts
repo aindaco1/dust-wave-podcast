@@ -35,6 +35,7 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { describeProcessorAvailability } from "./processor-mode";
 import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
   readSignedJsonBody,
@@ -209,12 +210,7 @@ export async function listAdminAudioEnhancementDerivatives(
   ).bind(access.episode.id).all<DerivativeRow>();
   return privateJson(request, env.ALLOWED_ORIGINS, {
     derivatives: rows.results.map((row) => presentDerivative(env, row)),
-    processor: {
-      available: processorAvailable(env),
-      mode: env.ENVIRONMENT === "staging"
-        ? "staging_manual"
-        : "unavailable"
-    },
+    processor: describeProcessorAvailability(env, processorAvailable(env)),
     safeguards: {
       selectedReadyPreviewRequired: true,
       currentMasterSnapshotRequired: true,
