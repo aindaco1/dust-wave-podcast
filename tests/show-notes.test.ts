@@ -40,7 +40,7 @@ describe("AI show-notes drafts", () => {
     });
     expect(fixture.aiRun).toHaveBeenCalledTimes(1);
     expect(fixture.aiRun.mock.calls[0][0]).toBe(
-      "@cf/meta/llama-3.2-3b-instruct"
+      "@cf/meta/llama-3.1-8b-instruct-fast"
     );
     expect(fixture.aiRun.mock.calls[0][1]).toMatchObject({
       max_tokens: 1_200,
@@ -137,7 +137,7 @@ describe("AI show-notes drafts", () => {
       current_episode_title: "Ópera en la Selva",
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
-      model: "@cf/meta/llama-3.2-3b-instruct",
+      model: "@cf/meta/llama-3.1-8b-instruct-fast",
       prompt_version: "show-notes-v1",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
@@ -187,7 +187,7 @@ describe("AI show-notes drafts", () => {
           truncated: false
         },
         outputLanguage: "es",
-        model: "@cf/meta/llama-3.2-3b-instruct",
+        model: "@cf/meta/llama-3.1-8b-instruct-fast",
         promptVersion: "show-notes-v1",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",

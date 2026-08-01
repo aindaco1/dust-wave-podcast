@@ -57,7 +57,7 @@ describe("AI clip review drafts", () => {
     });
     expect(fixture.aiRun).toHaveBeenCalledTimes(1);
     expect(fixture.aiRun.mock.calls[0][0]).toBe(
-      "@cf/meta/llama-3.2-3b-instruct"
+      "@cf/meta/llama-3.1-8b-instruct-fast"
     );
     expect(fixture.aiRun.mock.calls[0][1]).toMatchObject({
       max_tokens: 1_400,
@@ -175,7 +175,7 @@ describe("AI clip review drafts", () => {
       current_episode_title: "Ópera en la Selva",
       current_duration_seconds: 120,
       output_language: "en",
-      model: "@cf/meta/llama-3.2-3b-instruct",
+      model: "@cf/meta/llama-3.1-8b-instruct-fast",
       prompt_version: "clip-draft-v1",
       draft_json: JSON.stringify({
         candidates: [candidate("cue_001", "cue_002")]
