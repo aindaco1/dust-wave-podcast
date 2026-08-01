@@ -95,7 +95,10 @@ describe("automatic show-notes drafts", () => {
     const aiRun = vi.fn(async () => ({
       response: JSON.stringify({
         summary: "Resumen factual.",
-        showNotesMarkdown: "## Temas\n\n- Evidencia revisada",
+        sections: [{
+          heading: "Temas",
+          bullets: ["Evidencia revisada"]
+        }],
         keywords: ["Ópera", "Selva"],
         grounding: {
           namedEntities: [{
@@ -134,7 +137,7 @@ describe("automatic show-notes drafts", () => {
       3,
       transcriptSha256,
       "@cf/meta/llama-4-scout-17b-16e-instruct",
-      "show-notes-v6-grounded-quality"
+      "show-notes-v7-structured-sections"
     ]));
     expect(statements.some(({ query }) => query.includes("UPDATE episodes")))
       .toBe(false);
