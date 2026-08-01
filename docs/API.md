@@ -1483,6 +1483,24 @@ digest, source identity, and current R2 objects and replaces active
 marker/segment rows in one D1 batch. It does not set either dynamic-ad feature
 flag, create a decision, change the public file, or count an impression.
 
+### Staging virtual-audio gate automation
+
+`POST /v1/diagnostics/virtual-audio/gate` is an internal, staging-only signed
+endpoint. It is indistinguishable from `404` in production, when dynamic-ad
+validation is disabled, when the processor callback secret is absent, or when
+the five-minute HMAC signature is invalid. Its bounded actions create one
+hashed 15-minute diagnostic lease, delete one exact lease ID, or record one
+content-free GitHub gate result. It never accepts raw media, an R2 key, a
+Cloudflare credential, a raw lease token, a listener identifier, or a public
+activation command.
+
+Gate records are immutable and idempotent by GitHub run/attempt. They retain
+only the tested source commit, aggregate protocol/load/error/latency values,
+cleanup booleans, and workflow identity for 90 days. The scheduled cleanup
+removes older rows. The public diagnostic capability exchange and fixture
+routes remain separately protected by the one-time hashed lease and expiring
+HMAC capability.
+
 ### Signed decisions and guarded runtime
 
 With `AD_DECISION_MODE=staging_validate` and a staging-only signing secret, an

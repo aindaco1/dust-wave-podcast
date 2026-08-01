@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateVirtualAudioEvidence,
   evaluateLaunchStagingReadiness,
+  presentStoredVirtualAudioEvidence,
   publicFeedValidatorVersion
 } from "../scripts/check-launch-staging-readiness.mjs";
 
@@ -238,5 +239,28 @@ describe("launch staging gate", () => {
     expect(evaluateVirtualAudioEvidence(evidence, true)).toEqual({
       passed: false
     });
+  });
+
+  it("maps the durable aggregate row into the same current-source gate", () => {
+    const row = {
+      source_commit: "a".repeat(40),
+      generated_at: new Date().toISOString(),
+      paired_requests: 5_000,
+      total_measured_requests: 10_000,
+      protocol_passed: 1,
+      load_passed: 1,
+      cleanup_complete: 1,
+      diagnostic_lease_removed: 1,
+      uploaded_objects_removed: 1,
+      failure_code: null
+    };
+
+    expect(presentStoredVirtualAudioEvidence(row, true)).toEqual({
+      passed: true
+    });
+    expect(presentStoredVirtualAudioEvidence(row, false)).toEqual({
+      passed: false
+    });
+    expect(presentStoredVirtualAudioEvidence(null, true)).toBeNull();
   });
 });

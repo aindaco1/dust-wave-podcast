@@ -263,7 +263,7 @@ export function loadLaunchStagingSnapshot(
     "--command",
     launchStateStatements(escapedEpisodeId, escapedValidatorVersion)
   ]);
-  if (!Array.isArray(response) || response.length !== 6) {
+  if (!Array.isArray(response) || response.length !== 7) {
     throw new Error("D1 returned an incomplete launch-state snapshot.");
   }
   const results = response.map((entry) => entry.results ?? []);
@@ -286,8 +286,8 @@ export function loadLaunchStagingSnapshot(
     dynamicAds: presentDynamicAds(results[4][0]),
     virtualAudioEvidence: virtualAudioEvidencePath
       ? loadVirtualAudioEvidence(virtualAudioEvidencePath)
-      : null,
-    foreignKeyViolations: results[5].length,
+      : presentStoredVirtualAudioEvidence(results[5][0]),
+    foreignKeyViolations: results[6].length,
     remoteReadOnly: response.every((entry) =>
       Number(entry.meta?.changes ?? 0) === 0
       && Number(entry.meta?.rows_written ?? 0) === 0
@@ -507,6 +507,14 @@ function launchStateStatements(episodeId, validatorVersion) {
           AND campaign.campaign_type = 'direct'
           AND qualification.qualification_reason = 'download_complete'
       ) AS direct_qualifications;
+    SELECT
+      source_commit, generated_at, paired_requests,
+      total_measured_requests, protocol_passed, load_passed,
+      cleanup_complete, diagnostic_lease_removed,
+      uploaded_objects_removed, failure_code
+    FROM virtual_audio_gate_runs
+    ORDER BY generated_at DESC, created_at DESC
+    LIMIT 1;
     PRAGMA foreign_key_check;`;
 }
 
@@ -545,6 +553,37 @@ function presentDynamicAds(row) {
   };
 }
 
+export function presentStoredVirtualAudioEvidence(
+  row,
+  sourceCurrent = null
+) {
+  if (!row) return null;
+  const sourceCommit = String(row.source_commit ?? "");
+  return evaluateVirtualAudioEvidence({
+    schemaVersion: "dust-wave-virtual-audio-staging-gate-v1",
+    generatedAt: row.generated_at,
+    sourceCommit,
+    scope: {
+      syntheticProtocolEmulation: true,
+      signedCapability: true,
+      pairs: row.paired_requests,
+      totalMeasuredRequests: row.total_measured_requests
+    },
+    result: {
+      passed:
+        Number(row.protocol_passed) === 1
+        && Number(row.load_passed) === 1,
+      cleanupComplete: Number(row.cleanup_complete) === 1,
+      diagnosticLeaseRemoved: Number(row.diagnostic_lease_removed) === 1,
+      uploadedObjectsRemoved: Number(row.uploaded_objects_removed) === 1,
+      failureCode: row.failure_code ?? null
+    }
+  }, typeof sourceCurrent === "boolean"
+    ? sourceCurrent
+    : /^[a-f0-9]{40}$/.test(sourceCommit)
+      && gitSourceIsCurrent(sourceCommit));
+}
+
 function dynamicAdBlockDetail(virtualAudioReady, missingEvidence) {
   const requirements = [];
   if (!virtualAudioReady) {
@@ -580,6 +619,7 @@ function gitSourceIsCurrent(sourceCommit) {
     "scripts/run-virtual-audio-staging-gate.mjs",
     "scripts/run-virtual-audio-protocol-matrix.mjs",
     "scripts/run-virtual-audio-load-gate.mjs",
+    ".github/workflows/virtual-audio-staging-gate.yml",
     "wrangler.jsonc"
   ];
   const result = spawnSync(

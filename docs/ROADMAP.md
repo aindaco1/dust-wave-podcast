@@ -560,6 +560,11 @@ iHeartRadio, and Deezer.
   terminal; atomically cancel retryable superseded jobs and revalidate every
   Queue message against its durable revision, show, and destination before a
   provider adapter can run.
+- Keep the implemented virtual-audio evidence refresh automatic: the
+  protected workflow runs the 5,000-pair staging gate every three days using
+  only the purpose-bound signed callback secret, verifies exact lease/object
+  cleanup, retains redacted artifacts, and makes the current seven-day result
+  available to the composed launch gate from D1 without a manual file handoff.
 
 ### Post-launch
 

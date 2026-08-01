@@ -14,6 +14,9 @@ import { fileURLToPath } from "node:url";
 
 import contract from "../config/virtual-audio-synthetic-fixture.json"
   with { type: "json" };
+import {
+  retrySignedWorkerRequest
+} from "./lib/signed-worker-request.mjs";
 
 process.umask(0o077);
 const STAGING_ORIGIN =
@@ -23,17 +26,13 @@ const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   ".."
 );
-const wrangler = path.resolve(
-  repositoryRoot,
-  "node_modules/.bin/wrangler"
-);
 const options = parseOptions(process.argv.slice(2));
 if (options.help === true) {
   process.stdout.write(
     "Usage: npm run gate:virtual-audio:staging -- "
     + "--output /absolute/private/evidence/directory "
     + "[--origin https://dust-wave-podcast-staging.jogo.workers.dev] "
-    + "[--pairs 5000] [--concurrency 12]\n"
+    + "[--pairs 5000] [--concurrency 12] [--publish-evidence]\n"
   );
   process.exit(0);
 }
@@ -93,7 +92,7 @@ try {
   );
   verifyFixtureEvidence(fixtureEvidence);
   await waitForStagingPlayer();
-  createDiagnosticLease();
+  await createDiagnosticLease();
   await exchangeDiagnosticLease();
   await preflightAndUploadObjects(fixtureDirectory);
   await waitForVirtualAudioStability();
@@ -126,6 +125,15 @@ try {
 } finally {
   await cleanup();
   if (evidenceDirectoryReady) await writeGateEvidence();
+}
+
+if (options.publishEvidence === true && completed && cleanupComplete) {
+  try {
+    await publishGateEvidence();
+  } catch (error) {
+    completed = false;
+    failureMessage = error instanceof Error ? error.message : String(error);
+  }
 }
 
 if (!completed || !cleanupComplete) {
@@ -236,7 +244,7 @@ async function waitForStagingPlayer() {
   );
 }
 
-function createDiagnosticLease() {
+async function createDiagnosticLease() {
   const tokenHash = createHash("sha256")
     .update([
       "dust-wave-virtual-audio-lease-v1",
@@ -244,26 +252,16 @@ function createDiagnosticLease() {
       leaseToken
     ].join("\n"))
     .digest("hex");
-  const sql =
-    "INSERT INTO virtual_audio_diagnostic_leases "
-    + "(id, token_hash, expires_at) VALUES "
-    + `('${leaseId}', '${tokenHash}', datetime('now', '+15 minutes'))`;
-  // A CLI or JSON-decoding failure can happen after the remote write. Always
-  // attempt exact-ID cleanup once the insert has been submitted.
+  // A transport or JSON-decoding failure can happen after the remote write.
+  // Always attempt exact-ID cleanup once the signed request is submitted.
   diagnosticLeaseCreated = true;
   diagnosticLeaseCleanupComplete = false;
-  const result = runResult(wrangler, [
-    "d1",
-    "execute",
-    "DB",
-    "--remote",
-    "--env",
-    "staging",
-    "--command",
-    sql,
-    "--json"
-  ]);
-  if (result.status !== 0 || !d1CommandSucceeded(result.stdout)) {
+  const result = await signedGateRequest({
+    action: "create_lease",
+    leaseId,
+    tokenHash
+  });
+  if (result.leaseId !== leaseId || !validIsoDate(result.expiresAt)) {
     throw new Error("Could not create the temporary diagnostic lease.");
   }
 }
@@ -371,39 +369,20 @@ async function performCleanup() {
     }
   }
   if (diagnosticLeaseCreated) {
-    const deletionSql =
-      `DELETE FROM virtual_audio_diagnostic_leases WHERE id = '${leaseId}'`;
-    const deletion = runResult(wrangler, [
-      "d1",
-      "execute",
-      "DB",
-      "--remote",
-      "--env",
-      "staging",
-      "--command",
-      deletionSql,
-      "--json"
-    ]);
-    const verification = runResult(wrangler, [
-      "d1",
-      "execute",
-      "DB",
-      "--remote",
-      "--env",
-      "staging",
-      "--command",
-      `SELECT COUNT(*) AS count FROM virtual_audio_diagnostic_leases `
-      + `WHERE id = '${leaseId}'`,
-      "--json"
-    ]);
-    if (
-      deletion.status === 0
-      && d1CommandSucceeded(deletion.stdout)
-      && verification.status === 0
-      && d1ScalarCount(verification.stdout) === 0
-    ) {
+    try {
+      const deletion = await signedGateRequest({
+        action: "delete_lease",
+        leaseId
+      });
+      if (deletion.leaseId === leaseId && deletion.removed === true) {
+        diagnosticLeaseCreated = false;
+        diagnosticLeaseCleanupComplete = true;
+      }
+    } catch {
+      // The cleanup status below remains false and makes the wrapper fail.
+    }
+    if (diagnosticLeaseCleanupComplete) {
       diagnosticLeaseCreated = false;
-      diagnosticLeaseCleanupComplete = true;
     } else {
       process.stderr.write(
         "Cleanup warning: could not remove the diagnostic lease.\n"
@@ -445,6 +424,71 @@ async function writeGateEvidence() {
     `${JSON.stringify(evidence, null, 2)}\n`,
     { mode: 0o600, flag: "wx" }
   );
+}
+
+async function publishGateEvidence() {
+  const [gate, protocol, load] = await Promise.all([
+    readJsonFile(path.resolve(outputDirectory, "staging-gate.json")),
+    readJsonFile(path.resolve(outputDirectory, "protocol-matrix.json")),
+    readJsonFile(path.resolve(outputDirectory, "paired-load.json"))
+  ]);
+  const githubRepository = String(process.env.GITHUB_REPOSITORY ?? "");
+  const githubRunId = String(process.env.GITHUB_RUN_ID ?? "");
+  const githubRunAttempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+  if (
+    githubRepository !== "aindaco1/dust-wave-podcast"
+    || !/^[0-9]{1,30}$/.test(githubRunId)
+    || !Number.isSafeInteger(githubRunAttempt)
+    || githubRunAttempt < 1
+    || githubRunAttempt > 100
+  ) {
+    throw new Error("GitHub run identity is invalid for evidence publication.");
+  }
+  const response = await signedGateRequest({
+    action: "record_gate",
+    sourceCommit: gate.sourceCommit,
+    generatedAt: gate.generatedAt,
+    pairedRequests: gate.scope?.pairs,
+    totalMeasuredRequests: gate.scope?.totalMeasuredRequests,
+    protocolProbeCount: protocol.summary?.probes,
+    protocolFailedCount: protocol.summary?.passed === true
+      ? 0
+      : protocol.summary?.probes,
+    failedRequests: load.summary?.failedRequests,
+    contentMismatches: load.summary?.contentMismatches,
+    p95AddedMs: load.summary?.p95AddedMs,
+    protocolPassed: protocol.summary?.passed === true,
+    loadPassed: load.summary?.passed === true,
+    cleanupComplete: gate.result?.cleanupComplete === true,
+    diagnosticLeaseRemoved: gate.result?.diagnosticLeaseRemoved === true,
+    uploadedObjectsRemoved: gate.result?.uploadedObjectsRemoved === true,
+    failureCode: gate.result?.failureCode ?? null,
+    githubRepository,
+    githubRunId,
+    githubRunAttempt
+  });
+  if (response.recorded !== true) {
+    throw new Error("The staging Worker did not record gate evidence.");
+  }
+  process.stdout.write(`Recorded staging gate evidence ${response.id}.\n`);
+}
+
+async function signedGateRequest(body) {
+  const secret = String(process.env.MEDIA_PROCESSOR_CALLBACK_SECRET ?? "");
+  if (secret.length < 16) {
+    throw new Error("MEDIA_PROCESSOR_CALLBACK_SECRET is required.");
+  }
+  return retrySignedWorkerRequest({
+    callbackSecret: secret,
+    origin,
+    path: "/v1/diagnostics/virtual-audio/gate",
+    body,
+    errorPrefix: "virtual_audio_gate"
+  });
+}
+
+async function readJsonFile(filename) {
+  return JSON.parse(await readFile(filename, "utf8"));
 }
 
 async function secureDirectory(directory) {
@@ -543,29 +587,6 @@ function diagnosticFetch(url, init = {}) {
   return fetch(url, init);
 }
 
-function d1CommandSucceeded(value) {
-  let results;
-  try {
-    results = JSON.parse(value);
-  } catch {
-    return false;
-  }
-  return Array.isArray(results)
-    && results.length > 0
-    && results.every((result) => result?.success === true);
-}
-
-function d1ScalarCount(value) {
-  let results;
-  try {
-    results = JSON.parse(value);
-  } catch {
-    return null;
-  }
-  const count = results?.[0]?.results?.[0]?.count;
-  return Number.isSafeInteger(count) ? count : null;
-}
-
 function boundedInteger(value, name, minimum, maximum) {
   const parsed = Number(value);
   if (
@@ -586,6 +607,10 @@ function parseOptions(args) {
       parsed.help = true;
       continue;
     }
+    if (flag === "--publish-evidence") {
+      parsed.publishEvidence = true;
+      continue;
+    }
     const value = args[index + 1];
     if (!flag?.startsWith("--") || !value || value.startsWith("--")) {
       fail("Invalid command arguments.");
@@ -594,6 +619,10 @@ function parseOptions(args) {
     index += 1;
   }
   return parsed;
+}
+
+function validIsoDate(value) {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
 function fail(message) {

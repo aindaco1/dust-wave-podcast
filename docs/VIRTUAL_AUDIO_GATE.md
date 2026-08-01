@@ -131,6 +131,12 @@ npm run gate:virtual-audio:staging -- \
   --pairs 5000 --concurrency 12
 ```
 
+Lease creation and exact-ID deletion use the same timestamped HMAC callback
+secret as the isolated media processors. The wrapper does not need a
+Cloudflare account ID, API token, direct D1 credential, or direct R2
+credential. Supply `MEDIA_PROCESSOR_CALLBACK_SECRET` through the environment;
+never put it in an argument or evidence directory.
+
 It is hard-bound to the Dust Wave staging origin, D1 database binding, and
 bucket. It refuses a nonempty evidence directory or any non-matching R2
 object, generates and verifies the fixture contract, and waits for three
@@ -174,6 +180,24 @@ gate only. It does not authorize `staging_public` or `live`, satisfy native
 Apple/Spotify/Overcast/Pocket Casts/Podcast Addict playback, prove launch
 inventory has equal-length house coverage, or replace the reviewed sponsor
 pilot.
+
+## Automatic evidence refresh
+
+`.github/workflows/virtual-audio-staging-gate.yml` repeats the complete
+5,000-pair gate every three days and on manual dispatch. It uses the protected
+`podcast-staging` environment and only `MEDIA_PROCESSOR_CALLBACK_SECRET`; all
+GitHub actions are SHA-pinned, concurrent runs never cancel one another, and
+the job has a 30-minute ceiling. A successful run adds
+`--publish-evidence`, which records only the source commit, aggregate protocol
+and load metrics, cleanup booleans, and GitHub run identity in
+`virtual_audio_gate_runs`. The redacted JSON files remain a private 30-day
+Actions artifact.
+
+The composed launch gate reads the newest durable row when no explicit
+artifact is supplied. It still requires a run no more than seven days old and
+proves that the current checkout has no relevant source drift from the tested
+commit. An explicit `--virtual-audio-evidence` file remains available for
+recovery and independent review.
 
 ## Required fixture set
 

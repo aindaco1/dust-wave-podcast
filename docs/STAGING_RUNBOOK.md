@@ -1382,6 +1382,15 @@ npm run gate:virtual-audio:staging -- \
   --pairs 5000 --concurrency 12
 ```
 
+Set `MEDIA_PROCESSOR_CALLBACK_SECRET` in the process environment. The wrapper
+creates and deletes its exact D1 lease through the staging-only signed gate
+endpoint and uploads fixtures only through the capability-bound Worker R2
+binding. It must not receive a Cloudflare account/API token. The protected
+`Refresh staging virtual-audio evidence` workflow runs this command every
+three days with `--publish-evidence`, retains redacted aggregate artifacts for
+30 days, and writes the successful current-source result to
+`virtual_audio_gate_runs`.
+
 The wrapper refuses the production origin, a nonempty evidence directory, or
 any non-matching pre-existing fixture object. It inserts one exact hashed lease
 in the dedicated D1 table, exchanges the raw token once, and keeps the returned
@@ -1419,9 +1428,9 @@ both episode/show dynamic-ad flags false, and production disabled until the
 native-client, equal-length inventory/fallback, and reviewed sponsor-pilot
 gates also pass.
 
-Use least-privilege staging credentials. Cloudflare does not expose existing
-secret values, so rotate or enter them rather than attempting to copy them from
-Pool or Store.
+Use only the purpose-bound staging callback secret for routine gate runs.
+Cloudflare account credentials remain limited to recovery inspection and
+deployment; do not copy a broader Pool or Store token into this workflow.
 
 The verified `dustwave.xyz` Resend domain may be reused, but Podcast requires
 its own domain-restricted sending key. Do not reuse the existing Pool or Store
@@ -1806,9 +1815,10 @@ status; it never returns caption text, object keys, hashes, URLs, provider
 identifiers, recipient identity, or secret values. `BLOCK` is expected while
 human/provider evidence remains outstanding. Use `--require-ready` only as the
 final promotion check; do not change data merely to make that mode exit zero.
+The report uses the newest signed `virtual_audio_gate_runs` row by default.
 Pass a successful gate artifact with
 `--virtual-audio-evidence=/absolute/path/staging-gate.json` to bind the
-dynamic-ad node to the current runtime-sensitive source. Evidence is accepted
+dynamic-ad node to an independently retained run instead. Evidence is accepted
 only for the signed 5,000-pair/10,000-request exercise, full cleanup, a
 seven-day freshness window, and no relevant source drift.
 
