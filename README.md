@@ -168,8 +168,14 @@ Workers AI binding, and strictly validates the returned JSON and Markdown.
 Generation is rate-limited and audited without transcript or draft text.
 Results stay in a separate review card until the producer explicitly places
 them in the unsaved editor; no episode, News, RSS, distribution, or provider
-publication state changes. Staging is enabled for controlled review while
-production remains disabled.
+publication state changes. After the same final-working-master decision used
+by transcription and alignment, staging now prepares the primary-language
+proposal automatically. An exact transcript/master/model/prompt fingerprint,
+short lease, three-attempt ceiling, and strict response validation make the
+private D1 proposal replay-safe. The Admin loads the newest validated proposal
+without applying it and keeps manual generation inside secondary controls.
+Production discovery exits before D1 and both automation and AI remain
+disabled there.
 
 The chapter workbench has a separate bilingual, review-only proposal assistant
 on the same verified-transcript and Workers AI boundary. Chapter drafting

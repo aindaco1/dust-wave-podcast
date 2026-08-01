@@ -40,6 +40,7 @@ export type PodcastEnv = Env & {
   RESEND_WEBHOOK_SECRET?: string;
   RSS_IMPORT_EXECUTION_MODE?: string;
   RSS_IMPORT_URL_SECRET?: string;
+  SHOW_NOTES_AUTOMATION_MODE?: string;
   SHOW_NOTES_AI_ENABLED?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_MODE?: string;

@@ -119,6 +119,83 @@ describe("AI show-notes drafts", () => {
       )
     ).toBe(true);
   });
+
+  it("lists only validated private automatic drafts for review", async () => {
+    const episodeEvidenceSha256 = await sha256Hex(JSON.stringify({
+      title: "Ópera en la Selva",
+      summary: "Existing reviewed summary."
+    }));
+    const readyRow = {
+      id: "editorial_draft_fixture",
+      source_language: "es",
+      source_transcript_revision: 3,
+      source_transcript_sha256: "a".repeat(64),
+      included_cue_count: 12,
+      total_cue_count: 12,
+      transcript_truncated: 0,
+      episode_evidence_sha256: episodeEvidenceSha256,
+      current_episode_title: "Ópera en la Selva",
+      current_episode_summary: "Existing reviewed summary.",
+      output_language: "es",
+      model: "@cf/meta/llama-3.2-3b-instruct",
+      prompt_version: "show-notes-v1",
+      draft_json: JSON.stringify({
+        summary: "Resumen listo para revisar.",
+        showNotesMarkdown: "## Temas\n\n- Punto verificado",
+        keywords: ["Ópera"]
+      }),
+      draft_sha256: "b".repeat(64),
+      completed_at: "2026-07-30 10:05:00"
+    };
+    const fixture = await showNotesFixture({
+      savedRows: [
+        {
+          ...readyRow,
+          id: "editorial_draft_stale",
+          episode_evidence_sha256: "c".repeat(64)
+        },
+        readyRow
+      ]
+    });
+    const response = await handleRequest(new Request(
+      "https://feeds.dustwave.xyz/v1/admin/episodes/"
+      + "episode_fixture/show-notes/drafts",
+      {
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE}=session_fixture`,
+          origin: "https://dustwave.xyz"
+        }
+      }
+    ), fixture.env);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      episodeId: "episode_fixture",
+      drafts: [{
+        id: "editorial_draft_fixture",
+        draft: {
+          summary: "Resumen listo para revisar.",
+          showNotesMarkdown: "## Temas\n\n- Punto verificado",
+          keywords: ["Ópera"]
+        },
+        source: {
+          language: "es",
+          revision: 3,
+          contentSha256: "a".repeat(64),
+          includedCueCount: 12,
+          totalCueCount: 12,
+          truncated: false
+        },
+        outputLanguage: "es",
+        model: "@cf/meta/llama-3.2-3b-instruct",
+        promptVersion: "show-notes-v1",
+        draftSha256: "b".repeat(64),
+        completedAt: "2026-07-30 10:05:00",
+        reviewRequired: true,
+        saved: true
+      }]
+    });
+  });
 });
 
 describe("show-notes model boundaries", () => {
@@ -189,12 +266,14 @@ async function showNotesFixture({
       completion_tokens: 48,
       total_tokens: 168
     }
-  }
+  },
+  savedRows = []
 }: {
   enabled?: boolean;
   recentCount?: number;
   transcriptSha256?: string;
   providerResponse?: unknown;
+  savedRows?: Array<Record<string, unknown>>;
 } = {}) {
   const sessionSecret = "session_fixture";
   const csrfToken = "csrf_fixture";
@@ -281,6 +360,9 @@ async function showNotesFixture({
                 approved_at: "2026-07-29T06:00:00.000Z"
               }]
             };
+          }
+          if (query.includes("FROM editorial_ai_drafts")) {
+            return { results: savedRows };
           }
           return { results: [] };
         },

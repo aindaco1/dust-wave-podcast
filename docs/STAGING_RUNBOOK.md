@@ -442,11 +442,19 @@ With existing notes present, cancel the replacement confirmation and verify
 the WYSIWYG is unchanged. Accept it and verify only the unsaved editor changes;
 the normal Update draft button remains the sole persistence path.
 
+Migration `0071` adds private, review-only `editorial_ai_drafts`. Before the
+Worker deploy, replay all migrations locally and prepare
+`AUTOMATED_SHOW_NOTES_SOURCES_SQL` against the real schema. On staging, record
+content-free counts by status and attempt count before and after migration;
+never select `draft_json`, transcript text, prompt text, provider output, email,
+or login material. Confirm the table is empty before the first eligible
+approval and that production remains unmigrated.
+
 Then deploy the exact Worker commit to staging only. The current rights-cleared
 fixture transcript is still `needs_review`, so a real request must fail closed
 with `show_notes_approved_transcript_required` and must not call Workers AI.
 After a human separately approves a suitable transcript, generate no more than
-one controlled draft and verify:
+one controlled manual draft and verify:
 
 - the response is private/no-store and reports `reviewRequired: true`,
   `saved: false`, exact revision/digest, and full or partial cue coverage;
@@ -457,6 +465,18 @@ one controlled draft and verify:
 - no episode, media, News, RSS, YouTube, directory, subscriber, ad, billing, or
   publication row changes; and
 - the production bundle retains `SHOW_NOTES_AI_ENABLED=false`.
+
+At the next five-minute boundary, automatic discovery may create proposals for
+the approved transcript language and the show language when different. Verify
+only aggregate evidence: one ready row per exact input fingerprint, no active
+expired lease, attempt count at most three, and one system completion audit per
+new ready row. A second boundary must create no duplicate row or audit. The
+Admin should load the newest ready proposal automatically, leave the WYSIWYG
+unchanged, keep manual regeneration collapsed, and remain responsive at 320,
+768, and 1440 CSS pixels. Invalid provider output must move only that proposal
+to `failed`; retries reuse the same row and stop at attempt three. No episode,
+News, RSS, YouTube, distribution, media, billing, ad, or subscriber row may
+change.
 
 Exercise the companion chapter assistant first against the local mock. Select
 the same episode in Production, generate English and Spanish proposals, and

@@ -7,7 +7,8 @@ import {
   updateAdminShow
 } from "./admin";
 import {
-  createAdminEpisodeShowNotesDraft
+  createAdminEpisodeShowNotesDraft,
+  listAdminEpisodeShowNotesDrafts
 } from "./show-notes";
 import {
   createAdminEpisodeChapterDraft
@@ -387,6 +388,8 @@ const ADMIN_SHOW_FEED_VALIDATION_PATH =
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_SHOW_NOTES_DRAFT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/show-notes\/draft$/;
+const ADMIN_EPISODE_SHOW_NOTES_DRAFTS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/show-notes\/drafts$/;
 const ADMIN_EPISODE_CHAPTER_DRAFT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/draft$/;
 const ADMIN_EPISODE_CLIP_DRAFT_PATH =
@@ -1340,6 +1343,16 @@ async function routeRequest(
       request,
       env,
       adminEpisodeShowNotesDraftMatch[1]
+    );
+  }
+  const adminEpisodeShowNotesDraftsMatch = url.pathname.match(
+    ADMIN_EPISODE_SHOW_NOTES_DRAFTS_PATH
+  );
+  if (adminEpisodeShowNotesDraftsMatch && method === "GET") {
+    return listAdminEpisodeShowNotesDrafts(
+      request,
+      env,
+      adminEpisodeShowNotesDraftsMatch[1]
     );
   }
   const adminEpisodeChapterDraftMatch = url.pathname.match(
