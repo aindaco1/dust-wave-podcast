@@ -41,6 +41,15 @@ in [`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md).
 Before enabling its scheduled workflow, run its focused tests and confirm
 production keeps `PROCESSOR_DISPATCH_MODE=disabled`.
 
+The staging job consumer sends a message to
+`dust-wave-podcast-jobs-staging-dlq` only after its three ordinary delivery
+retries are exhausted. The DLQ deliberately has no consumer or producer
+binding in this release: retention prevents silent deletion while a later
+typed recovery boundary is implemented, and cannot create a blind provider
+replay. Confirm the DLQ exists before deploying staging. Production retains
+its prior queue configuration until an independent promotion and recovery
+review.
+
 ## 2. Back up and migrate staging
 
 ```sh
