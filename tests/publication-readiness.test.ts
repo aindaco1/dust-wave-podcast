@@ -50,7 +50,7 @@ describe("publication readiness graph", () => {
       expect.objectContaining({
         id: "editorial.word_alignment",
         status: "ready",
-        severity: "blocker"
+        severity: "warning"
       }),
       expect.objectContaining({
         id: "core.working_master",
@@ -210,6 +210,28 @@ describe("publication readiness graph", () => {
             es: "needs_review"
           }
         })
+      })
+    ]));
+  });
+
+  it("keeps transcript and word alignment as non-blocking launch enhancements", () => {
+    const input = readyInput();
+    input.transcripts = [];
+
+    const result = evaluatePublicationReadiness(input);
+
+    expect(result.candidateGate.ready).toBe(true);
+    expect(result.candidateGate.blockerCount).toBe(0);
+    expect(result.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "missing",
+        severity: "warning"
+      }),
+      expect.objectContaining({
+        id: "editorial.word_alignment",
+        status: "missing",
+        severity: "warning"
       })
     ]));
   });

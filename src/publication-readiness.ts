@@ -784,7 +784,7 @@ function primaryTranscriptNode(
     group: "editorial",
     label: "Primary-language transcript",
     status,
-    severity: "blocker",
+    severity: "warning",
     summary,
     evidence: {
       language: episode.show_language,
@@ -869,10 +869,10 @@ function alignmentNode(
     group: "editorial",
     label: "Word-alignment quality gate",
     status,
-    severity: "blocker",
+    severity: "warning",
     summary: ready
       ? "The passed word alignment matches the approved primary transcript."
-      : "Run and pass word alignment against the current approved primary transcript.",
+      : "Optional at launch; complete reviewed word alignment before enabling word-level controls.",
     evidence: {
       transcriptRevision: primary?.revision ?? null,
       exactTranscript: Boolean(exactTranscript),

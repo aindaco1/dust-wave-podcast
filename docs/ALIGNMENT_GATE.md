@@ -1,5 +1,11 @@
 # English/Spanish word-alignment gate
 
+This is a post-launch feature gate as of August 1, 2026. It still controls
+word-level navigation, edit boundaries, alignment-dependent chapter/clip
+automation, and any claim that aligned timing passed. It no longer blocks the
+core audio, News, RSS, premium-feed, or segment-player launch. Unapproved
+transcripts and chapters remain private or absent from public projections.
+
 Word-level navigation and edit boundaries are disabled until one pinned
 alignment adapter passes the recorded launch benchmark in both English and
 Spanish. Segment captions remain available when this gate is incomplete or
