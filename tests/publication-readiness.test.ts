@@ -156,6 +156,93 @@ describe("publication readiness graph", () => {
       })
     ]));
   });
+
+  it("distinguishes automatic transcript work from editorial approval", () => {
+    const input = readyInput();
+    input.transcripts[0] = {
+      ...input.transcripts[0],
+      status: "processing",
+      approved_revision: null
+    };
+
+    const processing = evaluatePublicationReadiness(input);
+    expect(processing.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "pending",
+        summary: "The ES transcript is processing.",
+        evidence: expect.objectContaining({
+          transcriptStatus: "processing"
+        })
+      }),
+      expect.objectContaining({
+        id: "editorial.bilingual_transcripts",
+        status: "pending",
+        evidence: expect.objectContaining({
+          transcriptStatuses: {
+            en: "approved",
+            es: "processing"
+          }
+        })
+      })
+    ]));
+
+    input.transcripts[0] = {
+      ...input.transcripts[0],
+      status: "needs_review"
+    };
+    const review = evaluatePublicationReadiness(input);
+    expect(review.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "pending",
+        summary: "Approve the current ES transcript revision.",
+        evidence: expect.objectContaining({
+          transcriptStatus: "needs_review"
+        })
+      }),
+      expect.objectContaining({
+        id: "editorial.bilingual_transcripts",
+        status: "pending",
+        evidence: expect.objectContaining({
+          transcriptStatuses: {
+            en: "approved",
+            es: "needs_review"
+          }
+        })
+      })
+    ]));
+  });
+
+  it("projects transcript failures as terminal readiness evidence", () => {
+    const input = readyInput();
+    input.transcripts[0] = {
+      ...input.transcripts[0],
+      status: "failed",
+      approved_revision: null
+    };
+
+    const result = evaluatePublicationReadiness(input);
+    expect(result.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "failed",
+        evidence: expect.objectContaining({
+          transcriptStatus: "failed"
+        })
+      }),
+      expect.objectContaining({
+        id: "editorial.bilingual_transcripts",
+        status: "failed",
+        evidence: expect.objectContaining({
+          transcriptStatuses: {
+            en: "approved",
+            es: "failed"
+          }
+        })
+      })
+    ]));
+  });
 });
 
 describe("production review readiness semantics", () => {
