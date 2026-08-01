@@ -8,15 +8,25 @@ import {
   validateAlignmentProcessorManifest,
   validateAlignmentRunnerResult
 } from "@dustwave/timed-text/alignment";
+import {
+  buildAlignmentWorkflowEvidence
+} from "./lib/alignment-resource-evidence.mjs";
 
 const RUNNER_REVISION = "e611801d2af82dcdb079444b7e8a7eea4309d1a6";
 const manifestPath = process.argv[2];
 const resultPath = process.argv[3];
 const callbackPath = process.argv[4];
 const evidencePath = process.argv[5];
-if (!manifestPath || !resultPath || !callbackPath || !evidencePath) {
+const diskMeasurementPath = process.argv[6];
+if (
+  !manifestPath
+  || !resultPath
+  || !callbackPath
+  || !evidencePath
+  || !diskMeasurementPath
+) {
   throw new Error(
-    "Pass manifest, result, callback, and evidence paths."
+    "Pass manifest, result, callback, evidence, and disk measurement paths."
   );
 }
 const manifest = await validateAlignmentProcessorManifest(
@@ -42,6 +52,9 @@ const validated = await validateAlignmentRunnerResult(result, {
   projection: manifest.transcript,
   adapter: manifest.adapter
 });
+const diskMeasurement = JSON.parse(
+  await readFile(path.resolve(diskMeasurementPath), "utf8")
+);
 const callback = {
   jobId: manifest.jobId,
   alignmentRevisionId: manifest.alignmentRevisionId,
@@ -49,25 +62,11 @@ const callback = {
   status: "succeeded",
   result
 };
-const evidence = {
-  schemaVersion: "alignment-workflow-evidence-v1",
-  jobId: manifest.jobId,
-  alignmentRevisionId: manifest.alignmentRevisionId,
-  processorManifestSha256: manifest.manifestSha256,
-  resultManifestSha256: validated.manifestSha256,
-  adapter: {
-    name: manifest.adapter.name,
-    version: manifest.adapter.version,
-    modelVersion: manifest.adapter.modelVersion,
-    settingsVersion: manifest.adapter.settingsVersion
-  },
-  runner: {
-    revision: manifest.runner.revision,
-    digest: manifest.adapter.runnerDigest
-  },
-  quality: validated.quality,
-  resource: validated.manifest.resource
-};
+const evidence = buildAlignmentWorkflowEvidence({
+  manifest,
+  validated,
+  diskMeasurement
+});
 await Promise.all([
   writeFile(
     path.resolve(callbackPath),

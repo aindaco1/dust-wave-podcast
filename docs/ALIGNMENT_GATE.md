@@ -126,6 +126,15 @@ Worker validates and stores the result but can move it only to `needs_review`;
 an Admin/Super-admin approval button remains disabled until the benchmark row
 matches.
 
+The retained content-free evidence includes the source language and a sampled
+peak-disk measurement alongside the runner's input-duration, wall-clock, and
+peak-memory values. Disk sampling records immutable input bytes plus peak
+filesystem growth during the exact adapter command; it never records a source
+path, transcript, object key, provider response, or credential. A qualifying
+clean 60-minute run can therefore flow directly into private H1 resource
+evidence instead of requiring an operator to reconstruct measurements from
+logs.
+
 ## Current evidence state
 
 The schema, normalized evaluator, private import path, adversarial integration
