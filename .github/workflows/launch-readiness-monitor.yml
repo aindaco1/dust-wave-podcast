@@ -41,6 +41,13 @@ jobs:
           PODCAST_LAUNCH_EPISODE_ID: ${{ vars.PODCAST_LAUNCH_EPISODE_ID }}
           REPORT_DIRECTORY: ${{ runner.temp }}/podcast-launch-readiness
         run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || \
+            [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "status=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
           install -d -m 700 "$REPORT_DIRECTORY"
           install /dev/null -m 600 "$REPORT_DIRECTORY/report.json"
           set +e
@@ -52,13 +59,21 @@ jobs:
           exit "$status"
 
       - name: Add bounded launch summary
-        if: ${{ always() }}
+        if: ${{ always() && steps.gate.outputs.configured == 'true' }}
         env:
           LAUNCH_GATE_REPORT: ${{ runner.temp }}/podcast-launch-readiness/report.json
         run: node scripts/write-launch-readiness-summary.mjs
 
+      - name: Report missing durable monitor credential
+        if: ${{ always() && steps.gate.outputs.configured != 'true' }}
+        run: |
+          echo "### Podcast launch readiness" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "- Result: BLOCK" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Reason: scoped Cloudflare staging read token is not configured" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Retain content-free launch evidence
-        if: ${{ always() }}
+        if: ${{ always() && steps.gate.outputs.configured == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: launch-readiness-${{ github.run_id }}-${{ github.run_attempt }}
@@ -69,5 +84,10 @@ jobs:
       - name: Enforce gate execution safety
         if: ${{ always() }}
         env:
+          GATE_CONFIGURED: ${{ steps.gate.outputs.configured }}
           GATE_STATUS: ${{ steps.gate.outputs.status }}
-        run: test "$GATE_STATUS" = "0"
+        run: |
+          if [ "$GATE_CONFIGURED" != "true" ]; then
+            exit 0
+          fi
+          test "$GATE_STATUS" = "0"
