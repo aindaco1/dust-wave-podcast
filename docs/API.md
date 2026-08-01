@@ -1064,7 +1064,11 @@ Each node has a stable ID/group, `ready|missing|pending|stale|failed|
 not_applicable` status, `blocker|warning|info` severity, plain summary, and
 non-secret evidence. Audio object keys, transcript/chapter/recipe digests,
 review text, job errors, credentials, and listener data are not returned. The
-top-level `snapshotDigest` is SHA-256 over schema version 1, the publication
+primary and bilingual transcript nodes include only their bounded lifecycle
+states (`missing`, `processing`, `needs_review`, `approved`, or `failed`) so a
+client can separate automatic work from a human approval without receiving
+transcript content or provider evidence. The top-level `snapshotDigest` is
+SHA-256 over schema version 1, the publication
 revision, monotonic episode/show/global evidence versions, the legacy and
 candidate results, and ordered node evidence. `generatedAt` is excluded, so
 identical evidence produces an identical digest. The Worker reads the versions

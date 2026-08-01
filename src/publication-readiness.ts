@@ -762,24 +762,34 @@ function primaryTranscriptNode(
     ({ language }) => language === episode.show_language
   );
   const approved = isApprovedTranscript(primary);
+  const transcriptStatus = primary?.status ?? "missing";
+  const status: ReadinessStatus = approved
+    ? "ready"
+    : transcriptStatus === "failed"
+      ? "failed"
+      : primary
+        ? "pending"
+        : "missing";
+  const summary = approved
+    ? `The ${episode.show_language.toUpperCase()} transcript revision is approved.`
+    : transcriptStatus === "failed"
+      ? `The ${episode.show_language.toUpperCase()} transcript failed and needs attention.`
+      : transcriptStatus === "processing"
+        ? `The ${episode.show_language.toUpperCase()} transcript is processing.`
+        : primary
+          ? `Approve the current ${episode.show_language.toUpperCase()} transcript revision.`
+          : `Create the ${episode.show_language.toUpperCase()} transcript.`;
   return node({
     id: "editorial.primary_transcript",
     group: "editorial",
     label: "Primary-language transcript",
-    status: approved
-      ? "ready"
-      : primary
-        ? "pending"
-        : "missing",
+    status,
     severity: "blocker",
-    summary: approved
-      ? `The ${episode.show_language.toUpperCase()} transcript revision is approved.`
-      : primary
-        ? `Approve the current ${episode.show_language.toUpperCase()} transcript revision.`
-        : `Create the ${episode.show_language.toUpperCase()} transcript.`,
+    summary,
     evidence: {
       language: episode.show_language,
       exists: Boolean(primary),
+      transcriptStatus,
       revision: primary?.revision ?? null,
       approvedRevision: primary?.approved_revision ?? null
     }
@@ -789,12 +799,24 @@ function primaryTranscriptNode(
 function bilingualTranscriptNode(
   transcripts: TranscriptReadinessRow[]
 ): PublicationReadinessNode {
+  const transcriptStatuses = Object.fromEntries(
+    ["en", "es"].map((language) => [
+      language,
+      transcripts.find((transcript) => transcript.language === language)
+        ?.status ?? "missing"
+    ])
+  );
   const approvedLanguages = transcripts
     .filter(isApprovedTranscript)
+    .filter(({ language }) => language === "en" || language === "es")
     .map(({ language }) => language)
     .sort();
   const ready = ["en", "es"].every((language) =>
     approvedLanguages.includes(language)
+  );
+  const failed = Object.values(transcriptStatuses).includes("failed");
+  const started = Object.values(transcriptStatuses).some(
+    (status) => status !== "missing"
   );
   return node({
     id: "editorial.bilingual_transcripts",
@@ -802,14 +824,21 @@ function bilingualTranscriptNode(
     label: "Spanish and English transcripts",
     status: ready
       ? "ready"
-      : approvedLanguages.length > 0
-        ? "pending"
-        : "missing",
+      : failed
+        ? "failed"
+        : started
+          ? "pending"
+          : "missing",
     severity: "warning",
     summary: ready
       ? "Current Spanish and English transcript revisions are approved."
-      : "Complete both Spanish and English approvals for the bilingual launch experience.",
-    evidence: { approvedLanguages }
+      : failed
+        ? "At least one bilingual transcript failed and needs attention."
+        : "Complete both Spanish and English approvals for the bilingual launch experience.",
+    evidence: {
+      approvedLanguages,
+      transcriptStatuses
+    }
   });
 }
 
