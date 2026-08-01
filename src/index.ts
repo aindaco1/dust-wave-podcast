@@ -7,7 +7,10 @@ import {
   pruneSubscriptionBillingRateLimits
 } from "./subscription-checkout";
 import { pruneTaxQuoteRateLimits } from "./tax-quotes";
-import { schedulePendingTranscriptions } from "./transcription-jobs";
+import {
+  scheduleAutomaticTranscriptionJobs,
+  schedulePendingTranscriptions
+} from "./transcription-jobs";
 import type { PodcastJob } from "./types";
 import {
   schedulePendingAnnouncementDeliveries
@@ -108,7 +111,10 @@ export default {
     _controller: ScheduledController,
     env: PodcastEnv
   ): Promise<void> {
-    await scheduleAutomatedDeliveryAudioJobs(env);
+    await Promise.all([
+      scheduleAutomatedDeliveryAudioJobs(env),
+      scheduleAutomaticTranscriptionJobs(env)
+    ]);
     await Promise.all([
       scheduleDuePublications(env),
       scheduleRssImportExecutions(env),

@@ -337,12 +337,20 @@
 
 ## Transcription boundary
 
-Only a show-scoped Producer/Admin/Super-admin with a credentialed CSRF-bound
-session can queue transcription. Every job snapshots the current approved
-working-master ID, object ETag/size, source SHA-256, explicit English/Spanish
-source language, model, vocabulary, and settings version. The Queue consumer
-rechecks the master pointer, object identity, and byte digest before calling
-Workers AI. A replacement master makes queued/running work stale.
+A show-scoped Producer/Admin/Super-admin with a credentialed CSRF-bound
+session can queue transcription. The staging scheduler can create the same job
+with a null system actor only after the shared promote-or-reject predicate is
+final; a ready or in-progress enhancement decision blocks it. Production exits
+before D1 access. Both callers reuse one queue primitive, and every job
+snapshots the current approved working-master ID, current-policy zero-blocker
+QC evidence, object ETag/size, source SHA-256, explicit English/Spanish source
+language, model, vocabulary, and settings version. The deterministic input
+fingerprint and unique indexes collapse races to one job. Direct jobs are
+deferred to the existing bounded Queue scheduler so the cron cannot send a
+duplicate message; large jobs reuse the existing chunk processor ledger. The
+Queue consumer rechecks the master pointer, object identity, and byte digest
+before calling Workers AI. A replacement master makes queued/running work
+stale.
 
 Provider output is untrusted. The Worker bounds the raw response, keeps it
 private in R2, strips control/bidirectional characters and active angle
