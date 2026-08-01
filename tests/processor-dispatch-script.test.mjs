@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   dispatchPodcastProcessors,
-  validateClaimResponse
+  validateClaimResponse,
+  validateLedgerSummary
 } from "../scripts/dispatch-podcast-processors.mjs";
 
 const environment = {
@@ -12,6 +13,16 @@ const environment = {
   GITHUB_REPOSITORY: "aindaco1/dust-wave-podcast",
   MEDIA_PROCESSOR_CALLBACK_SECRET: "processor_callback_secret_fixture",
   PROCESSOR_WORKFLOW_REF: "main"
+};
+const emptyLedger = {
+  total: 0,
+  queued: 0,
+  leased: 0,
+  dispatched: 0,
+  running: 0,
+  succeeded: 0,
+  failed: 0,
+  canceled: 0
 };
 
 describe("GitHub processor dispatcher", () => {
@@ -24,6 +35,11 @@ describe("GitHub processor dispatcher", () => {
         expectSignedWorkerRequest(init, environment.MEDIA_PROCESSOR_CALLBACK_SECRET);
         return Response.json({
           schemaVersion: 1,
+          ledger: {
+            ...emptyLedger,
+            total: 1,
+            leased: 1
+          },
           dispatches: [{
             id: "processor_dispatch_delivery_fixture",
             processorType: "delivery_audio",
@@ -55,7 +71,16 @@ describe("GitHub processor dispatcher", () => {
     });
 
     const result = await dispatchPodcastProcessors({ fetchImpl, environment });
-    expect(result).toEqual({ claimed: 1, dispatched: 1, failed: 0 });
+    expect(result).toEqual({
+      claimed: 1,
+      dispatched: 1,
+      failed: 0,
+      ledger: {
+        ...emptyLedger,
+        total: 1,
+        leased: 1
+      }
+    });
     expect(requests).toHaveLength(3);
   });
 
@@ -65,6 +90,11 @@ describe("GitHub processor dispatcher", () => {
       if (url.endsWith("/v1/processor/dispatches/claim")) {
         return Response.json({
           schemaVersion: 1,
+          ledger: {
+            ...emptyLedger,
+            total: 1,
+            leased: 1
+          },
           dispatches: [{
             id: "processor_dispatch_clip_fixture",
             processorType: "clip_render",
@@ -105,6 +135,11 @@ describe("GitHub processor dispatcher", () => {
       if (url.endsWith("/v1/processor/dispatches/claim")) {
         return Response.json({
           schemaVersion: 1,
+          ledger: {
+            ...emptyLedger,
+            total: 1,
+            leased: 1
+          },
           dispatches: [{
             id: "processor_dispatch_alignment_fixture",
             processorType: "alignment",
@@ -136,6 +171,7 @@ describe("GitHub processor dispatcher", () => {
   it("rejects unregistered or malformed claim data before GitHub access", () => {
     expect(() => validateClaimResponse({
       schemaVersion: 1,
+      ledger: emptyLedger,
       dispatches: [{
         id: "processor_dispatch_fixture",
         processorType: "unknown_processor",
@@ -144,6 +180,25 @@ describe("GitHub processor dispatcher", () => {
         leaseId: "processor_lease_abcdef1234567890",
         attempt: 1
       }]
+    })).toThrow("processor_claim_response_invalid");
+  });
+
+  it("accepts the prior additive response during a rolling Worker deploy", () => {
+    expect(validateClaimResponse({
+      schemaVersion: 1,
+      dispatches: []
+    })).toEqual([]);
+  });
+
+  it("rejects incomplete or internally inconsistent ledger evidence", () => {
+    expect(() => validateLedgerSummary({
+      ...emptyLedger,
+      total: 2,
+      failed: 1
+    })).toThrow("processor_claim_response_invalid");
+    expect(() => validateLedgerSummary({
+      ...emptyLedger,
+      queued: -1
     })).toThrow("processor_claim_response_invalid");
   });
 });

@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { appendFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import registry from "../config/processor-dispatch-registry.json"
@@ -44,6 +45,9 @@ export async function dispatchPodcastProcessors({
     }
   });
   const dispatches = validateClaimResponse(claim);
+  const ledger = claim.ledger === undefined
+    ? null
+    : validateLedgerSummary(claim.ledger);
   const failures = [];
 
   for (const dispatch of dispatches) {
@@ -111,6 +115,7 @@ export async function dispatchPodcastProcessors({
       + `${dispatches.length - failures.length} dispatched; `
       + `${failures.length} failed.\n`
   );
+  if (ledger) await publishLedgerEvidence({ environment, ledger });
   if (failures.length) {
     throw new Error(
       `Processor dispatch failed for ${failures.length} claimed job(s)`
@@ -119,7 +124,8 @@ export async function dispatchPodcastProcessors({
   return {
     claimed: dispatches.length,
     dispatched: dispatches.length - failures.length,
-    failed: failures.length
+    failed: failures.length,
+    ledger
   };
 }
 
@@ -177,6 +183,7 @@ export function validateClaimResponse(value) {
   ) {
     throw new Error("processor_claim_response_invalid");
   }
+  if (value.ledger !== undefined) validateLedgerSummary(value.ledger);
   return value.dispatches.map((dispatch) => {
     if (
       !dispatch
@@ -194,6 +201,52 @@ export function validateClaimResponse(value) {
     }
     return dispatch;
   });
+}
+
+export function validateLedgerSummary(value) {
+  const keys = [
+    "total",
+    "queued",
+    "leased",
+    "dispatched",
+    "running",
+    "succeeded",
+    "failed",
+    "canceled"
+  ];
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || Object.keys(value).length !== keys.length
+    || keys.some((key) => !Number.isSafeInteger(value[key]) || value[key] < 0)
+    || keys.slice(1).reduce((sum, key) => sum + value[key], 0) !== value.total
+  ) {
+    throw new Error("processor_claim_response_invalid");
+  }
+  return Object.fromEntries(keys.map((key) => [key, value[key]]));
+}
+
+async function publishLedgerEvidence({ environment, ledger }) {
+  const line = "Processor ledger: "
+    + `queued ${ledger.queued}; leased ${ledger.leased}; `
+    + `dispatched ${ledger.dispatched}; running ${ledger.running}; `
+    + `succeeded ${ledger.succeeded}; failed ${ledger.failed}; `
+    + `canceled ${ledger.canceled}; total ${ledger.total}.`;
+  process.stdout.write(`${line}\n`);
+  if (ledger.failed > 0) {
+    process.stdout.write(
+      `::warning title=Podcast processor dispatch attention::`
+      + `${ledger.failed} terminal dispatch failure(s) need review.\n`
+    );
+  }
+  const summaryPath = String(environment.GITHUB_STEP_SUMMARY || "").trim();
+  if (!summaryPath) return;
+  await appendFile(
+    summaryPath,
+    `### Podcast processor dispatch\n\n${line}\n`,
+    { encoding: "utf8", flag: "a" }
+  );
 }
 
 async function signedWorkerRequest({

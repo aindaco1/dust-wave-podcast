@@ -49,6 +49,10 @@ remain unchanged.
 6. The existing processor workflow fetches its exact private manifest, source,
    and upload contracts from the Worker. Those boundaries continue to validate
    manifest digests, object evidence, size limits, and callbacks.
+7. Every signed claim returns content-free counts for all durable dispatch
+   states. The scheduled Action writes those counts to its run summary and
+   emits a GitHub warning when terminal dispatch failures exist, so routine
+   health no longer requires an operator D1 query.
 
 The Worker receives no long-lived GitHub token. The scheduled workflow has only
 `actions: write` and `contents: read`. All external actions are commit-SHA
@@ -107,7 +111,8 @@ Worker. The scheduled GitHub workflow must exist on the repository's default
 branch before GitHub will accept automated dispatches.
 
 Run the dispatcher manually once with no pending work and confirm its summary
-reports zero claimed jobs. Then queue one rights-cleared, staging-only fixture
+reports zero claimed jobs and the aggregate durable ledger. Then queue one
+rights-cleared, staging-only fixture
 through the admin. Confirm:
 
 1. one `processor_dispatches` row is created;

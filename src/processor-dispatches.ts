@@ -37,6 +37,17 @@ export type ProcessorDispatchClaim = {
   attempt: number;
 };
 
+export type ProcessorDispatchLedgerSummary = {
+  total: number;
+  queued: number;
+  leased: number;
+  dispatched: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  canceled: number;
+};
+
 export function processorDispatchConfigured(env: PodcastEnv): boolean {
   return env.ENVIRONMENT === "staging"
     && env.PROCESSOR_DISPATCH_MODE === DISPATCH_MODE
@@ -227,10 +238,48 @@ export async function claimProcessorDispatches(
     });
   }
 
+  const ledger = await loadProcessorDispatchLedgerSummary(env.DB);
+
   return privateJson(request, env.ALLOWED_ORIGINS, {
     schemaVersion: 1,
-    dispatches: claimed
+    dispatches: claimed,
+    ledger
   });
+}
+
+async function loadProcessorDispatchLedgerSummary(
+  db: D1Database
+): Promise<ProcessorDispatchLedgerSummary> {
+  const row = await db.prepare(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,
+       SUM(CASE WHEN status = 'leased' THEN 1 ELSE 0 END) AS leased,
+       SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) AS dispatched,
+       SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running,
+       SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded,
+       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+       SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) AS canceled
+     FROM processor_dispatches`
+  ).first<Record<keyof ProcessorDispatchLedgerSummary, number | null>>();
+  const summary = {} as ProcessorDispatchLedgerSummary;
+  for (const key of [
+    "total",
+    "queued",
+    "leased",
+    "dispatched",
+    "running",
+    "succeeded",
+    "failed",
+    "canceled"
+  ] as const) {
+    const value = Number(row?.[key] ?? 0);
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error("Durable processor dispatch summary is invalid");
+    }
+    summary[key] = value;
+  }
+  return summary;
 }
 
 export async function acknowledgeProcessorDispatch(
