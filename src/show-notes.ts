@@ -43,7 +43,32 @@ const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
 export const SHOW_NOTES_MODEL =
   "@cf/meta/llama-4-scout-17b-16e-instruct";
 export const SHOW_NOTES_PROMPT_VERSION =
-  "show-notes-v5-grounded-neutral";
+  "show-notes-v6-grounded-quality";
+
+const GENERIC_SPEAKER_ATTRIBUTION = new RegExp(
+  String.raw`\b(?:he|she|they|hosts?|guests?|speakers?|`
+    + String.raw`él|ella|ellos|ellas|anfitriones?|invitados?|ponentes?)\b`
+    + String.raw`.{0,80}\b(?:discuss(?:es|ed|ing)?|explor(?:e|es|ed|ing)|`
+    + String.raw`talk(?:s|ed|ing)?|say(?:s|ing)?|said|explain(?:s|ed|ing)?|`
+    + String.raw`share(?:s|d|ing)?|describe(?:s|d|ing)?|emphasiz(?:e|es|ed|ing)|`
+    + String.raw`highlight(?:s|ed|ing)?|mention(?:s|ed|ing)?|reflect(?:s|ed|ing)?|`
+    + String.raw`discute(?:n)?|explora(?:n)?|habla(?:n)?|explica(?:n)?|`
+    + String.raw`comparte(?:n)?|describe(?:n)?|señala(?:n)?|destaca(?:n)?|`
+    + String.raw`menciona(?:n)?|reflexiona(?:n)?)\b`,
+  "iu"
+);
+const NAMED_SPEAKER_ATTRIBUTION = new RegExp(
+  String.raw`\b\p{Lu}[\p{L}'’.-]+(?:\s+(?:(?:and|y)\s+)?`
+    + String.raw`\p{Lu}[\p{L}'’.-]+){0,4}\s+`
+    + String.raw`(?:discuss(?:es|ed|ing)?|explor(?:e|es|ed|ing)|`
+    + String.raw`talk(?:s|ed|ing)?|say(?:s|ing)?|said|explain(?:s|ed|ing)?|`
+    + String.raw`share(?:s|d|ing)?|describe(?:s|d|ing)?|emphasiz(?:e|es|ed|ing)|`
+    + String.raw`highlight(?:s|ed|ing)?|mention(?:s|ed|ing)?|reflect(?:s|ed|ing)?|`
+    + String.raw`discute(?:n)?|explora(?:n)?|habla(?:n)?|explica(?:n)?|`
+    + String.raw`comparte(?:n)?|describe(?:n)?|señala(?:n)?|destaca(?:n)?|`
+    + String.raw`menciona(?:n)?|reflexiona(?:n)?)\b`,
+  "u"
+);
 
 type EpisodePromptRow = {
   title: string;
@@ -657,7 +682,9 @@ export function parseShowNotesProviderResponse(
     ],
     confirmedSpeakerLabels: projection.confirmedSpeakerLabels
   });
-  return parseShowNotesDraftObject(result);
+  const draft = parseShowNotesDraftObject(result);
+  validateShowNotesDraftQuality(draft);
+  return draft;
 }
 
 function parseSavedShowNotesDraft(value: string): ShowNotesDraft {
@@ -702,6 +729,24 @@ function parseShowNotesDraftObject(
   return { summary, showNotesMarkdown, keywords };
 }
 
+function validateShowNotesDraftQuality(draft: ShowNotesDraft): void {
+  if (
+    /(^|\n)\s*#\s/u.test(draft.showNotesMarkdown)
+    || !draft.showNotesMarkdown.includes("\n")
+    || !/(^|\n)\s*(?:#{2,5}\s|[-*]\s|\d+\.\s)/u
+      .test(draft.showNotesMarkdown)
+  ) {
+    throw new TypeError("AI draft show-notes Markdown structure is invalid");
+  }
+  const text = `${draft.summary}\n${draft.showNotesMarkdown}`.normalize("NFKC");
+  if (
+    GENERIC_SPEAKER_ATTRIBUTION.test(text)
+    || NAMED_SPEAKER_ATTRIBUTION.test(text)
+  ) {
+    throw new TypeError("AI draft show-notes attribution is invalid");
+  }
+}
+
 function showNotesMessages({
   episode,
   projection,
@@ -730,7 +775,12 @@ function showNotesMessages({
         + "sentence. If exact evidence is absent, use a generic role instead. "
         + "Do not attribute any statement to a speaker, even when the "
         + "transcript has a label. Write neutral, topic-based notes and "
-        + "always return speakerAttributions as an empty array. "
+        + "always return speakerAttributions as an empty array. Never use a "
+        + "person's name, a pronoun, host, guest, or speaker as the subject "
+        + "of a speech verb such as discuss, explore, talk, say, explain, "
+        + "share, describe, emphasize, highlight, mention, or reflect. Use "
+        + "H2 headings and Markdown lists separated by newlines; never use "
+        + "an H1 heading. "
         + (repairFailureCode
           ? `A prior response failed ${repairFailureCode}. Regenerate from `
             + "the supplied source only; do not reuse its output. Every "
