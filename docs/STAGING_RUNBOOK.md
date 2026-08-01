@@ -43,12 +43,14 @@ production keeps `PROCESSOR_DISPATCH_MODE=disabled`.
 
 The staging job consumer sends a message to
 `dust-wave-podcast-jobs-staging-dlq` only after its three ordinary delivery
-retries are exhausted. The DLQ deliberately has no consumer or producer
-binding in this release: retention prevents silent deletion while a later
-typed recovery boundary is implemented, and cannot create a blind provider
-replay. Confirm the DLQ exists before deploying staging. Production retains
-its prior queue configuration until an independent promotion and recovery
-review.
+retries are exhausted. A second consumer on the same staging Worker writes one
+content-free, digest-deduplicated incident to D1, then acknowledges the
+message. It has no producer binding and never replays a job or calls a
+provider. Temporary D1 failures retry every five minutes with a bounded retry
+ceiling. Confirm the DLQ exists and run the focused verification in
+[`QUEUE_FAILURE_AUTOMATION.md`](QUEUE_FAILURE_AUTOMATION.md) before deploying
+staging. Production retains its prior queue configuration and unapplied
+migration until an independent promotion and recovery review.
 
 ## 2. Back up and migrate staging
 

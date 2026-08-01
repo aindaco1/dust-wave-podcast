@@ -20,6 +20,10 @@ import {
   scheduleRssImportExecutions
 } from "./rss-import-executions";
 import { syncProcessorDispatches } from "./processor-dispatches";
+import {
+  handlePodcastDeadLetterBatch,
+  isPodcastDeadLetterQueue
+} from "./queue-dead-letters";
 
 export default {
   async fetch(
@@ -51,6 +55,14 @@ export default {
   },
 
   async queue(batch: MessageBatch<PodcastJob>, env: PodcastEnv): Promise<void> {
+    if (isPodcastDeadLetterQueue(env, batch.queue)) {
+      await handlePodcastDeadLetterBatch(
+        batch as unknown as MessageBatch<unknown>,
+        env
+      );
+      return;
+    }
+
     for (const message of batch.messages) {
       console.log(
         JSON.stringify({

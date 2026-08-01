@@ -41,6 +41,12 @@ selection and verified range delivery are implemented as a staging preview
 with production disabled; production-live YouTube/GitHub publishing remains
 roadmap work.
 
+Exhausted staging Queue jobs now move to an isolated dead-letter queue and are
+automatically reduced to durable, content-free D1 incident evidence. The
+consumer stores a payload digest plus bounded internal job identity, never raw
+content, and deliberately cannot replay work or repeat provider side effects.
+Production queue behavior remains unchanged.
+
 Public release, premium-window, subscription-expiry, tax-rate, and publication
 job boundaries compare canonical millisecond UTC RFC 3339 timestamps against
 one shared SQL clock. This avoids SQLite TEXT ordering drift between
