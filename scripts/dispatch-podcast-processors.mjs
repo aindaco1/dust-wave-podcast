@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { appendFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
@@ -7,9 +6,11 @@ import registry from "../config/processor-dispatch-registry.json"
 import {
   reconcileProcessorDispatchIncident
 } from "./lib/processor-dispatch-incident.mjs";
+import {
+  retrySignedWorkerRequest,
+  signedWorkerRequest
+} from "./lib/signed-worker-request.mjs";
 
-const TIMESTAMP_HEADER = "x-podcast-processor-timestamp";
-const SIGNATURE_HEADER = "x-podcast-processor-signature";
 const MAXIMUM_RESPONSE_BYTES = 64_000;
 
 export async function dispatchPodcastProcessors({
@@ -41,6 +42,7 @@ export async function dispatchPodcastProcessors({
     callbackSecret,
     origin,
     path: "/v1/processor/dispatches/claim",
+    errorPrefix: "processor_dispatch_worker",
     body: {
       action: "claim",
       dispatcher: "github-actions",
@@ -71,6 +73,7 @@ export async function dispatchPodcastProcessors({
           callbackSecret,
           origin,
           path: `/v1/processor/dispatches/${dispatch.id}/failed`,
+          errorPrefix: "processor_dispatch_worker",
           body: {
             action: "dispatch_failed",
             dispatchId: dispatch.id,
@@ -91,6 +94,7 @@ export async function dispatchPodcastProcessors({
         callbackSecret,
         origin,
         path: `/v1/processor/dispatches/${dispatch.id}/dispatched`,
+        errorPrefix: "processor_dispatch_worker",
         body: {
           action: "dispatched",
           dispatchId: dispatch.id,
@@ -260,50 +264,6 @@ async function publishLedgerEvidence({ environment, ledger }) {
     `### Podcast processor dispatch\n\n${line}\n`,
     { encoding: "utf8", flag: "a" }
   );
-}
-
-async function signedWorkerRequest({
-  fetchImpl,
-  callbackSecret,
-  origin,
-  path,
-  body
-}) {
-  const rawBody = JSON.stringify(body);
-  const timestamp = Math.floor(Date.now() / 1_000).toString();
-  const signature = createHmac("sha256", callbackSecret)
-    .update(`${timestamp}.${rawBody}`)
-    .digest("hex");
-  const response = await fetchImpl(new URL(path, origin), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      [TIMESTAMP_HEADER]: timestamp,
-      [SIGNATURE_HEADER]: signature
-    },
-    body: rawBody
-  });
-  const responseBody = await readBoundedResponse(response);
-  if (!response.ok) {
-    const error = new Error(`processor_dispatch_worker_http_${response.status}`);
-    error.code = `processor_dispatch_worker_http_${response.status}`;
-    throw error;
-  }
-  const value = parseObject(responseBody);
-  if (!value) throw new Error("processor_dispatch_worker_response_invalid");
-  return value;
-}
-
-async function retrySignedWorkerRequest(input) {
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await signedWorkerRequest(input);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError;
 }
 
 async function readBoundedResponse(response) {

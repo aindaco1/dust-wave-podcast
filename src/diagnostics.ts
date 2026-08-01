@@ -17,8 +17,13 @@ import {
   readJsonObject,
   RequestValidationError
 } from "./validation";
+import { readSignedJsonBody } from "./signed-callback";
 
 const DIAGNOSTIC_CAPABILITY_MAXIMUM_SECONDS = 15 * 60;
+const DIAGNOSTIC_TIMESTAMP_HEADER = "x-podcast-processor-timestamp";
+const DIAGNOSTIC_SIGNATURE_HEADER = "x-podcast-processor-signature";
+const MAXIMUM_ACTIVE_DIAGNOSTIC_LEASES = 4;
+const GATE_REPOSITORY = "aindaco1/dust-wave-podcast";
 const {
   virtual: SYNTHETIC_MIDROLL_MANIFEST,
   baseline: SYNTHETIC_BASELINE_MANIFEST
@@ -115,6 +120,35 @@ export async function issueStagingVirtualAudioCapability(
     capability: `${leaseId}.${expires}.${signature}`,
     expiresAt: new Date(expires * 1_000).toISOString()
   }, 201);
+}
+
+export async function manageStagingVirtualAudioGate(
+  request: Request,
+  env: PodcastEnv
+): Promise<Response> {
+  if (!stagingDiagnosticManagementConfigured(env)) {
+    return diagnosticNotFound();
+  }
+  const signed = await readSignedJsonBody(request, {
+    secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
+    timestampHeader: DIAGNOSTIC_TIMESTAMP_HEADER,
+    signatureHeader: DIAGNOSTIC_SIGNATURE_HEADER,
+    maximumBytes: 4_000,
+    bodyName: "Virtual-audio gate request",
+    invalidBodyCode: "invalid_virtual_audio_gate_request"
+  });
+  if (!signed.ok) return diagnosticNotFound();
+
+  switch (signed.body.action) {
+    case "create_lease":
+      return createStagingVirtualAudioLease(env.DB, signed.body);
+    case "delete_lease":
+      return deleteStagingVirtualAudioLease(env.DB, signed.body);
+    case "record_gate":
+      return recordStagingVirtualAudioGate(env.DB, signed.body);
+    default:
+      return diagnosticJson({ error: "invalid_virtual_audio_gate_action" }, 400);
+  }
 }
 
 export async function manageStagingVirtualAudioFixtureObject(
@@ -412,6 +446,11 @@ function stagingDiagnosticConfigured(env: PodcastEnv): boolean {
     && Boolean(env.AD_DECISION_SIGNING_SECRET);
 }
 
+function stagingDiagnosticManagementConfigured(env: PodcastEnv): boolean {
+  return stagingDiagnosticConfigured(env)
+    && Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET);
+}
+
 function signDiagnosticCapability(
   leaseId: string,
   expires: number,
@@ -453,12 +492,280 @@ async function stagingDiagnosticLeaseActive(
 export async function cleanupVirtualAudioDiagnosticLeases(
   db: D1Database
 ): Promise<void> {
+  await db.batch([
+    db.prepare(
+      `DELETE FROM virtual_audio_diagnostic_leases
+       WHERE
+         expires_at <= datetime('now')
+         OR exchanged_at < datetime('now', '-1 day')`
+    ),
+    db.prepare(
+      `DELETE FROM virtual_audio_gate_runs
+       WHERE created_at < datetime('now', '-90 days')`
+    )
+  ]);
+}
+
+async function createStagingVirtualAudioLease(
+  db: D1Database,
+  body: Record<string, unknown>
+): Promise<Response> {
+  const leaseId = String(body.leaseId ?? "").trim();
+  const tokenHash = String(body.tokenHash ?? "").trim();
+  if (
+    !/^[A-Za-z0-9_-]{16,64}$/.test(leaseId)
+    || !/^[a-f0-9]{64}$/.test(tokenHash)
+  ) {
+    return diagnosticJson({ error: "invalid_diagnostic_lease" }, 400);
+  }
   await db.prepare(
     `DELETE FROM virtual_audio_diagnostic_leases
-     WHERE
-       expires_at <= datetime('now')
-       OR exchanged_at < datetime('now', '-1 day')`
+     WHERE expires_at <= datetime('now')`
   ).run();
+  await db.prepare(
+    `INSERT OR IGNORE INTO virtual_audio_diagnostic_leases (
+       id, token_hash, expires_at
+     )
+     SELECT ?, ?, datetime('now', '+15 minutes')
+     WHERE (
+       SELECT COUNT(*) FROM virtual_audio_diagnostic_leases
+       WHERE expires_at > datetime('now')
+     ) < ?`
+  ).bind(leaseId, tokenHash, MAXIMUM_ACTIVE_DIAGNOSTIC_LEASES).run();
+  const lease = await db.prepare(
+    `SELECT id, expires_at
+     FROM virtual_audio_diagnostic_leases
+     WHERE id = ?
+       AND token_hash = ?
+       AND exchanged_at IS NULL
+       AND expires_at > datetime('now')`
+  ).bind(leaseId, tokenHash).first<{ id: string; expires_at: string }>();
+  if (!lease) {
+    return diagnosticJson({ error: "diagnostic_lease_unavailable" }, 409);
+  }
+  return diagnosticJson({
+    leaseId: lease.id,
+    expiresAt: new Date(
+      parseDiagnosticExpiry(lease.expires_at) * 1_000
+    ).toISOString()
+  }, 201);
+}
+
+async function deleteStagingVirtualAudioLease(
+  db: D1Database,
+  body: Record<string, unknown>
+): Promise<Response> {
+  const leaseId = String(body.leaseId ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(leaseId)) {
+    return diagnosticJson({ error: "invalid_diagnostic_lease" }, 400);
+  }
+  const result = await db.prepare(
+    "DELETE FROM virtual_audio_diagnostic_leases WHERE id = ?"
+  ).bind(leaseId).run();
+  const remaining = await db.prepare(
+    "SELECT COUNT(*) AS count FROM virtual_audio_diagnostic_leases WHERE id = ?"
+  ).bind(leaseId).first<{ count: number }>();
+  return diagnosticJson({
+    leaseId,
+    removed: Number(remaining?.count ?? 1) === 0,
+    changed: Number(result.meta?.changes ?? 0) === 1
+  });
+}
+
+type VirtualAudioGateRunRow = {
+  id: string;
+  source_commit: string;
+  generated_at: string;
+  paired_requests: number;
+  total_measured_requests: number;
+  protocol_probe_count: number;
+  protocol_failed_count: number;
+  failed_requests: number;
+  content_mismatches: number;
+  p95_added_ms: number;
+  protocol_passed: number;
+  load_passed: number;
+  cleanup_complete: number;
+  diagnostic_lease_removed: number;
+  uploaded_objects_removed: number;
+  failure_code: string | null;
+  github_repository: string;
+  github_run_id: string;
+  github_run_attempt: number;
+};
+
+async function recordStagingVirtualAudioGate(
+  db: D1Database,
+  body: Record<string, unknown>
+): Promise<Response> {
+  const evidence = validateVirtualAudioGateEvidence(body);
+  if (!evidence) {
+    return diagnosticJson({ error: "invalid_virtual_audio_gate_evidence" }, 400);
+  }
+  const id = `virtual_audio_gate_${evidence.githubRunId}_${evidence.githubRunAttempt}`;
+  const errorRate = evidence.failedRequests / evidence.totalMeasuredRequests;
+  const values = [
+    id,
+    evidence.sourceCommit,
+    evidence.generatedAt,
+    evidence.pairedRequests,
+    evidence.totalMeasuredRequests,
+    evidence.protocolProbeCount,
+    evidence.protocolFailedCount,
+    evidence.failedRequests,
+    errorRate,
+    evidence.contentMismatches,
+    evidence.p95AddedMs,
+    Number(evidence.protocolPassed),
+    Number(evidence.loadPassed),
+    Number(evidence.cleanupComplete),
+    Number(evidence.diagnosticLeaseRemoved),
+    Number(evidence.uploadedObjectsRemoved),
+    evidence.failureCode,
+    GATE_REPOSITORY,
+    evidence.githubRunId,
+    evidence.githubRunAttempt
+  ] as const;
+  const insert = await db.prepare(
+    `INSERT OR IGNORE INTO virtual_audio_gate_runs (
+       id, source_commit, generated_at, paired_requests,
+       total_measured_requests, protocol_probe_count,
+       protocol_failed_count, failed_requests, error_rate,
+       content_mismatches, p95_added_ms, protocol_passed, load_passed,
+       cleanup_complete, diagnostic_lease_removed, uploaded_objects_removed,
+       failure_code, github_repository, github_run_id, github_run_attempt
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(...values).run();
+  const stored = await db.prepare(
+    `SELECT
+       id, source_commit, generated_at, paired_requests,
+       total_measured_requests, protocol_probe_count,
+       protocol_failed_count, failed_requests, content_mismatches,
+       p95_added_ms, protocol_passed, load_passed, cleanup_complete,
+       diagnostic_lease_removed, uploaded_objects_removed, failure_code,
+       github_repository, github_run_id, github_run_attempt
+     FROM virtual_audio_gate_runs
+     WHERE id = ?`
+  ).bind(id).first<VirtualAudioGateRunRow>();
+  if (!stored || !gateRunMatches(stored, values)) {
+    return diagnosticJson({ error: "virtual_audio_gate_conflict" }, 409);
+  }
+  return diagnosticJson({
+    id,
+    recorded: true,
+    created: Number(insert.meta?.changes ?? 0) === 1
+  }, Number(insert.meta?.changes ?? 0) === 1 ? 201 : 200);
+}
+
+function validateVirtualAudioGateEvidence(body: Record<string, unknown>) {
+  const sourceCommit = String(body.sourceCommit ?? "").trim();
+  const generatedAt = String(body.generatedAt ?? "").trim();
+  const pairedRequests = Number(body.pairedRequests);
+  const totalMeasuredRequests = Number(body.totalMeasuredRequests);
+  const protocolProbeCount = Number(body.protocolProbeCount);
+  const protocolFailedCount = Number(body.protocolFailedCount);
+  const failedRequests = Number(body.failedRequests);
+  const contentMismatches = Number(body.contentMismatches);
+  const p95AddedMs = Number(body.p95AddedMs);
+  const githubRepository = String(body.githubRepository ?? "").trim();
+  const githubRunId = String(body.githubRunId ?? "").trim();
+  const githubRunAttempt = Number(body.githubRunAttempt);
+  const failureCode = body.failureCode === null
+    ? null
+    : String(body.failureCode ?? "").trim();
+  const booleans = [
+    body.protocolPassed,
+    body.loadPassed,
+    body.cleanupComplete,
+    body.diagnosticLeaseRemoved,
+    body.uploadedObjectsRemoved
+  ];
+  const generatedTime = Date.parse(generatedAt);
+  const age = Date.now() - generatedTime;
+  const passed = booleans.every((value) => value === true);
+  if (
+    !/^[a-f0-9]{40}$/.test(sourceCommit)
+    || !Number.isFinite(generatedTime)
+    || age < -5 * 60_000
+    || age > 24 * 60 * 60_000
+    || !Number.isSafeInteger(pairedRequests)
+    || pairedRequests < 5_000
+    || pairedRequests > 10_000
+    || totalMeasuredRequests !== pairedRequests * 2
+    || !Number.isSafeInteger(protocolProbeCount)
+    || protocolProbeCount < 24
+    || protocolProbeCount > 200
+    || !Number.isSafeInteger(protocolFailedCount)
+    || protocolFailedCount < 0
+    || protocolFailedCount > protocolProbeCount
+    || !Number.isSafeInteger(failedRequests)
+    || failedRequests < 0
+    || failedRequests > totalMeasuredRequests
+    || !Number.isSafeInteger(contentMismatches)
+    || contentMismatches < 0
+    || contentMismatches > totalMeasuredRequests
+    || !Number.isFinite(p95AddedMs)
+    || p95AddedMs < -10_000
+    || p95AddedMs > 60_000
+    || booleans.some((value) => typeof value !== "boolean")
+    || githubRepository !== GATE_REPOSITORY
+    || !/^[0-9]{1,30}$/.test(githubRunId)
+    || !Number.isSafeInteger(githubRunAttempt)
+    || githubRunAttempt < 1
+    || githubRunAttempt > 100
+    || (passed && failureCode !== null)
+    || (!passed && !/^[a-z0-9_]{1,80}$/.test(failureCode ?? ""))
+  ) {
+    return null;
+  }
+  return {
+    sourceCommit,
+    generatedAt: new Date(generatedTime).toISOString(),
+    pairedRequests,
+    totalMeasuredRequests,
+    protocolProbeCount,
+    protocolFailedCount,
+    failedRequests,
+    contentMismatches,
+    p95AddedMs,
+    protocolPassed: body.protocolPassed as boolean,
+    loadPassed: body.loadPassed as boolean,
+    cleanupComplete: body.cleanupComplete as boolean,
+    diagnosticLeaseRemoved: body.diagnosticLeaseRemoved as boolean,
+    uploadedObjectsRemoved: body.uploadedObjectsRemoved as boolean,
+    failureCode,
+    githubRunId,
+    githubRunAttempt
+  };
+}
+
+function gateRunMatches(
+  row: VirtualAudioGateRunRow,
+  values: readonly unknown[]
+): boolean {
+  const expected = [
+    row.id,
+    row.source_commit,
+    row.generated_at,
+    row.paired_requests,
+    row.total_measured_requests,
+    row.protocol_probe_count,
+    row.protocol_failed_count,
+    row.failed_requests,
+    row.failed_requests / row.total_measured_requests,
+    row.content_mismatches,
+    row.p95_added_ms,
+    row.protocol_passed,
+    row.load_passed,
+    row.cleanup_complete,
+    row.diagnostic_lease_removed,
+    row.uploaded_objects_removed,
+    row.failure_code,
+    row.github_repository,
+    row.github_run_id,
+    row.github_run_attempt
+  ];
+  return expected.every((value, index) => value === values[index]);
 }
 
 async function sha256Bytes(bytes: Uint8Array): Promise<string> {

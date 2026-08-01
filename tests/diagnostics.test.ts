@@ -5,12 +5,14 @@ import syntheticFixture from "../config/virtual-audio-synthetic-fixture.json";
 import type { PodcastEnv } from "../src/env";
 import {
   issueStagingVirtualAudioCapability,
+  manageStagingVirtualAudioGate,
   manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "../src/diagnostics";
 
 const TEST_SIGNING_SECRET = "diagnostic-test-signing-secret";
+const TEST_PROCESSOR_SECRET = "diagnostic-test-processor-secret";
 
 describe("staging virtual-audio diagnostic", () => {
   it("is unavailable outside staging even with a matching token", async () => {
@@ -43,7 +45,7 @@ describe("staging virtual-audio diagnostic", () => {
       ENVIRONMENT: "staging",
       AD_DECISION_MODE: "staging_validate",
       AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET
-    } as PodcastEnv);
+    } as unknown as PodcastEnv);
     const html = await response.text();
 
     expect(response.status).toBe(200);
@@ -304,7 +306,230 @@ describe("staging virtual-audio diagnostic", () => {
     expect(replay.status).toBe(404);
     expect(bindings).toHaveLength(2);
   });
+
+  it("hides signed gate management outside isolated staging and before D1", async () => {
+    let prepares = 0;
+    const db = {
+      prepare() {
+        prepares += 1;
+        throw new Error("D1 must remain untouched");
+      }
+    } as unknown as D1Database;
+    const request = await signedGateRequest({
+      action: "create_lease",
+      leaseId: "lease_diagnostic_test_02",
+      tokenHash: "a".repeat(64)
+    });
+    const production = await manageStagingVirtualAudioGate(request, {
+      ENVIRONMENT: "production",
+      AD_DECISION_MODE: "staging_validate",
+      AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET,
+      MEDIA_PROCESSOR_CALLBACK_SECRET: TEST_PROCESSOR_SECRET,
+      DB: db
+    } as unknown as PodcastEnv);
+    expect(production.status).toBe(404);
+
+    const invalidSignature = await manageStagingVirtualAudioGate(
+      new Request("https://example.test/v1/diagnostics/virtual-audio/gate", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-podcast-processor-timestamp": String(
+            Math.floor(Date.now() / 1_000)
+          ),
+          "x-podcast-processor-signature": "0".repeat(64)
+        },
+        body: JSON.stringify({ action: "delete_lease", leaseId: "x".repeat(20) })
+      }),
+      stagingGateEnv(db)
+    );
+    expect(invalidSignature.status).toBe(404);
+    expect(prepares).toBe(0);
+  });
+
+  it("creates and removes only an exact signed diagnostic lease", async () => {
+    const leaseId = "lease_diagnostic_test_03";
+    const tokenHash = "b".repeat(64);
+    let leasePresent = false;
+    const bindings: unknown[][] = [];
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind(...values: unknown[]) {
+            bindings.push(values);
+            return {
+              async run() {
+                if (sql.includes("INSERT OR IGNORE")) leasePresent = true;
+                if (sql.startsWith("DELETE FROM virtual_audio_diagnostic_leases WHERE id")) {
+                  leasePresent = false;
+                }
+                return { meta: { changes: 1 } };
+              },
+              async first() {
+                if (sql.includes("SELECT id, expires_at")) {
+                  return leasePresent
+                    ? { id: leaseId, expires_at: "2099-01-01 00:00:00" }
+                    : null;
+                }
+                if (sql.includes("SELECT COUNT(*) AS count")) {
+                  return { count: leasePresent ? 1 : 0 };
+                }
+                return null;
+              }
+            };
+          },
+          async run() {
+            return { meta: { changes: 0 } };
+          }
+        };
+      }
+    } as unknown as D1Database;
+    const created = await manageStagingVirtualAudioGate(
+      await signedGateRequest({ action: "create_lease", leaseId, tokenHash }),
+      stagingGateEnv(db)
+    );
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({ leaseId });
+    expect(bindings.some((values) => values.includes(tokenHash))).toBe(true);
+
+    const removed = await manageStagingVirtualAudioGate(
+      await signedGateRequest({ action: "delete_lease", leaseId }),
+      stagingGateEnv(db)
+    );
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toEqual({
+      leaseId,
+      removed: true,
+      changed: true
+    });
+    expect(leasePresent).toBe(false);
+  });
+
+  it("records immutable aggregate gate evidence idempotently", async () => {
+    let stored: unknown[] | null = null;
+    let insertChanges = 1;
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind(...values: unknown[]) {
+            return {
+              async run() {
+                if (sql.includes("INSERT OR IGNORE INTO virtual_audio_gate_runs")) {
+                  if (!stored) stored = values;
+                  const changes = insertChanges;
+                  insertChanges = 0;
+                  return { meta: { changes } };
+                }
+                return { meta: { changes: 0 } };
+              },
+              async first() {
+                if (!stored) return null;
+                return gateRow(stored);
+              }
+            };
+          }
+        };
+      }
+    } as unknown as D1Database;
+    const body = {
+      action: "record_gate",
+      sourceCommit: "c".repeat(40),
+      generatedAt: new Date().toISOString(),
+      pairedRequests: 5_000,
+      totalMeasuredRequests: 10_000,
+      protocolProbeCount: 24,
+      protocolFailedCount: 0,
+      failedRequests: 3,
+      contentMismatches: 0,
+      p95AddedMs: 58.28,
+      protocolPassed: true,
+      loadPassed: true,
+      cleanupComplete: true,
+      diagnosticLeaseRemoved: true,
+      uploadedObjectsRemoved: true,
+      failureCode: null,
+      githubRepository: "aindaco1/dust-wave-podcast",
+      githubRunId: "123456789",
+      githubRunAttempt: 1
+    };
+    const created = await manageStagingVirtualAudioGate(
+      await signedGateRequest(body),
+      stagingGateEnv(db)
+    );
+    expect(created.status).toBe(201);
+    expect(await created.json()).toEqual({
+      id: "virtual_audio_gate_123456789_1",
+      recorded: true,
+      created: true
+    });
+
+    const replay = await manageStagingVirtualAudioGate(
+      await signedGateRequest(body),
+      stagingGateEnv(db)
+    );
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      recorded: true,
+      created: false
+    });
+  });
 });
+
+async function signedGateRequest(body: Record<string, unknown>) {
+  const rawBody = JSON.stringify(body);
+  const timestamp = Math.floor(Date.now() / 1_000);
+  const signature = await hmacSha256(
+    `${timestamp}.${rawBody}`,
+    TEST_PROCESSOR_SECRET,
+    "hex"
+  );
+  return new Request(
+    "https://example.test/v1/diagnostics/virtual-audio/gate",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-podcast-processor-timestamp": String(timestamp),
+        "x-podcast-processor-signature": signature
+      },
+      body: rawBody
+    }
+  );
+}
+
+function stagingGateEnv(db: D1Database): PodcastEnv {
+  return {
+    ENVIRONMENT: "staging",
+    AD_DECISION_MODE: "staging_validate",
+    AD_DECISION_SIGNING_SECRET: TEST_SIGNING_SECRET,
+    MEDIA_PROCESSOR_CALLBACK_SECRET: TEST_PROCESSOR_SECRET,
+    DB: db
+  } as PodcastEnv;
+}
+
+function gateRow(values: unknown[]) {
+  return {
+    id: values[0],
+    source_commit: values[1],
+    generated_at: values[2],
+    paired_requests: values[3],
+    total_measured_requests: values[4],
+    protocol_probe_count: values[5],
+    protocol_failed_count: values[6],
+    failed_requests: values[7],
+    content_mismatches: values[9],
+    p95_added_ms: values[10],
+    protocol_passed: values[11],
+    load_passed: values[12],
+    cleanup_complete: values[13],
+    diagnostic_lease_removed: values[14],
+    uploaded_objects_removed: values[15],
+    failure_code: values[16],
+    github_repository: values[17],
+    github_run_id: values[18],
+    github_run_attempt: values[19]
+  };
+}
 
 async function testCapability(): Promise<string> {
   const leaseId = "lease_diagnostic_test_01";

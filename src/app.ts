@@ -161,6 +161,7 @@ import {
 } from "./youtube-audio-renditions";
 import {
   issueStagingVirtualAudioCapability,
+  manageStagingVirtualAudioGate,
   manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
@@ -854,6 +855,12 @@ async function routeRequest(
     && method === "POST"
   ) {
     return issueStagingVirtualAudioCapability(request, env);
+  }
+  if (
+    url.pathname === "/v1/diagnostics/virtual-audio/gate"
+    && method === "POST"
+  ) {
+    return manageStagingVirtualAudioGate(request, env);
   }
   const virtualAudioFixtureObjectMatch = url.pathname.match(
     VIRTUAL_AUDIO_FIXTURE_OBJECT_PATH
