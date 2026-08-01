@@ -97,7 +97,7 @@ describe("AI show-notes drafts", () => {
     expect(response.status).toBe(200);
     expect(fixture.aiRun).toHaveBeenCalledTimes(2);
     const repairInput = JSON.stringify(fixture.aiRun.mock.calls[1][1]);
-    expect(repairInput).toContain("grounding_named_entity_invalid");
+    expect(repairInput).toContain("draft_schema_invalid");
     expect(repairInput).not.toContain("Alonzo");
   });
 
@@ -181,7 +181,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-      prompt_version: "show-notes-v9-full-source-grounding",
+      prompt_version: "show-notes-v10-filter-ungrounded-content",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -231,7 +231,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-        promptVersion: "show-notes-v9-full-source-grounding",
+        promptVersion: "show-notes-v10-filter-ungrounded-content",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
@@ -302,7 +302,7 @@ describe("show-notes model boundaries", () => {
         sections: [{ heading: "  Temas  ", bullets: ["  Uno  "] }],
         keywords: ["Cine", "cine", "Selva"],
         grounding: {
-          namedEntities: [{ name: "Selva" }],
+          namedEntities: [{ name: "selva" }],
           speakerAttributions: []
         }
       })
@@ -346,7 +346,7 @@ describe("show-notes model boundaries", () => {
     }]));
     const base = {
       summary: "Resumen",
-      sections: [{ heading: "Temas", bullets: ["Notas"] }],
+      sections: [{ heading: "Temas", bullets: ["Alonzo presenta"] }],
       keywords: []
     };
 
@@ -358,7 +358,7 @@ describe("show-notes model boundaries", () => {
           speakerAttributions: []
         }
       }
-    }, { episode, projection })).toThrow(/named-entity grounding is invalid/);
+    }, { episode, projection })).toThrow(/sections are invalid/);
     expect(() => parseShowNotesProviderResponse({
       response: {
         ...base,
@@ -371,6 +371,39 @@ describe("show-notes model boundaries", () => {
         }
       }
     }, { episode, projection })).toThrow(/speaker grounding is invalid/);
+  });
+
+  it("removes ungrounded named content while preserving safe source topics", () => {
+    const episode = {
+      title: "Ópera en la Selva",
+      summary: "Existing reviewed summary."
+    };
+    const projection = projectTranscriptForShowNotes(approvedTranscript([{
+      id: "cue_filter",
+      startsAtMs: 0,
+      endsAtMs: 1_000,
+      speakerLabel: "",
+      text: "Cine en la Selva"
+    }]));
+
+    expect(parseShowNotesProviderResponse({
+      response: {
+        summary: "Alonzo presents a topic.",
+        sections: [{
+          heading: "Topics",
+          bullets: ["Alonzo presents a topic.", "Independent film"]
+        }],
+        keywords: ["Alonzo", "film"],
+        grounding: {
+          namedEntities: [{ name: "Alonzo" }],
+          speakerAttributions: []
+        }
+      }
+    }, { episode, projection })).toEqual({
+      summary: "Existing reviewed summary.",
+      showNotesMarkdown: "## Topics\n\n- Independent film",
+      keywords: ["film"]
+    });
   });
 
   it("rejects attribution prose and invalid structured sections", () => {
