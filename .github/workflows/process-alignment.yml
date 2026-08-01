@@ -133,12 +133,15 @@ jobs:
           ALIGNMENT_ADAPTER: ${{ steps.alignment.outputs.adapter }}
           RUNNER_DIGEST: ${{ steps.alignment.outputs.runner_digest }}
         run: |
-          uv run dustwave-align run \
-            --adapter "$ALIGNMENT_ADAPTER" \
-            --request ../work/alignment/runner-request.json \
-            --input-root ../work/alignment \
-            --output ../work/alignment/result.json \
-            --runner-digest "$RUNNER_DIGEST"
+          node ../scripts/run-with-disk-sampling.mjs \
+            --output ../work/alignment/disk-measurement.json \
+            --existing-input ../work/alignment/source.audio \
+            -- uv run dustwave-align run \
+              --adapter "$ALIGNMENT_ADAPTER" \
+              --request ../work/alignment/runner-request.json \
+              --input-root ../work/alignment \
+              --output ../work/alignment/result.json \
+              --runner-digest "$RUNNER_DIGEST"
 
       - name: Validate result and build content-free evidence
         run: >-
@@ -147,6 +150,7 @@ jobs:
           work/alignment/result.json
           work/alignment/callback.json
           work/alignment/evidence.json
+          work/alignment/disk-measurement.json
 
       - name: Sign private result
         id: success_signature
