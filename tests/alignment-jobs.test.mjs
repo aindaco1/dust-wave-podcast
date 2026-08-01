@@ -153,7 +153,7 @@ describe("word-alignment orchestration", () => {
     expect(completion.status).toBe(404);
   });
 
-  it("projects one exact private result to needs-review words", async () => {
+  it("accepts an exact commit when D1 reports zero batch changes", async () => {
     const database = new DatabaseSync(":memory:");
     try {
       applyMigrations(database);
@@ -245,7 +245,7 @@ describe("word-alignment orchestration", () => {
         ENVIRONMENT: "staging",
         ALLOWED_ORIGINS: "https://dustwave.xyz",
         MEDIA_PROCESSOR_CALLBACK_SECRET: processorSecret,
-        DB: d1Database(database),
+        DB: d1Database(database, { batchMetaChanges: 0 }),
         MEDIA_BUCKET: {
           async head(key) {
             return objects.get(key) ?? null;
@@ -722,7 +722,7 @@ async function signedRequest(body) {
   );
 }
 
-function d1Database(database) {
+function d1Database(database, { batchMetaChanges } = {}) {
   const prepare = (query) => {
     let values = [];
     const statement = {
@@ -759,7 +759,12 @@ function d1Database(database) {
           statement.executeRun()
         );
         database.exec("COMMIT");
-        return results;
+        return batchMetaChanges === undefined
+          ? results
+          : results.map((result) => ({
+              ...result,
+              meta: { ...result.meta, changes: batchMetaChanges }
+            }));
       } catch (error) {
         database.exec("ROLLBACK");
         throw error;

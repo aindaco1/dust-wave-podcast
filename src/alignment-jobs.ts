@@ -144,6 +144,19 @@ type EnsureAlignmentJobResult =
     queued: boolean;
   };
 
+export type AlignmentCompletionCommitEvidence = {
+  jobId: string;
+  alignmentRevisionId: string;
+  transcriptId: string;
+  auditId: string;
+  adapterVersion: string;
+  resultObjectKey: string;
+  resultManifestSha256: string;
+  qualityJson: string;
+  auditMetadataJson: string;
+  wordCount: number;
+};
+
 export const AUTOMATED_ALIGNMENT_CANDIDATES_SQL = `SELECT
     episode.id AS episode_id,
     state.current_master_id,
@@ -996,7 +1009,26 @@ export async function completeAlignmentProcessorJob(
   await persistAlignmentWords(env.DB, job, validated.manifest.candidateWords);
   const qualityJson = JSON.stringify(validated.quality);
   const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
-  const results = await env.DB.batch([
+  const auditMetadataJson = JSON.stringify({
+    episodeId: job.episode_id,
+    transcriptId: job.transcript_id,
+    transcriptRevision: job.transcript_revision,
+    transcriptContentSha256: job.transcript_content_sha256,
+    transcriptProjectionSha256: job.transcript_projection_sha256,
+    workingMasterId: job.working_master_id,
+    sourceAudioSha256: job.source_audio_sha256,
+    alignmentRevisionId: job.alignment_revision_id,
+    resultManifestSha256: validated.manifestSha256,
+    adapter: job.adapter,
+    adapterVersion: job.adapter_version,
+    runnerRevision: job.runner_revision,
+    wordCount: validated.quality.wordCount,
+    alignedWordCount: validated.quality.alignedWordCount,
+    unalignedWordCount: validated.quality.unalignedWordCount,
+    interpolatedWordCount: validated.quality.interpolatedWordCount,
+    structurallyEligible: validated.quality.structurallyEligible
+  });
+  await env.DB.batch([
     env.DB.prepare(
       `UPDATE transcript_alignment_revisions
        SET
@@ -1049,32 +1081,23 @@ export async function completeAlignmentProcessorJob(
        WHERE id = ? AND status = 'ready' AND changes() = 1`
     ).bind(
       auditId,
-      JSON.stringify({
-        episodeId: job.episode_id,
-        transcriptId: job.transcript_id,
-        transcriptRevision: job.transcript_revision,
-        transcriptContentSha256: job.transcript_content_sha256,
-        transcriptProjectionSha256: job.transcript_projection_sha256,
-        workingMasterId: job.working_master_id,
-        sourceAudioSha256: job.source_audio_sha256,
-        alignmentRevisionId: job.alignment_revision_id,
-        resultManifestSha256: validated.manifestSha256,
-        adapter: job.adapter,
-        adapterVersion: job.adapter_version,
-        runnerRevision: job.runner_revision,
-        wordCount: validated.quality.wordCount,
-        alignedWordCount: validated.quality.alignedWordCount,
-        unalignedWordCount: validated.quality.unalignedWordCount,
-        interpolatedWordCount: validated.quality.interpolatedWordCount,
-        structurallyEligible: validated.quality.structurallyEligible
-      }),
+      auditMetadataJson,
       job.id
     )
   ]);
-  if (
-    Number(results[0]?.meta?.changes ?? 0) !== 1
-    || Number(results[1]?.meta?.changes ?? 0) !== 1
-  ) {
+  const committed = await verifyAlignmentCompletionCommit(env.DB, {
+    jobId: job.id,
+    alignmentRevisionId: job.alignment_revision_id,
+    transcriptId: job.transcript_id,
+    auditId,
+    adapterVersion: validated.manifest.adapter.version,
+    resultObjectKey: job.result_object_key,
+    resultManifestSha256: validated.manifestSha256,
+    qualityJson,
+    auditMetadataJson,
+    wordCount: validated.manifest.candidateWords.length
+  });
+  if (!committed) {
     return alignmentConflict(
       request,
       env,
@@ -1086,6 +1109,65 @@ export async function completeAlignmentProcessorJob(
     job: ready ? presentAlignmentJob(ready) : null,
     idempotent: false
   });
+}
+
+export async function verifyAlignmentCompletionCommit(
+  db: D1Database,
+  evidence: AlignmentCompletionCommitEvidence
+): Promise<boolean> {
+  const committed = await db.prepare(
+    `SELECT
+       job.id AS job_id,
+       revision.id AS alignment_revision_id,
+       audit.id AS audit_id,
+       (
+         SELECT COUNT(*)
+         FROM transcript_words word
+         WHERE word.alignment_revision_id = revision.id
+       ) AS word_count
+     FROM transcript_alignment_jobs job
+     JOIN transcript_alignment_revisions revision
+       ON revision.id = job.alignment_revision_id
+      AND revision.transcript_id = job.transcript_id
+     JOIN admin_audit_events audit
+       ON audit.id = ?
+      AND audit.action = 'alignment.completed'
+      AND audit.target_type = 'transcript_alignment_job'
+      AND audit.target_id = job.id
+      AND audit.metadata_json = ?
+     WHERE job.id = ?
+       AND job.alignment_revision_id = ?
+       AND job.transcript_id = ?
+       AND job.status = 'ready'
+       AND job.result_manifest_sha256 = ?
+       AND job.quality_report_json = ?
+       AND job.failure_code IS NULL
+       AND job.last_error IS NULL
+       AND revision.status = 'needs_review'
+       AND revision.adapter_version = ?
+       AND revision.result_manifest_key = ?
+       AND revision.quality_report_json = ?`
+  ).bind(
+    evidence.auditId,
+    evidence.auditMetadataJson,
+    evidence.jobId,
+    evidence.alignmentRevisionId,
+    evidence.transcriptId,
+    evidence.resultManifestSha256,
+    evidence.qualityJson,
+    evidence.adapterVersion,
+    evidence.resultObjectKey,
+    evidence.qualityJson
+  ).first<{
+    job_id: string;
+    alignment_revision_id: string;
+    audit_id: string;
+    word_count: number;
+  }>();
+  return committed?.job_id === evidence.jobId
+    && committed.alignment_revision_id === evidence.alignmentRevisionId
+    && committed.audit_id === evidence.auditId
+    && committed.word_count === evidence.wordCount;
 }
 
 async function authorizeAlignmentProcessor(

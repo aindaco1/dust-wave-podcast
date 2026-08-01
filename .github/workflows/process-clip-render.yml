@@ -42,7 +42,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/clip-render/manifest-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Fetch private checksummed manifest
         env:
@@ -74,7 +73,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/clip-render/source-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream immutable private source
         env:
@@ -129,7 +127,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/clip-render/upload-payload.txt
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream checksummed private MP4
         env:
@@ -168,7 +165,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/clip-render/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit ready evidence
         if: ${{ success() }}
@@ -202,7 +198,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/clip-render/failure-callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit failure evidence
         if: ${{ failure() && steps.clip.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}
