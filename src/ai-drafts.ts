@@ -397,6 +397,12 @@ export function safeAiDraftFailureCode(error: unknown): string {
   if (message.startsWith("AI draft provider ")) {
     return "draft_schema_invalid";
   }
+  if (message === "AI draft show-notes attribution is invalid") {
+    return "show_notes_attribution_invalid";
+  }
+  if (message === "AI draft show-notes Markdown structure is invalid") {
+    return "show_notes_markdown_structure_invalid";
+  }
   return error.name === "TypeError" ? "type_error" : "provider_error";
 }
 

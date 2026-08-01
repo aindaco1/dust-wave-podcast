@@ -17,6 +17,12 @@ describe("Workers AI editorial draft contract", () => {
     expect(safeAiDraftFailureCode(
       new Error("provider payload included private text")
     )).toBe("provider_error");
+    expect(safeAiDraftFailureCode(
+      new TypeError("AI draft show-notes attribution is invalid")
+    )).toBe("show_notes_attribution_invalid");
+    expect(safeAiDraftFailureCode(
+      new TypeError("AI draft show-notes Markdown structure is invalid")
+    )).toBe("show_notes_markdown_structure_invalid");
   });
 
   it("pins a model supported by Workers AI JSON mode", () => {

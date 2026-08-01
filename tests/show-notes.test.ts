@@ -172,7 +172,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-      prompt_version: "show-notes-v5-grounded-neutral",
+      prompt_version: "show-notes-v6-grounded-quality",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -222,7 +222,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-        promptVersion: "show-notes-v5-grounded-neutral",
+        promptVersion: "show-notes-v6-grounded-quality",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
@@ -343,6 +343,50 @@ describe("show-notes model boundaries", () => {
         }
       }
     }, { episode, projection })).toThrow(/speaker grounding is invalid/);
+  });
+
+  it("rejects attribution prose and unreadable flat Markdown", () => {
+    const episode = {
+      title: "Dust Don't Settle",
+      summary: "David Jennings and Alonzo explore independent film."
+    };
+    const projection = projectTranscriptForShowNotes(approvedTranscript([{
+      id: "cue_quality",
+      startsAtMs: 0,
+      endsAtMs: 1_000,
+      speakerLabel: "",
+      text: "Independent film topics and local infrastructure."
+    }]));
+    const grounding = {
+      namedEntities: [
+        {
+          name: "David Jennings",
+          evidence: "David Jennings and Alonzo explore independent film."
+        },
+        {
+          name: "Alonzo",
+          evidence: "David Jennings and Alonzo explore independent film."
+        }
+      ],
+      speakerAttributions: []
+    };
+
+    expect(() => parseShowNotesProviderResponse({
+      response: {
+        summary: "David Jennings and Alonzo explore independent film.",
+        showNotesMarkdown: "## Topics\n\n- Local infrastructure",
+        keywords: ["film"],
+        grounding
+      }
+    }, { episode, projection })).toThrow(/attribution is invalid/);
+    expect(() => parseShowNotesProviderResponse({
+      response: {
+        summary: "A neutral overview of independent film.",
+        showNotesMarkdown: "# Episode Summary with no list",
+        keywords: ["film"],
+        grounding: { namedEntities: [], speakerAttributions: [] }
+      }
+    }, { episode, projection })).toThrow(/Markdown structure is invalid/);
   });
 });
 
