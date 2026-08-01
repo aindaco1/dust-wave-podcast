@@ -132,6 +132,20 @@ describe("automatic transcription queueing", () => {
     expect(insertion?.values[1]).toMatch(
       /^transcription_auto_[a-f0-9]{32}$/
     );
+    const settings = insertion?.values.find((value) =>
+      typeof value === "string"
+      && value.includes("workers-ai-segment-caption-v2")
+    );
+    expect(JSON.parse(String(settings))).toMatchObject({
+      schemaVersion: 2,
+      pipelineVersion: "workers-ai-segment-caption-v2",
+      captionSegmentationPolicy: {
+        minimumCueDurationMs: 500,
+        maximumCueDurationMs: 10_000,
+        maximumCharactersPerSecond: 25,
+        maximumCharactersPerCue: 160
+      }
+    });
     expect(insertion?.values.at(-1)).toBeNull();
     const audit = statements.find(({ query }) =>
       query.includes("INSERT INTO admin_audit_events")

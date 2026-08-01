@@ -8,6 +8,9 @@ import { describe, expect, it } from "vitest";
 import {
   planTranscriptionChunks
 } from "@dustwave/timed-text/chunking";
+import {
+  DEFAULT_CAPTION_SEGMENTATION_POLICY
+} from "@dustwave/timed-text/transcription";
 import { processTranscriptionJob } from "../src/transcription-jobs";
 
 const migrationsDirectory = fileURLToPath(
@@ -91,14 +94,14 @@ describe("source-language transcription consumer", () => {
               segments: [
                 {
                   start: 0,
-                  end: 1.25,
-                  text: "Belleza y alegría.",
+                  end: 0.2,
+                  text: "Belleza.",
                   words: [
-                    { word: "Belleza", start: 0, end: 0.4 }
+                    { word: "Belleza", start: 0, end: 0.2 }
                   ]
                 },
                 {
-                  start: 1.25,
+                  start: 0.2,
                   end: 2.5,
                   text: "Beauty and joy."
                 }
@@ -174,14 +177,14 @@ describe("source-language transcription consumer", () => {
         approved_revision: null
       });
       const content = JSON.parse(transcript.content_json);
-      expect(content.cues).toHaveLength(2);
+      expect(content.cues).toHaveLength(1);
       expect(content.cues[0]).toEqual({
         id: "cue_000001",
         startsAtMs: 0,
-        endsAtMs: 1_250,
+        endsAtMs: 2_500,
         speakerLabel: "",
         speakerConfirmed: false,
-        textMarkdown: "Belleza y alegría."
+        textMarkdown: "Belleza. Beauty and joy."
       });
       expect(content.cues[0]).not.toHaveProperty("words");
       expect(database.prepare(`
@@ -199,7 +202,7 @@ describe("source-language transcription consumer", () => {
       expect(JSON.parse(audit.metadata_json)).toMatchObject({
         wordTimingCreated: false,
         timingPrecision: "segment",
-        cueCount: 2
+        cueCount: 1
       });
       expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     } finally {
@@ -673,7 +676,7 @@ function seedTranscriptionJob(database, sourceBytes, sourceSha256) {
       '@cf/openai/whisper-large-v3-turbo',
       1,
       'whisper-source-v1',
-      '{"schemaVersion":1,"task":"transcribe","vadFilter":true,"conditionOnPreviousText":true,"vocabulary":[]}',
+      '${currentTranscriptionSettingsJson.replaceAll("'", "''")}',
       '${"d".repeat(64)}',
       '${artifactPrefix}/provider-response.json',
       '${artifactPrefix}/timed-text.json',
@@ -693,3 +696,12 @@ const sourceKey =
   `podcasts/${showId}/${episodeId}/source_audio/source.wav`;
 const artifactPrefix =
   `podcasts/${showId}/${episodeId}/transcription/${jobId}`;
+const currentTranscriptionSettingsJson = JSON.stringify({
+  schemaVersion: 2,
+  pipelineVersion: "workers-ai-segment-caption-v2",
+  task: "transcribe",
+  vadFilter: true,
+  conditionOnPreviousText: true,
+  vocabulary: [],
+  captionSegmentationPolicy: DEFAULT_CAPTION_SEGMENTATION_POLICY
+});
