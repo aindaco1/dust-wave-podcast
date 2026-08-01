@@ -77,7 +77,7 @@ jobs:
           EXPECTED_RUNNER_REVISION: ${{ steps.alignment.outputs.runner_revision }}
         run: |
           test "$EXPECTED_RUNNER_REVISION" \
-            = "3c5ab054fdad375901eb186f32d7aed6cdb40413"
+            = "e611801d2af82dcdb079444b7e8a7eea4309d1a6"
           test "$(git -C alignment-runner remote get-url origin)" \
             = "https://github.com/aindaco1/dust-wave-alignment-runner.git"
           git -C alignment-runner fetch \

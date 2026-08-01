@@ -8,8 +8,8 @@ import {
   it
 } from "vitest";
 
-const BUNDLER_REVISION = "f4fa9c0707363541928bdf475eb439a548e88ce7";
-const EXECUTION_REVISION = "3c5ab054fdad375901eb186f32d7aed6cdb40413";
+const BUNDLER_REVISION = "32111c2a8dd62d891c4309f7638a86c31a789dc3";
+const EXECUTION_REVISION = "e611801d2af82dcdb079444b7e8a7eea4309d1a6";
 const RUNNER_REMOTE =
   "https://github.com/aindaco1/dust-wave-alignment-runner.git";
 const execFileAsync = promisify(execFile);
@@ -23,10 +23,10 @@ describe("alignment runner release and execution identities", () => {
       execFileAsync("git", ["-C", "alignment-runner", "rev-parse", "HEAD"])
     ]);
 
-    expect(gitmodules).toContain("branch = release/0.2.0");
+    expect(gitmodules).toContain("branch = release/0.2.2");
     expect(gitmodules).toContain(`url = ${RUNNER_REMOTE}`);
     expect(indexEntry.stdout).toBe(`${BUNDLER_REVISION}\n`);
-    expect(project).toMatch(/version = "0\.2\.0"/);
+    expect(project).toMatch(/version = "0\.2\.2"/);
     expect(bundleContract).toContain(
       `execution revision \`${EXECUTION_REVISION}\``
     );

@@ -757,10 +757,10 @@ gh workflow run process-alignment.yml \
   -f job_id="alignment_job_REPLACE_WITH_QUEUED_ID"
 ```
 
-Before dispatch, confirm the parent pins the green runner `release/0.2.0`
+Before dispatch, confirm the parent pins the green runner `release/0.2.2`
 submodule containing the private benchmark-bundle assembler. The API must
 display execution revision
-`3c5ab054fdad375901eb186f32d7aed6cdb40413`; the workflow must validate that
+`e611801d2af82dcdb079444b7e8a7eea4309d1a6`; the workflow must validate that
 constant, verify the expected GitHub remote, and detach the submodule at that
 exact content-addressed commit before installing an adapter. The repository
 secret must still be only `MEDIA_PROCESSOR_CALLBACK_SECRET`. The run must use
