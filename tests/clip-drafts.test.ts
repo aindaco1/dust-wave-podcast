@@ -155,6 +155,80 @@ describe("AI clip review drafts", () => {
       fixture.writes.some(({ values }) => values.includes("clip_draft.failed"))
     ).toBe(true);
   });
+
+  it("lists only current alignment-pinned private proposals", async () => {
+    const source = await clipDraftFixture();
+    const episodeEvidenceSha256 = await sha256Hex(JSON.stringify({
+      title: "Ópera en la Selva",
+      durationSeconds: 120
+    }));
+    const readyRow = {
+      id: "editorial_clip_draft_fixture",
+      source_alignment_revision_id: "alignment_revision_fixture",
+      source_language: "es",
+      source_transcript_revision: 3,
+      source_transcript_sha256: source.transcriptSha256,
+      included_cue_count: 4,
+      total_cue_count: 4,
+      transcript_truncated: 0,
+      episode_evidence_sha256: episodeEvidenceSha256,
+      current_episode_title: "Ópera en la Selva",
+      current_duration_seconds: 120,
+      output_language: "en",
+      model: "@cf/meta/llama-3.2-3b-instruct",
+      prompt_version: "clip-draft-v1",
+      draft_json: JSON.stringify({
+        candidates: [candidate("cue_001", "cue_002")]
+      }),
+      draft_sha256: "b".repeat(64),
+      completed_at: "2026-07-30 10:05:00"
+    };
+    const fixture = await clipDraftFixture({
+      transcriptSha256: source.transcriptSha256,
+      savedRows: [
+        {
+          ...readyRow,
+          id: "editorial_clip_draft_stale",
+          episode_evidence_sha256: "c".repeat(64)
+        },
+        readyRow
+      ]
+    });
+    const response = await handleRequest(new Request(
+      "https://feeds.dustwave.xyz/v1/admin/episodes/"
+      + "episode_fixture/clips/drafts",
+      {
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE}=session_fixture`,
+          origin: "https://dustwave.xyz"
+        }
+      }
+    ), fixture.env);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      episodeId: "episode_fixture",
+      drafts: [{
+        id: "editorial_clip_draft_fixture",
+        draft: {
+          candidates: [{
+            title: "A vivid opening",
+            startCueId: "cue_001",
+            endCueId: "cue_002",
+            startsAtMs: 0,
+            endsAtMs: 59_000
+          }]
+        },
+        source: {
+          alignmentRevisionId: "alignment_revision_fixture",
+          contentSha256: source.transcriptSha256
+        },
+        outputLanguage: "en",
+        reviewRequired: true,
+        saved: true
+      }]
+    });
+  });
 });
 
 describe("AI clip output validation", () => {
@@ -233,7 +307,8 @@ async function clipDraftFixture({
       startCueId: "cue_003",
       endCueId: "cue_004"
     }
-  ])
+  ]),
+  savedRows = []
 }: {
   enabled?: boolean;
   recentCount?: number;
@@ -241,6 +316,7 @@ async function clipDraftFixture({
   cueCount?: number;
   cueTextLength?: number;
   providerResponse?: unknown;
+  savedRows?: Array<Record<string, unknown>>;
 } = {}) {
   const sessionSecret = "session_fixture";
   const csrfToken = "csrf_fixture";
@@ -290,6 +366,12 @@ async function clipDraftFixture({
               media_status: "missing"
             };
           }
+          if (
+            query.includes("SELECT title")
+            && query.includes("FROM episodes")
+          ) {
+            return { title: "Ópera en la Selva" };
+          }
           return null;
         },
         async all() {
@@ -312,6 +394,9 @@ async function clipDraftFixture({
                 approved_at: "2026-07-29T06:00:00.000Z"
               }]
             };
+          }
+          if (query.includes("FROM editorial_ai_drafts draft")) {
+            return { results: savedRows };
           }
           return { results: [] };
         },

@@ -538,6 +538,24 @@ limit. Oversized complete input must fail before the claim with
 `clip_draft_full_transcript_required`. The production dry bundle must retain
 `CLIP_DRAFT_AI_ENABLED=false`.
 
+Migration `0074` losslessly extends the private proposal ledger with the
+`clips` kind and requires its exact alignment-revision foreign key. Before
+deploying, prepare `AUTOMATED_CLIP_SOURCES_SQL` against a zero-to-current
+schema, confirm existing show-notes and chapter rows survive the rebuild, and
+record only aggregate kind/status/attempt counts plus
+`PRAGMA foreign_key_check`. Production must remain unmigrated with
+`CLIP_DRAFT_AUTOMATION_MODE=disabled` and `CLIP_DRAFT_AI_ENABLED=false`.
+
+After an exact transcript separately passes human alignment review, the next
+five-minute staging boundary may create at most one clip proposal per output
+language and exact fingerprint. Verify current master, transcript
+revision/digest, passed alignment revision, episode-copy digest, three-attempt
+ceiling, lease recovery, and content-free system audits. A second boundary
+must not duplicate the proposal or audit. The Admin must load but not apply the
+newest proposal; clip save, alignment, render, approval, public publication,
+and YouTube remain separate explicit actions. Before any qualifying alignment,
+the scheduler must create zero clip proposals, audits, or model calls.
+
 On that saved synthetic transcript, download both WebVTT and SubRip from the
 Production workbench in English and Spanish. Confirm the filenames identify
 language and revision, the response exposes that same revision, timestamps and

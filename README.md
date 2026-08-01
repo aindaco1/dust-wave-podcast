@@ -200,8 +200,14 @@ accepts only chronological, non-overlapping exact cue ranges. The Worker
 derives and enforces 15–90 second timing from immutable cues, while generated
 titles and editorial reasons remain review text. Choosing a candidate fills a
 new unsaved vertical segment recipe; the existing versioned save, alignment,
-render, approval, and publication gates remain unchanged. Staging is enabled
-and production is disabled.
+render, approval, and publication gates remain unchanged. Staging now prepares
+primary/show-language candidates automatically only after the exact final
+master, approved speaker-confirmed transcript, and human-approved passing word
+alignment exist. Chapters and clips share one aligned-editorial eligibility
+query plus the private AI-draft lease/retry ledger; clip fingerprints also bind
+episode title and duration. The Admin reads only current proposals and never
+applies one. Production exits before D1 and both clip automation and AI remain
+disabled.
 
 Source-language transcription accepts an explicit English/Spanish episode
 language and only the current approved working master. The job fingerprint

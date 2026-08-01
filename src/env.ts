@@ -26,6 +26,7 @@ export type PodcastEnv = Env & {
   CHECKOUT_TURNSTILE_REQUIRED?: string;
   CHAPTER_DRAFT_AUTOMATION_MODE?: string;
   CHAPTER_DRAFT_AI_ENABLED?: string;
+  CLIP_DRAFT_AUTOMATION_MODE?: string;
   CLIP_DRAFT_AI_ENABLED?: string;
   CLIP_PUBLICATION_MODE?: string;
   PODCAST_EMAIL_FROM?: string;

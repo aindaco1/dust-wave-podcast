@@ -1,6 +1,6 @@
 import { prepareAdminAuditAfterSingleChange } from "./audit";
 
-export type EditorialAiDraftKind = "chapters" | "show_notes";
+export type EditorialAiDraftKind = "chapters" | "clips" | "show_notes";
 
 export type EditorialAiDraftClaim = {
   draftId: string;

@@ -13,6 +13,11 @@ import {
 } from "./ai-drafts";
 import { recordAdminAudit } from "./audit";
 import {
+  ALIGNED_EDITORIAL_SOURCES_ORDER_SQL,
+  ALIGNED_EDITORIAL_SOURCES_SQL,
+  type AlignedEditorialSource
+} from "./aligned-editorial-sources";
+import {
   canonicalChapterContent,
   type EpisodeChapter,
   normalizeEpisodeChapters,
@@ -24,7 +29,6 @@ import {
   failEditorialAiDraft
 } from "./editorial-ai-draft-ledger";
 import type { PodcastEnv } from "./env";
-import { FINAL_WORKING_MASTER_DECISION_SQL } from "./final-working-master";
 import { privateJson } from "./http";
 import {
   loadVerifiedApprovedTranscript,
@@ -38,19 +42,6 @@ const MAXIMUM_GENERATED_CHAPTERS = 24;
 const MAXIMUM_CHAPTER_TITLE_CHARACTERS = 160;
 const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
 export const CHAPTER_DRAFT_PROMPT_VERSION = "chapter-draft-v1";
-
-type AutomatedChapterSource = {
-  episode_id: string;
-  episode_title: string;
-  episode_duration_seconds: number | null;
-  show_language: string;
-  working_master_id: string;
-  transcript_id: string;
-  source_language: TranscriptLanguage;
-  transcript_revision: number;
-  transcript_sha256: string;
-  alignment_revision_id: string;
-};
 
 type SavedChapterDraftRow = {
   id: string;
@@ -72,66 +63,14 @@ type SavedChapterDraftRow = {
   completed_at: string;
 };
 
-export const AUTOMATED_CHAPTER_SOURCES_SQL = `SELECT
-    episode.id AS episode_id,
-    episode.title AS episode_title,
-    episode.duration_seconds AS episode_duration_seconds,
-    show.language AS show_language,
-    state.current_master_id AS working_master_id,
-    transcript.id AS transcript_id,
-    transcript.language AS source_language,
-    transcript_revision.revision AS transcript_revision,
-    transcript_revision.content_sha256 AS transcript_sha256,
-    alignment_revision.id AS alignment_revision_id
-  FROM transcripts transcript
-  JOIN episodes episode ON episode.id = transcript.episode_id
-  JOIN shows show ON show.id = episode.show_id
-  JOIN transcript_approvals transcript_approval
-    ON transcript_approval.transcript_id = transcript.id
-   AND transcript_approval.revision = (
-     SELECT MAX(latest.revision)
-     FROM transcript_approvals latest
-     WHERE latest.transcript_id = transcript.id
-   )
-  JOIN transcript_revisions transcript_revision
-    ON transcript_revision.transcript_id = transcript.id
-   AND transcript_revision.revision = transcript_approval.revision
-  JOIN episode_working_master_states state
-    ON state.episode_id = episode.id
-  JOIN episode_working_masters master
-    ON master.id = state.current_master_id
-   AND master.episode_id = episode.id
-  JOIN audio_qc_runs qc
-    ON qc.id = master.quality_control_run_id
-   AND qc.status = 'succeeded'
-   AND qc.blocker_count = 0
-  JOIN transcript_alignment_jobs alignment_job
-    ON alignment_job.episode_id = episode.id
-   AND alignment_job.working_master_id = state.current_master_id
-   AND alignment_job.transcript_id = transcript.id
-   AND alignment_job.transcript_revision = transcript_revision.revision
-   AND alignment_job.transcript_content_sha256 = transcript_revision.content_sha256
-   AND alignment_job.status = 'ready'
-  JOIN transcript_alignment_revisions alignment_revision
-    ON alignment_revision.id = alignment_job.alignment_revision_id
-   AND alignment_revision.transcript_id = transcript.id
-   AND alignment_revision.transcript_revision_sha256 = transcript_revision.content_sha256
-   AND alignment_revision.language = transcript.language
-   AND alignment_revision.status = 'passed'
-  JOIN transcript_alignment_approvals alignment_approval
-    ON alignment_approval.alignment_revision_id = alignment_revision.id
-  WHERE episode.status IN ('draft', 'scheduled')
-    AND transcript.language IN ('en', 'es')
-    AND transcript_revision.speaker_labels_confirmed = 1
-    AND length(CAST(transcript_revision.content_json AS BLOB)) <= 1000000
-    AND ${FINAL_WORKING_MASTER_DECISION_SQL}
+export const AUTOMATED_CHAPTER_SOURCES_SQL = `${ALIGNED_EDITORIAL_SOURCES_SQL}
     AND NOT EXISTS (
       SELECT 1
       FROM episode_chapter_sets chapter_set
       WHERE chapter_set.episode_id = episode.id
         AND chapter_set.revision > 0
     )
-  ORDER BY alignment_approval.created_at, episode.id, transcript.language
+  ${ALIGNED_EDITORIAL_SOURCES_ORDER_SQL}
   LIMIT ?`;
 
 export async function listAdminEpisodeChapterDrafts(
@@ -252,11 +191,11 @@ export async function scheduleAutomaticChapterDrafts(
     || env.CHAPTER_DRAFT_AUTOMATION_MODE !== "staging_generate"
     || !isTruthy(env.CHAPTER_DRAFT_AI_ENABLED)
   ) return 0;
-  let sources: D1Result<AutomatedChapterSource>;
+  let sources: D1Result<AlignedEditorialSource>;
   try {
     sources = await env.DB.prepare(
       AUTOMATED_CHAPTER_SOURCES_SQL
-    ).bind(10).all<AutomatedChapterSource>();
+    ).bind(10).all<AlignedEditorialSource>();
   } catch (error) {
     console.error(JSON.stringify({
       level: "error",
@@ -471,7 +410,7 @@ export async function createAdminEpisodeChapterDraft(
 
 async function generateAutomaticChapterDraft(
   env: PodcastEnv,
-  source: AutomatedChapterSource,
+  source: AlignedEditorialSource,
   outputLanguage: TranscriptLanguage
 ): Promise<"failed" | "ready" | "skipped"> {
   const transcript = await loadVerifiedApprovedTranscript(
