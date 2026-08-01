@@ -555,8 +555,10 @@ async function generateAutomaticShowNotesDraft(
     });
     return completed ? "ready" : "failed";
   } catch (error) {
+    const failureCode = safeAiDraftFailureCode(error);
     await failEditorialAiDraft(env.DB, claim, {
       auditAction: "show_notes.automatic_draft_failed",
+      failureCode,
       auditMetadata: {
         automated: true,
         episodeId: source.episode_id,
@@ -568,7 +570,7 @@ async function generateAutomaticShowNotesDraft(
         model: SHOW_NOTES_MODEL,
         promptVersion: SHOW_NOTES_PROMPT_VERSION,
         errorName: error instanceof Error ? error.name : "UnknownError",
-        failureCode: safeAiDraftFailureCode(error)
+        failureCode
       }
     });
     return "failed";
