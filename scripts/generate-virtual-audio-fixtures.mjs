@@ -28,29 +28,10 @@ assertContract();
 const { profile, sources } = contract;
 
 for (const source of sources) {
-  run("ffmpeg", [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-f",
-    "lavfi",
-    "-i",
-    `sine=frequency=${source.frequencyHz}:sample_rate=44100:duration=${source.durationSeconds}`,
-    "-map_metadata",
-    "-1",
-    "-ac",
-    "2",
-    "-codec:a",
-    "libmp3lame",
-    "-b:a",
-    "128k",
-    "-write_xing",
-    "0",
-    "-id3v2_version",
-    "0",
-    resolve(outputDirectory, source.filename)
-  ]);
+  await writeFile(
+    resolve(outputDirectory, source.filename),
+    deterministicSourceBytes(source)
+  );
 }
 
 const fileBytes = Object.fromEntries(
@@ -179,6 +160,39 @@ function assertContract() {
   ) {
     throw new Error("Unsupported virtual-audio synthetic fixture contract.");
   }
+}
+
+function deterministicSourceBytes(source) {
+  if (
+    !Number.isSafeInteger(source.frameBytes)
+    || source.frameBytes !== 417
+    || !Number.isSafeInteger(source.frameCount)
+    || source.frameCount < 1
+    || source.frameCount > 1_000
+    || source.bytes !== source.frameBytes * source.frameCount
+    || typeof source.frameBase64 !== "string"
+    || source.frameBase64.length > 1_000
+  ) {
+    throw new Error(`Fixture frame contract is invalid: ${source.filename}`);
+  }
+  const frame = Buffer.from(source.frameBase64, "base64");
+  const mainDataBegin = (frame[4] << 1) | (frame[5] >> 7);
+  if (
+    frame.byteLength !== source.frameBytes
+    || frame.toString("base64") !== source.frameBase64
+    || frame[0] !== 0xff
+    || (frame[1] & 0xfe) !== 0xfa
+    || ((frame[2] >> 4) & 0x0f) !== 0x09
+    || ((frame[2] >> 2) & 0x03) !== 0
+    || ((frame[2] >> 1) & 0x01) !== 0
+    || ((frame[3] >> 6) & 0x03) === 0x03
+    || mainDataBegin !== 0
+  ) {
+    throw new Error(`Fixture seed frame is invalid: ${source.filename}`);
+  }
+  return Buffer.concat(
+    Array.from({ length: source.frameCount }, () => frame)
+  );
 }
 
 function probe(path) {
