@@ -6,11 +6,13 @@ export function currentWorkingMasterDecisionEvidenceSql({
   return `EXISTS (
     SELECT 1
     FROM episode_working_master_states decision_state
+    JOIN episodes decision_episode
+      ON decision_episode.id = audio_enhancement_derivatives.episode_id
     JOIN audio_qc_runs decision_qc
       ON decision_qc.id =
         audio_enhancement_derivatives.derivative_quality_control_run_id
     JOIN show_audio_qc_policies decision_policy
-      ON decision_policy.show_id = audio_enhancement_derivatives.show_id
+      ON decision_policy.show_id = decision_episode.show_id
     WHERE decision_state.episode_id =
         audio_enhancement_derivatives.episode_id
       ${requireRevision ? "AND decision_state.revision = ?" : ""}

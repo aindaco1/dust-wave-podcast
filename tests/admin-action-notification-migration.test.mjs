@@ -4,6 +4,11 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
+import { WORKING_MASTER_DECISION_EVIDENCE_SELECT } from
+  "../src/admin-action-notifications";
+import { currentWorkingMasterDecisionEvidenceSql } from
+  "../src/working-master-decision-evidence";
+
 const migrationsDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url)
 );
@@ -40,6 +45,16 @@ describe("admin action notification migration", () => {
         "media_object_key",
         "provider_response"
       ]));
+      expect(() => db.prepare(
+        `${WORKING_MASTER_DECISION_EVIDENCE_SELECT} LIMIT 1`
+      ).all()).not.toThrow();
+      expect(() => db.prepare(
+        `SELECT id
+         FROM audio_enhancement_derivatives
+         WHERE ${currentWorkingMasterDecisionEvidenceSql({
+           requireRevision: true
+         })}`
+      ).all(1)).not.toThrow();
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"
