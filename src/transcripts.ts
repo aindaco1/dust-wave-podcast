@@ -4,6 +4,9 @@ import {
 
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import {
+  prepareResolveTranscriptReviewAction
+} from "./admin-action-notifications";
 import type { PodcastEnv } from "./env";
 import { privateCorsHeaders, privateJson } from "./http";
 import { safeDownloadFilename } from "./media-range";
@@ -916,7 +919,8 @@ export async function approveAdminEpisodeTranscript(
       approvalId,
       transcriptId,
       expectedRevision
-    )
+    ),
+    prepareResolveTranscriptReviewAction(env.DB, transcriptId)
   ]);
   if (Number(results[1]?.meta?.changes ?? 0) !== 1) {
     return conflict(request, env, "transcript_approval_conflict");

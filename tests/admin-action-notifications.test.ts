@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { scheduleAdminActionNotifications } from
-  "../src/admin-action-notifications";
+import {
+  scheduleAdminActionNotifications,
+  type AdminActionKind
+} from "../src/admin-action-notifications";
 import type { PodcastEnv } from "../src/env";
 
 afterEach(() => {
@@ -9,14 +11,9 @@ afterEach(() => {
 });
 
 describe("admin action notification automation", () => {
-  it("sends one bilingual, content-minimal deep link to the configured super-admin", async () => {
+  it("preserves the existing master-review email and digest", async () => {
     const fixture = actionFixture();
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: "resend_fixture" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
-    );
+    const fetchMock = successfulResend();
 
     await scheduleAdminActionNotifications(fixture.env);
     await scheduleAdminActionNotifications(fixture.env);
@@ -49,8 +46,40 @@ describe("admin action notification automation", () => {
     expect(fixture.boundValues.flat()).not.toContain(usableToken);
   });
 
+  it.each([
+    {
+      kind: "delivery_audio_approval" as const,
+      subject: "Podcast audio ready for review",
+      deepLink: "step=media&target=delivery_audio"
+    },
+    {
+      kind: "transcript_review" as const,
+      subject: "Podcast transcript ready for review",
+      deepLink: "step=transcript&target=transcript_review"
+    }
+  ])("sends one bilingual $kind link", async ({
+    kind,
+    subject,
+    deepLink
+  }) => {
+    const fixture = actionFixture({ kind });
+    const fetchMock = successfulResend();
+
+    await scheduleAdminActionNotifications(fixture.env);
+    await scheduleAdminActionNotifications(fixture.env);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fixture.notification?.action_kind).toBe(kind);
+    expect(fixture.notification?.status).toBe("sent");
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload.subject).toContain(subject);
+    expect(payload.text).toContain(deepLink);
+    expect(payload.text).toContain("#magic-link=");
+    expect(JSON.stringify(payload)).not.toContain("private/");
+  });
+
   it("retries a provider rejection three times with an identical request", async () => {
-    const fixture = actionFixture();
+    const fixture = actionFixture({ kind: "delivery_audio_approval" });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
       async () => new Response(JSON.stringify({ message: "unavailable" }), {
         status: 503,
@@ -75,7 +104,11 @@ describe("admin action notification automation", () => {
   });
 
   it("resolves obsolete decisions without issuing a token or sending mail", async () => {
-    const fixture = actionFixture({ ready: false, withNotification: true });
+    const fixture = actionFixture({
+      kind: "transcript_review",
+      ready: false,
+      withNotification: true
+    });
     const fetchMock = vi.spyOn(globalThis, "fetch");
 
     await scheduleAdminActionNotifications(fixture.env);
@@ -88,28 +121,30 @@ describe("admin action notification automation", () => {
   });
 });
 
+function successfulResend() {
+  return vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ id: "resend_fixture" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  );
+}
+
 function actionFixture({
+  kind = "working_master_decision",
   ready = true,
   withNotification = false
 }: {
+  kind?: AdminActionKind;
   ready?: boolean;
   withNotification?: boolean;
 } = {}) {
-  const evidence = {
-    target_id: "derivative_fixture",
-    episode_id: "episode_fixture",
-    show_id: "show_fixture",
-    source_master_id: "master_fixture",
-    output_sha256: "8".repeat(64),
-    processor_report_sha256: "9".repeat(64),
-    quality_control_report_sha256: "a".repeat(64),
-    quality_control_policy_revision: 1,
-    working_master_revision: 1
-  };
+  const evidence = actionEvidence(kind);
   const queries: string[] = [];
   const boundValues: unknown[][] = [];
   let notification: {
     id: string;
+    action_kind: AdminActionKind;
     target_id: string;
     action_digest: string;
     status: string;
@@ -118,6 +153,7 @@ function actionFixture({
     lease_id: string | null;
   } | null = withNotification ? {
     id: "admin_action_existing",
+    action_kind: kind,
     target_id: evidence.target_id,
     action_digest: "b".repeat(64),
     status: "pending",
@@ -136,16 +172,19 @@ function actionFixture({
           return this;
         },
         async all() {
-          if (query.includes(
-            "ORDER BY audio_enhancement_derivatives.completed_at"
-          )) {
-            return { results: ready ? [{ ...evidence }] : [] };
+          if (query.includes("ORDER BY evidence.action_ready_at")) {
+            return {
+              results: ready && queryActionKind(query) === kind
+                ? [{ ...evidence }]
+                : []
+            };
           }
           if (query.includes("FROM admin_action_notifications")) {
             return {
               results: notification?.status === "pending"
                 ? [{
                   id: notification.id,
+                  action_kind: notification.action_kind,
                   target_id: notification.target_id,
                   action_digest: notification.action_digest,
                   attempt_count: notification.attempt_count
@@ -159,11 +198,10 @@ function actionFixture({
           return { results: [] };
         },
         async first() {
-          if (
-            query.includes("FROM audio_enhancement_derivatives")
-            && query.includes("AND audio_enhancement_derivatives.id = ?")
-          ) {
-            return ready ? { ...evidence } : null;
+          if (query.includes("WHERE evidence.target_id = ?")) {
+            return ready && queryActionKind(query) === kind
+              ? { ...evidence }
+              : null;
           }
           if (query.includes("FROM admin_users")) {
             return { id: "admin_fixture" };
@@ -175,8 +213,9 @@ function actionFixture({
             if (!notification) {
               notification = {
                 id: String(values[0]),
-                target_id: String(values[2]),
-                action_digest: String(values[3]),
+                action_kind: String(values[2]) as AdminActionKind,
+                target_id: String(values[3]),
+                action_digest: String(values[4]),
                 status: "pending",
                 attempt_count: 0,
                 failure_code: null,
@@ -190,17 +229,22 @@ function actionFixture({
             query.includes("UPDATE admin_action_notifications")
             && query.includes("NOT EXISTS")
           ) {
-            if (!ready && notification) notification.status = "resolved";
+            if (
+              !ready
+              && notification
+              && notification.action_kind === values[0]
+            ) notification.status = "resolved";
             return { success: true, meta: { changes: ready ? 0 : 1 } };
           }
           if (
             query.includes("UPDATE admin_action_notifications")
-            && query.includes("status = 'sending'")
             && query.includes("attempt_count = attempt_count + 1")
           ) {
-            if (!notification || notification.status !== "pending") {
-              return { success: true, meta: { changes: 0 } };
-            }
+            if (
+              !notification
+              || notification.status !== "pending"
+              || notification.action_kind !== values[2]
+            ) return { success: true, meta: { changes: 0 } };
             notification.status = "sending";
             notification.attempt_count += 1;
             notification.lease_id = String(values[0]);
@@ -214,9 +258,7 @@ function actionFixture({
               !notification
               || notification.status !== "sending"
               || notification.lease_id !== values[7]
-            ) {
-              return { success: true, meta: { changes: 0 } };
-            }
+            ) return { success: true, meta: { changes: 0 } };
             notification.status = String(values[0]);
             notification.failure_code = values[3]
               ? String(values[3])
@@ -251,4 +293,57 @@ function actionFixture({
     },
     queries
   };
+}
+
+function actionEvidence(kind: AdminActionKind) {
+  const base = {
+    episode_id: "episode_fixture",
+    show_id: "show_fixture",
+    action_ready_at: "2026-08-01T00:00:00Z"
+  };
+  if (kind === "delivery_audio_approval") {
+    return {
+      ...base,
+      target_id: "delivery_fixture",
+      source_master_id: "master_fixture",
+      output_sha256: "8".repeat(64),
+      peaks_sha256: "9".repeat(64),
+      processor_manifest_sha256: "a".repeat(64),
+      processor_report_sha256: "b".repeat(64)
+    };
+  }
+  if (kind === "transcript_review") {
+    return {
+      ...base,
+      target_id: "transcript_fixture",
+      source_master_id: "master_fixture",
+      language: "es",
+      transcript_revision: 1,
+      transcript_sha256: "c".repeat(64),
+      input_fingerprint: "d".repeat(64)
+    };
+  }
+  return {
+    ...base,
+    target_id: "derivative_fixture",
+    source_master_id: "master_fixture",
+    output_sha256: "8".repeat(64),
+    processor_report_sha256: "9".repeat(64),
+    quality_control_report_sha256: "a".repeat(64),
+    quality_control_policy_revision: 1,
+    working_master_revision: 1
+  };
+}
+
+function queryActionKind(query: string): AdminActionKind | null {
+  if (query.includes("FROM delivery_audio_jobs job")) {
+    return "delivery_audio_approval";
+  }
+  if (query.includes("FROM transcripts transcript")) {
+    return "transcript_review";
+  }
+  if (query.includes("FROM audio_enhancement_derivatives")) {
+    return "working_master_decision";
+  }
+  return null;
 }

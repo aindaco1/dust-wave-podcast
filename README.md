@@ -47,13 +47,15 @@ consumer stores a payload digest plus bounded internal job identity, never raw
 content, and deliberately cannot replay work or repeat provider side effects.
 Production queue behavior remains unchanged.
 
-Staging also discovers exact enhanced-master decisions that passed the current
-QC policy and sends one bilingual Resend action message to a configured
-Super-admin. The link signs in once, selects the authorized show and episode,
-and focuses the existing working-master decision. Its stable idempotency digest
-supports three bounded delivery attempts; D1 retains only content-free action
-state and a login-token hash. Approval, rejection, or stale evidence resolves
-the reminder automatically. Production delivery remains disabled.
+Staging also discovers exact enhanced-master decisions, ready delivery audio,
+and source-language transcripts that need human review, then sends one
+bilingual Resend action message to a configured Super-admin. Each link signs in
+once, selects the authorized show and episode, and focuses the existing exact
+review control. Stable idempotency digests support three bounded delivery
+attempts; D1 retains only content-free action state and a login-token hash.
+Approval, rejection, editing drift, or stale evidence resolves the relevant
+reminder automatically. Downstream reminders remain blocked until the shared
+master decision is final, and production delivery remains disabled.
 
 Public release, premium-window, subscription-expiry, tax-rate, and publication
 job boundaries compare canonical millisecond UTC RFC 3339 timestamps against
