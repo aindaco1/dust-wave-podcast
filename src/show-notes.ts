@@ -43,7 +43,7 @@ const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
 export const SHOW_NOTES_MODEL =
   "@cf/meta/llama-4-scout-17b-16e-instruct";
 export const SHOW_NOTES_PROMPT_VERSION =
-  "show-notes-v4-grounded-llama4";
+  "show-notes-v5-grounded-neutral";
 
 type EpisodePromptRow = {
   title: string;
@@ -728,10 +728,9 @@ function showNotesMessages({
         + "used in the draft under grounding.namedEntities with a short exact "
         + "source substring containing that name; keep each substring to one "
         + "sentence. If exact evidence is absent, use a generic role instead. "
-        + "List every named-speaker attribution "
-        + "under grounding.speakerAttributions with an exact transcript "
-        + "substring that includes the confirmed `Speaker:` label. Never "
-        + "attribute a statement when that confirmed label is absent. "
+        + "Do not attribute any statement to a speaker, even when the "
+        + "transcript has a label. Write neutral, topic-based notes and "
+        + "always return speakerAttributions as an empty array. "
         + (repairFailureCode
           ? `A prior response failed ${repairFailureCode}. Regenerate from `
             + "the supplied source only; do not reuse its output. Every "
@@ -751,8 +750,7 @@ function showNotesMessages({
           transcriptCoverage: projection.truncated
             ? "partial_head_middle_tail"
             : "complete",
-          sourceLanguage,
-          confirmedSpeakerLabels: projection.confirmedSpeakerLabels
+          sourceLanguage
         },
         episode: {
           title: episode.title,
@@ -815,7 +813,7 @@ function showNotesResponseSchema(): Record<string, unknown> {
           },
           speakerAttributions: {
             type: "array",
-            maxItems: MAXIMUM_AI_DRAFT_GROUNDING_ITEMS,
+            maxItems: 0,
             items: {
               type: "object",
               additionalProperties: false,
