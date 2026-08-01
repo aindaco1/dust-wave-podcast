@@ -113,33 +113,43 @@ alignment `passed` transition without an exact approval and rejects an
 approval unless the result is structurally eligible and its current inputs and
 clean bilingual benchmark all match.
 
-The Podcast admin queues the selected approved language and displays the exact
-manual workflow handoff. `process-alignment.yml` is staging-only, pinned to
-Ubuntu 24.04, validates the Worker-selected execution revision against the
-reviewed constant, verifies the runner remote, and performs an exact
-content-addressed fetch/detached checkout before installing only the selected
-locked adapter extra. It uses purpose-bound signed Worker routes, receives no
-Cloudflare/R2 credential, and retains no audio, transcript, or raw result
-artifact. The Worker validates and stores the result but can move it only to
-`needs_review`; an Admin/Super-admin approval button remains disabled until
-the benchmark row matches.
+The Podcast scheduler claims eligible alignment work through the durable
+processor-dispatch ledger and dispatches `process-alignment.yml` without a
+manual GitHub Actions handoff. The workflow is staging-only, pinned to Ubuntu
+24.04, validates the Worker-selected execution revision against the reviewed
+constant, verifies the runner remote, and performs an exact content-addressed
+fetch/detached checkout before installing only the selected locked adapter
+extra. It uses purpose-bound signed Worker routes, receives no Cloudflare/R2
+credential, retains no audio, transcript, or raw result artifact, and masks
+each derived callback signature before exposing it as a step output. The
+Worker validates and stores the result but can move it only to `needs_review`;
+an Admin/Super-admin approval button remains disabled until the benchmark row
+matches.
 
 ## Current evidence state
 
-The schema, normalized evaluator, private import path, and adversarial
-integration fixtures are implemented. The test suite proves evaluation,
-content-addressed storage, replay/conflict handling, content-free auditing,
-role/recent-auth/CSRF enforcement, and D1 approval linkage with synthetic
-records only. It does not claim that either candidate passes real audio. H1
-remains blocked until the 24-fixture rights-cleared corpus, human word
-boundaries, 100 preview reviews, 60-minute resource runs, idempotency evidence,
-and clean-runner reproduction are imported and produce a passing row.
+The schema, normalized evaluator, private import path, adversarial integration
+fixtures, benchmark-bundle assembler, and automated processor handoff are
+implemented. The test suite proves evaluation, content-addressed storage,
+replay/conflict handling, content-free auditing, role/recent-auth/CSRF
+enforcement, and D1 approval linkage with synthetic records only. It does not
+claim that either candidate passes the bilingual launch benchmark. H1 remains
+blocked until the 24-fixture rights-cleared corpus, human word boundaries, 100
+preview reviews, 60-minute resource runs, idempotency evidence, and
+clean-runner reproduction are imported and produce a passing row.
 
-As of July 28, 2026, the owner-authorized English Dust Don't Settle source has
-enough duration for 12 non-overlapping two-to-five-minute candidates, but its
-transcript still needs human text, speaker, and timing review. No English
-fixture is accepted yet. The Ópera en la Selva Substack feed currently exposes
-two editorial items and no podcast-audio enclosure. A metadata-only review of
+As of August 1, 2026, the owner-authorized English Dust Don't Settle source has
+an approved, speaker-confirmed transcript and has completed exact WhisperX
+alignment under runner commit
+`e611801d2af82dcdb079444b7e8a7eea4309d1a6`. Staging job
+`alignment_job_0426ec9ac766e5b43e626dd75695f128` produced immutable manifest
+SHA-256
+`b60b845414ae52a78987530550be58b10d5e416b2567d876ce51842f567a1706`:
+10,176 of 10,176 words are aligned, with zero unaligned, interpolated,
+invalid, or projection-issue words. That result is structurally eligible and
+awaits the real H1 benchmark plus exact human approval; it is not launch-gate
+evidence by itself. The Ópera en la Selva Substack feed currently exposes two
+editorial items and no podcast-audio enclosure. A metadata-only review of
 candidate Dust Wave YouTube uploads found English automatic captions and no
 owner-confirmed Spanish spoken-audio source. YouTube's translated caption
 options are not evidence that the underlying speech is Spanish.

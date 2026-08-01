@@ -2,10 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   AI_DRAFT_MODEL,
-  parseAiProviderJsonObject
+  parseAiProviderJsonObject,
+  safeAiDraftFailureCode
 } from "../src/ai-drafts";
 
 describe("Workers AI editorial draft contract", () => {
+  it("classifies failures without retaining provider content", () => {
+    expect(safeAiDraftFailureCode(
+      new TypeError("AI draft named-entity grounding is invalid")
+    )).toBe("grounding_named_entity_invalid");
+    expect(safeAiDraftFailureCode(
+      new TypeError("AI draft provider response is not valid JSON")
+    )).toBe("provider_response_invalid_json");
+    expect(safeAiDraftFailureCode(
+      new Error("provider payload included private text")
+    )).toBe("provider_error");
+  });
+
   it("pins a model supported by Workers AI JSON mode", () => {
     expect(AI_DRAFT_MODEL).toBe(
       "@cf/meta/llama-3.1-8b-instruct-fast"
