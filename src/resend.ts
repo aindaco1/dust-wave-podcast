@@ -132,6 +132,50 @@ export async function sendPodcastAnnouncementEmail(
   );
 }
 
+export async function sendAdminActionMagicLink(
+  env: PodcastEnv,
+  {
+    deliveryKey,
+    email,
+    loginUrl
+  }: {
+    deliveryKey: string;
+    email: string;
+    loginUrl: string;
+  }
+): Promise<MagicLinkDelivery> {
+  const subject =
+    "Podcast master ready for review / Máster del podcast listo para revisión";
+  const text = [
+    "A full enhanced podcast master passed its quality gate and needs your decision.",
+    "Un máster completo y mejorado del podcast aprobó el control de calidad y necesita tu decisión.",
+    `Review and decide / Revisar y decidir: ${loginUrl}`,
+    "This single-use link expires 15 minutes after it was issued.",
+    "Este enlace de un solo uso vence 15 minutos después de su emisión."
+  ].join("\n\n");
+  const html = [
+    "<p>A full enhanced podcast master passed its quality gate and needs your decision.</p>",
+    "<p>Un máster completo y mejorado del podcast aprobó el control de calidad y necesita tu decisión.</p>",
+    `<p><a href="${escapeAttribute(loginUrl)}">Review and decide / Revisar y decidir</a></p>`,
+    "<p>This single-use link expires 15 minutes after it was issued.<br>",
+    "Este enlace de un solo uso vence 15 minutos después de su emisión.</p>"
+  ].join("");
+  return sendResendPayload(
+    env,
+    {
+      from:
+        env.PODCAST_EMAIL_FROM
+        || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+      to: [email],
+      subject,
+      text,
+      html,
+      tags: [{ name: "category", value: "admin_action" }]
+    },
+    `podcast-admin-action/${deliveryKey}`
+  );
+}
+
 async function sendMagicLink(
   env: PodcastEnv,
   {

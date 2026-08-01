@@ -254,6 +254,20 @@
   and announcements use durable delivery-ID idempotency. Redirects fail closed.
   Scheduled maintenance removes expired rate buckets, consumed login tokens,
   and revoked/expired sessions after a one-day diagnostic buffer.
+- Enhanced-master action mail uses a separate secret recipient address and a
+  content-derived idempotency digest. The usable token is deterministically
+  derived with the admin-session secret only while the Worker is running; D1
+  stores its hash, a 15-minute expiry, the target/action digest, bounded retry
+  state, and at most a provider ID. It never stores the address, usable token,
+  login URL, media key, transcript, provider body, or exception text. The
+  return path is same-origin and limited to the English/Spanish Podcast admin.
+- Scheduled delivery rechecks the same current-master/QC predicate used by the
+  promote/reject operation, verifies the configured recipient is an active or
+  invited Super-admin, leases one action at a time, and uses three identical
+  attempts. Approval, rejection, policy drift, or master drift resolves the
+  action; no link can bypass recent-authentication, CSRF, or exact-revision
+  checks. `ADMIN_ACTION_NOTIFICATION_MODE` is live only in staging and remains
+  disabled in production.
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.
@@ -980,6 +994,12 @@ Worker also re-heads R2, and the expected master revision is compared before
 one atomic batch creates the immutable replacement, advances the pointer, and
 writes conditional audit evidence. Neither free-form approval text nor object
 keys enter audit metadata.
+
+The readiness predicate for promotion, rejection, and action discovery is one
+shared SQL primitive. This prevents the email path from weakening or drifting
+from the actual decision gate. The email deep link changes navigation only;
+the normal API authorization and exact-evidence checks still decide whether an
+action is available.
 
 ## Delivery-audio and player-peaks boundary
 

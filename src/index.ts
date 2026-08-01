@@ -24,6 +24,9 @@ import {
   handlePodcastDeadLetterBatch,
   isPodcastDeadLetterQueue
 } from "./queue-dead-letters";
+import {
+  scheduleAdminActionNotifications
+} from "./admin-action-notifications";
 
 export default {
   async fetch(
@@ -113,7 +116,8 @@ export default {
       cleanupVirtualAudioDiagnosticLeases(env.DB),
       schedulePendingAnnouncementDeliveries(env),
       schedulePendingTranscriptions(env),
-      syncProcessorDispatches(env)
+      syncProcessorDispatches(env),
+      scheduleAdminActionNotifications(env)
     ]);
   }
 } satisfies ExportedHandler<PodcastEnv, PodcastJob>;

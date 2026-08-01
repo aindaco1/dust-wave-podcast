@@ -253,6 +253,13 @@ iHeartRadio, and Deezer.
   evidence, retains the private render and QC result, frees the selection for
   another candidate, and leaves the working master untouched. A candidate
   cannot replace delivery audio by itself.
+- Exact ready/current/QC evidence now creates one durable, content-free human
+  action in staging. A bilingual Resend message uses a stable idempotency key
+  and a 15-minute single-use Super-admin link that reuses the existing
+  episode-centered navigator to focus Working master. Delivery is leased and
+  retried three times; promotion, rejection, master drift, or policy drift
+  resolves it automatically. The recipient remains a Worker secret and
+  production mode is disabled.
 - The delivery boundary now snapshots that exact current master into one
   deterministic 44.1 kHz stereo 128 kbps MP3 and bounded
   `dustwave-player-peaks-v1` document. The staging-only workflow fully decodes
