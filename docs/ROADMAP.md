@@ -268,7 +268,13 @@ iHeartRadio, and Deezer.
   approval atomically selects them for the episode. News/RSS publication now
   fails closed unless the selected audio and player peaks still descend from
   the current master. The bilingual workbench uses the existing Digest player
-  for authenticated waveform preview and download.
+  for authenticated waveform preview and download. After promotion or
+  rejection finalizes the enhanced-master decision, the scheduler now queues
+  the eligible delivery render without another operator action. It reuses the
+  manual queue primitive, writes a system audit row, dispatches through the
+  existing normalized processor ledger, permits only one active job, and
+  bounds terminal automatic retries to three. The production scheduler exits
+  before reading D1 or R2.
 - Keep operator launch checks content-free and replayable. The staging episode
   gate now reads only bounded statuses, revisions, counts, and D1 integrity;
   rejects an episode that has already escaped the isolated-draft boundary;

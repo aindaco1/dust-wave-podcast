@@ -27,6 +27,9 @@ import {
 import {
   scheduleAdminActionNotifications
 } from "./admin-action-notifications";
+import {
+  scheduleAutomatedDeliveryAudioJobs
+} from "./delivery-audio";
 
 export default {
   async fetch(
@@ -105,6 +108,7 @@ export default {
     _controller: ScheduledController,
     env: PodcastEnv
   ): Promise<void> {
+    await scheduleAutomatedDeliveryAudioJobs(env);
     await Promise.all([
       scheduleDuePublications(env),
       scheduleRssImportExecutions(env),
