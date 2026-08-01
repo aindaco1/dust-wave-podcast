@@ -112,6 +112,62 @@ type VerifiedPublicTranscriptRow = VerifiedApprovedTranscript & {
   episodeId: string;
 };
 
+export type TranscriptRevisionCommitEvidence = {
+  transcriptId: string;
+  mutationId: string;
+  revisionId: string;
+  auditId: string;
+  baseRevision: number;
+  targetRevision: number;
+  contentSha256: string;
+  speakerLabelsConfirmed: boolean;
+};
+
+export async function verifyTranscriptRevisionCommit(
+  db: D1Database,
+  evidence: TranscriptRevisionCommitEvidence
+): Promise<boolean> {
+  const committed = await db.prepare(
+    `SELECT transcript.id
+     FROM transcripts transcript
+     JOIN transcript_mutations mutation
+       ON mutation.id = ?
+      AND mutation.transcript_id = transcript.id
+      AND mutation.base_revision = ?
+      AND mutation.target_revision = ?
+      AND mutation.content_sha256 = ?
+     JOIN transcript_revisions revision
+       ON revision.id = ?
+      AND revision.transcript_id = transcript.id
+      AND revision.revision = transcript.revision
+      AND revision.content_sha256 = transcript.content_sha256
+      AND revision.speaker_labels_confirmed = transcript.speaker_labels_confirmed
+     JOIN admin_audit_events audit
+       ON audit.id = ?
+      AND audit.action = 'transcript.revised'
+      AND audit.target_type = 'transcript'
+      AND audit.target_id = transcript.id
+     WHERE transcript.id = ?
+       AND transcript.revision = ?
+       AND transcript.content_sha256 = ?
+       AND transcript.speaker_labels_confirmed = ?
+       AND transcript.status = 'needs_review'
+       AND transcript.approved_revision IS NULL`
+  ).bind(
+    evidence.mutationId,
+    evidence.baseRevision,
+    evidence.targetRevision,
+    evidence.contentSha256,
+    evidence.revisionId,
+    evidence.auditId,
+    evidence.transcriptId,
+    evidence.targetRevision,
+    evidence.contentSha256,
+    evidence.speakerLabelsConfirmed ? 1 : 0
+  ).first<{ id: string }>();
+  return committed?.id === evidence.transcriptId;
+}
+
 export async function servePublicEpisodeTranscripts(
   request: Request,
   env: PodcastEnv,
@@ -641,7 +697,7 @@ export async function saveAdminEpisodeTranscript(
   const targetRevision = baseRevision + 1;
   const revisionId = `transcript_revision_${crypto.randomUUID().replace(/-/g, "")}`;
   const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
-  const results = await env.DB.batch([
+  await env.DB.batch([
     env.DB.prepare(
       `INSERT OR IGNORE INTO transcripts (
          id, episode_id, language, source, status, content_json, edited_html,
@@ -770,7 +826,17 @@ export async function saveAdminEpisodeTranscript(
       transcriptId
     )
   ]);
-  if (Number(results[2]?.meta?.changes ?? 0) !== 1) {
+  const committed = await verifyTranscriptRevisionCommit(env.DB, {
+    transcriptId,
+    mutationId,
+    revisionId,
+    auditId,
+    baseRevision,
+    targetRevision,
+    contentSha256,
+    speakerLabelsConfirmed: labelsConfirmed
+  });
+  if (!committed) {
     const current = await currentTranscriptRevision(env.DB, transcriptId);
     return conflict(request, env, "transcript_revision_conflict", {
       currentRevision: current
