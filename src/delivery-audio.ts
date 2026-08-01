@@ -30,6 +30,7 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { describeProcessorAvailability } from "./processor-mode";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
@@ -150,12 +151,7 @@ export async function listAdminDeliveryAudioJobs(
   ).bind(access.episode.id).all<DeliveryJobRow>();
   return privateJson(request, env.ALLOWED_ORIGINS, {
     jobs: rows.results.map((row) => presentDeliveryJob(env, row)),
-    processor: {
-      available: processorAvailable(env),
-      mode: env.ENVIRONMENT === "staging"
-        ? "staging_manual"
-        : "unavailable"
-    },
+    processor: describeProcessorAvailability(env, processorAvailable(env)),
     safeguards: {
       currentWorkingMasterRequired: true,
       normalizedStreamProfile: DELIVERY_AUDIO_PROFILE,
@@ -234,7 +230,7 @@ export async function queueAdminDeliveryAudioJob(
     }
     return privateJson(request, env.ALLOWED_ORIGINS, {
       job: presentDeliveryJob(env, prior),
-      processor: deliveryDispatch(manifest),
+      processor: deliveryDispatch(env, manifest),
       idempotent: true
     });
   }
@@ -332,7 +328,7 @@ export async function queueAdminDeliveryAudioJob(
     env.ALLOWED_ORIGINS,
     {
       job: job ? presentDeliveryJob(env, job) : null,
-      processor: deliveryDispatch(manifest),
+      processor: deliveryDispatch(env, manifest),
       idempotent: false
     },
     { status: 202 }
@@ -1730,13 +1726,19 @@ function presentDeliveryJob(
 }
 
 function deliveryDispatch(
+  env: PodcastEnv,
   manifest: DeliveryAudioManifest
 ): Record<string, unknown> {
+  const processor = describeProcessorAvailability(
+    env,
+    processorAvailable(env)
+  );
   return {
     workflow: "process-delivery-audio.yml",
     jobId: manifest.jobId,
     manifestSha256: manifest.manifestSha256,
-    manualDispatchOnly: true
+    dispatchMode: processor.mode,
+    manualDispatchOnly: processor.mode !== "staging_automatic"
   };
 }
 
