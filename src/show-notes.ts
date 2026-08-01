@@ -48,7 +48,7 @@ const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
 export const SHOW_NOTES_MODEL =
   "@cf/meta/llama-4-scout-17b-16e-instruct";
 export const SHOW_NOTES_PROMPT_VERSION =
-  "show-notes-v9-full-source-grounding";
+  "show-notes-v10-filter-ungrounded-content";
 
 const GENERIC_SPEAKER_ATTRIBUTION = new RegExp(
   String.raw`\b(?:he|she|they|hosts?|guests?|speakers?|`
@@ -686,14 +686,21 @@ export function parseShowNotesProviderResponse(
     episode.summary,
     projection.excerpt
   ];
+  const derivedGrounding = deriveShowNotesGrounding(
+    result.grounding,
+    evidenceTexts
+  );
   validateAiDraftGrounding(
-    deriveShowNotesGrounding(result.grounding, evidenceTexts),
+    derivedGrounding.grounding,
     {
       evidenceTexts,
       confirmedSpeakerLabels: projection.confirmedSpeakerLabels
     }
   );
-  const draft = parseProviderShowNotesDraftObject(result);
+  const draft = parseProviderShowNotesDraftObject(result, {
+    excludedNames: derivedGrounding.ungroundedNames,
+    fallbackSummary: episode.summary
+  });
   validateShowNotesDraftQuality(draft);
   return draft;
 }
@@ -709,7 +716,10 @@ function parseSavedShowNotesDraft(value: string): ShowNotesDraft {
 function deriveShowNotesGrounding(
   value: unknown,
   evidenceTexts: string[]
-): Record<string, unknown> {
+): {
+  grounding: Record<string, unknown>;
+  ungroundedNames: string[];
+} {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("AI draft grounding is invalid");
   }
@@ -723,7 +733,9 @@ function deriveShowNotesGrounding(
   if (grounding.speakerAttributions.length > 0) {
     throw new TypeError("AI draft speaker grounding is invalid");
   }
-  const namedEntities = grounding.namedEntities.map((entity, index) => {
+  const namedEntities: Array<{ name: string; evidence: string }> = [];
+  const ungroundedNames: string[] = [];
+  for (const [index, entity] of grounding.namedEntities.entries()) {
     if (!entity || typeof entity !== "object" || Array.isArray(entity)) {
       throw new TypeError(`AI draft namedEntities[${index}] is invalid`);
     }
@@ -733,12 +745,17 @@ function deriveShowNotesGrounding(
       MAXIMUM_AI_DRAFT_GROUNDING_NAME_CHARACTERS,
       { allowNewlines: false }
     );
-    if (!evidenceTexts.some((text) => text.includes(name))) {
-      throw new TypeError("AI draft named-entity grounding is invalid");
+    const sourceName = findSourceName(name, evidenceTexts);
+    if (!sourceName) {
+      ungroundedNames.push(name);
+      continue;
     }
-    return { name, evidence: name };
-  });
-  return { namedEntities, speakerAttributions: [] };
+    namedEntities.push({ name: sourceName, evidence: sourceName });
+  }
+  return {
+    grounding: { namedEntities, speakerAttributions: [] },
+    ungroundedNames
+  };
 }
 
 function parseShowNotesDraftObject(
@@ -762,13 +779,27 @@ function parseShowNotesDraftObject(
 }
 
 function parseProviderShowNotesDraftObject(
-  result: Record<string, unknown>
+  result: Record<string, unknown>,
+  {
+    excludedNames,
+    fallbackSummary
+  }: {
+    excludedNames: string[];
+    fallbackSummary: string;
+  }
 ): ShowNotesDraft {
-  const summary = generatedAiText(
+  let summary = generatedAiText(
     result.summary,
     "summary",
     MAXIMUM_SUMMARY_CHARACTERS
   );
+  if (containsExcludedName(summary, excludedNames)) {
+    summary = generatedAiText(
+      fallbackSummary,
+      "fallbackSummary",
+      MAXIMUM_SUMMARY_CHARACTERS
+    );
+  }
   if (
     !Array.isArray(result.sections)
     || result.sections.length < 1
@@ -791,6 +822,7 @@ function parseProviderShowNotesDraftObject(
       `sections[${sectionIndex}].heading`,
       MAXIMUM_SECTION_HEADING_CHARACTERS
     );
+    if (containsExcludedName(heading, excludedNames)) continue;
     if (
       !Array.isArray(section.bullets)
       || section.bullets.length < 1
@@ -804,8 +836,12 @@ function parseProviderShowNotesDraftObject(
         `sections[${sectionIndex}].bullets[${bulletIndex}]`,
         MAXIMUM_SECTION_BULLET_CHARACTERS
       )
-    );
+    ).filter((bullet) => !containsExcludedName(bullet, excludedNames));
+    if (bullets.length < 1) continue;
     sections.push({ heading, bullets });
+  }
+  if (sections.length < 1) {
+    throw new TypeError("AI draft provider sections are invalid");
   }
   const showNotesMarkdown = generatedAiText(
     sections.map(({ heading, bullets }) =>
@@ -817,11 +853,14 @@ function parseProviderShowNotesDraftObject(
   return {
     summary,
     showNotesMarkdown,
-    keywords: parseShowNotesKeywords(result.keywords)
+    keywords: parseShowNotesKeywords(result.keywords, excludedNames)
   };
 }
 
-function parseShowNotesKeywords(value: unknown): string[] {
+function parseShowNotesKeywords(
+  value: unknown,
+  excludedNames: string[] = []
+): string[] {
   if (!Array.isArray(value) || value.length > MAXIMUM_KEYWORDS) {
     throw new TypeError("Show-notes provider keywords are invalid");
   }
@@ -835,12 +874,35 @@ function parseShowNotesKeywords(value: unknown): string[] {
       { allowNewlines: false }
     );
     const comparable = keyword.toLocaleLowerCase("en-US");
-    if (!seen.has(comparable)) {
+    if (
+      !seen.has(comparable)
+      && !containsExcludedName(keyword, excludedNames)
+    ) {
       seen.add(comparable);
       keywords.push(keyword);
     }
   }
   return keywords;
+}
+
+function findSourceName(name: string, evidenceTexts: string[]): string | null {
+  const pattern = new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])(${escapeRegExp(name)})(?=$|[^\\p{L}\\p{N}])`,
+    "iu"
+  );
+  for (const text of evidenceTexts) {
+    const match = pattern.exec(text);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+function containsExcludedName(text: string, excludedNames: string[]): boolean {
+  return excludedNames.some((name) => findSourceName(name, [text]) !== null);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function plainShowNotesSectionText(
