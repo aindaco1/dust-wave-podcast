@@ -837,14 +837,28 @@ change or audit row. A same-reason rejection retry must be idempotent.
 Anonymous derivative media is `401`; production queue, processor, and object
 state remain untouched.
 
-With the final working master selected, queue Delivery audio and player
-waveform from Production and dispatch the returned job ID:
+With the final working master selected, allow the next five-minute scheduler
+run to create Delivery audio and player waveform automatically. Confirm one
+`delivery_audio_auto_…` job and one `delivery_audio.queued` audit event with a
+null admin actor, `automated: true`, and attempt `1`. The existing processor
+dispatcher must claim that same manifest without a manual GitHub action. A
+second scheduler run must create neither another multipart upload nor another
+active job.
+
+The Production-tab queue action and the following workflow dispatch remain a
+recovery-only staging path if scheduler/dispatcher diagnosis requires an
+explicit fixture:
 
 ```sh
 gh workflow run process-delivery-audio.yml \
   --ref agent/launch-configuration \
   -f job_id="delivery_audio_REPLACE_WITH_QUEUED_ID"
 ```
+
+After a terminal processor failure, confirm a later scheduler run derives a
+new attempt ID and never exceeds three automatic attempts for the same
+episode/master/profile. Active, ready, or approved work must suppress retries.
+Production must read neither D1 nor R2 and keeps its processor routes at `404`.
 
 Confirm the run fetches only the exact signed master, emits raw complete
 44.1 kHz stereo 128 kbps MP3 frames without ID3/Xing metadata, fully decodes

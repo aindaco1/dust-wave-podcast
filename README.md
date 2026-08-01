@@ -117,7 +117,11 @@ credential-minimized workflow. Full decode, complete-frame validation,
 checksummed multipart upload, private existing-player review, and recent
 Super-admin approval are required before the episode enclosure can satisfy
 News/RSS publication. Master changes make unapproved delivery work stale, and
-the public waveform exists only for the exact published approval.
+the public waveform exists only for the exact published approval. Once the
+enhanced-master decision is final, the staging scheduler now creates the first
+eligible delivery render automatically and the existing dispatcher sends it
+to the pinned processor. Deterministic IDs, one-active-job constraints, and a
+three-attempt ceiling make retries bounded; production remains disabled.
 
 Audience reporting now combines provisional qualified downloads, daily
 60-second engaged Dust Wave web-player listens, app/device/country breakdowns,

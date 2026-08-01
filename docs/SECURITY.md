@@ -1010,6 +1010,17 @@ and a bounded waveform schema; callers cannot provide FFmpeg filters or output
 locations. A master change makes queued, rendering, completing, and ready jobs
 stale. Replacing episode audio makes the old approval historical.
 
+The staging scheduler may create a delivery render only after the current
+master is either an explicitly approved enhanced derivative or the source
+master retained by an immutable enhanced-derivative rejection. A ready or
+in-progress derivative blocks the scan. Queue creation reuses the same current
+master, QC-policy, R2-head, manifest, multipart, and audit primitive as the
+authenticated Admin route; it does not add a second trust path. Deterministic
+attempt IDs, the D1 one-active-job index, and a maximum of three automatic
+attempts bound concurrent and terminal retries. A system-created audit stores
+only the attempt number and content-free IDs/digests. Production returns before
+any D1 or R2 access, and scan failures cannot block unrelated cron work.
+
 The processor receives no R2 credential. Manifest/source/part/finalization
 requests use purpose-bound timestamped HMACs, bounded bodies, exact
 Content-Length, per-part SHA-256, ordered multipart evidence, native R2
