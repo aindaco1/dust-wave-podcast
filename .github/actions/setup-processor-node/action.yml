@@ -1,9 +1,13 @@
-name: Set up Podcast processor Node runtime
-description: Install the pinned Node runtime and locked repository dependencies.
+name: Set up Podcast processor runtime
+description: Install the pinned Node runtime, media tools, and locked dependencies.
 
 inputs:
   install-dependencies:
     description: Run npm ci after configuring Node.
+    required: false
+    default: "true"
+  install-media-tools:
+    description: Ensure FFmpeg and FFprobe are available.
     required: false
     default: "true"
 
@@ -20,3 +24,15 @@ runs:
       if: ${{ inputs.install-dependencies == 'true' }}
       shell: bash
       run: npm ci
+
+    - name: Ensure FFmpeg and FFprobe
+      if: ${{ inputs.install-media-tools == 'true' }}
+      shell: bash
+      run: |
+        if command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null; then
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+          exit 0
+        fi
+        sudo apt-get update
+        sudo apt-get install --yes --no-install-recommends ffmpeg
