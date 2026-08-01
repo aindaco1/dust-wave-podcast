@@ -56,11 +56,13 @@ The Python/model runtime belongs in a pinned GitHub or owner-controlled runner,
 not in the public Worker. The Worker owns job fingerprints, state, policy,
 result validation, and D1/R2 projection.
 
-The parent repository pins the green `release/0.2.0` submodule so the private
+The parent repository pins the green `release/0.2.2` submodule so the private
 benchmark-bundle assembler and its contract are reviewable with the Worker.
 Model execution remains independently pinned to reviewed commit
-`3c5ab054fdad375901eb186f32d7aed6cdb40413` and runner digest
-`sha256:5b07bbf315bd62a3c445a7a5a476bf642f91aa1c781173aa1f4e4e8021a51178`.
+`e611801d2af82dcdb079444b7e8a7eea4309d1a6` and runner digest
+`sha256:8a7cda2702487a1d542d5fb740efe8580ca9edd99f405d722d610536c73a3a11`.
+The digest is reproducible from that exact execution revision with
+`git archive --format=tar REVISION | shasum -a 256`.
 After the Worker validates that exact identity, the staging workflow fetches
 and detaches the submodule at the execution commit before installing an
 adapter. A bundle assembled by later source still identifies the exact commit

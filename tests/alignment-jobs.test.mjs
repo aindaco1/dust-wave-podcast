@@ -32,9 +32,9 @@ const jobId = "alignment_job_fixture";
 const revisionId = "alignment_revision_fixture";
 const sourceSha256 = "b".repeat(64);
 const transcriptContentSha256 = "c".repeat(64);
-const runnerRevision = "3c5ab054fdad375901eb186f32d7aed6cdb40413";
+const runnerRevision = "e611801d2af82dcdb079444b7e8a7eea4309d1a6";
 const runnerDigest =
-  "sha256:5b07bbf315bd62a3c445a7a5a476bf642f91aa1c781173aa1f4e4e8021a51178";
+  "sha256:8a7cda2702487a1d542d5fb740efe8580ca9edd99f405d722d610536c73a3a11";
 const passingBenchmarkReport = JSON.stringify({
   schemaVersion: "1",
   corpusVersion: "rights-cleared-bilingual-v1",

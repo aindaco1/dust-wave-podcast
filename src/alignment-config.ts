@@ -5,9 +5,9 @@ import type {
 export const ALIGNMENT_RUNNER_REPOSITORY =
   "aindaco1/dust-wave-alignment-runner";
 export const ALIGNMENT_RUNNER_REVISION =
-  "3c5ab054fdad375901eb186f32d7aed6cdb40413";
+  "e611801d2af82dcdb079444b7e8a7eea4309d1a6";
 export const ALIGNMENT_RUNNER_DIGEST =
-  "sha256:5b07bbf315bd62a3c445a7a5a476bf642f91aa1c781173aa1f4e4e8021a51178";
+  "sha256:8a7cda2702487a1d542d5fb740efe8580ca9edd99f405d722d610536c73a3a11";
 
 export const ALIGNMENT_ADAPTERS: Readonly<
   Record<"whisperx" | "stable-ts", AlignmentRunnerAdapterIdentity>

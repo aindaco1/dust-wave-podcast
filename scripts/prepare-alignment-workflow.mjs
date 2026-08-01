@@ -7,7 +7,7 @@ import {
   validateAlignmentProcessorManifest
 } from "@dustwave/timed-text/alignment";
 
-const RUNNER_REVISION = "3c5ab054fdad375901eb186f32d7aed6cdb40413";
+const RUNNER_REVISION = "e611801d2af82dcdb079444b7e8a7eea4309d1a6";
 const responsePath = process.argv[2];
 const outputFile = process.env.GITHUB_OUTPUT;
 if (!responsePath || !outputFile) {
