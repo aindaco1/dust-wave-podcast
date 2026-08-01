@@ -94,6 +94,16 @@ describe("processor dispatch automation", () => {
     const claim = await claimResponse.json();
     expect(claim).toMatchObject({
       schemaVersion: 1,
+      ledger: {
+        total: 1,
+        queued: 0,
+        leased: 1,
+        dispatched: 0,
+        running: 0,
+        succeeded: 0,
+        failed: 0,
+        canceled: 0
+      },
       dispatches: [{
         id: "processor_dispatch_audio_qc_fixture",
         processorType: "audio_qc",
