@@ -27,6 +27,7 @@ jobs:
         uses: ./.github/actions/setup-processor-node
         with:
           install-dependencies: "false"
+          install-media-tools: "false"
 
       - name: Claim and dispatch bounded processor work
         env:

@@ -59,10 +59,22 @@ describe("processor dispatch registry", () => {
       "cache: ${{ inputs.install-dependencies == 'true' && 'npm' || '' }}"
     );
     expect(setupAction).toContain("run: npm ci");
+    expect(setupAction).toContain("install-media-tools:");
+    expect(setupAction).toContain("command -v ffmpeg");
+    expect(setupAction).toContain(
+      "sudo apt-get install --yes --no-install-recommends ffmpeg"
+    );
+
+    const dispatcher = readFileSync(
+      join(repositoryRoot, ".github/workflows/dispatch-processors.yml"),
+      "utf8"
+    );
+    expect(dispatcher).toContain('install-media-tools: "false"');
 
     const workflowNames = [
       ...Object.values(registry.processors).map(({ workflow }) => workflow),
-      "process-ad-plan.yml"
+      "process-ad-plan.yml",
+      "virtual-audio-staging-gate.yml"
     ];
     for (const workflowName of workflowNames) {
       const workflow = readFileSync(
@@ -74,6 +86,9 @@ describe("processor dispatch registry", () => {
       );
       expect(workflow).not.toContain("uses: actions/setup-node@");
       expect(workflow).not.toMatch(/^\s*run:\s+npm ci\s*$/m);
+      expect(workflow).not.toContain(
+        "sudo apt-get install --yes ffmpeg"
+      );
     }
   });
 });

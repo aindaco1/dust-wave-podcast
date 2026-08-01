@@ -13,7 +13,11 @@ describe("virtual-audio staging gate workflow", () => {
     expect(workflow).toContain("timeout-minutes: 30");
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("environment: podcast-staging");
-    expect(workflow).toContain("sudo apt-get install --yes ffmpeg");
+    expect(workflow).toContain(
+      "uses: ./.github/actions/setup-processor-node"
+    );
+    expect(workflow).not.toContain("sudo apt-get install --yes ffmpeg");
+    expect(workflow).toContain("ffprobe -version");
     for (const line of workflow.split("\n").filter((value) => value.includes("uses:"))) {
       expect(line).toMatch(
         /uses:\s+(?:\.\/\.github\/actions\/setup-processor-node|[^@]+@[a-f0-9]{40}\b)/
