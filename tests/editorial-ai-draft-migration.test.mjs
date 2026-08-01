@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import { AUTOMATED_CHAPTER_SOURCES_SQL } from "../src/chapter-drafts";
 import { AUTOMATED_CLIP_SOURCES_SQL } from "../src/clip-drafts";
-import { AUTOMATED_SHOW_NOTES_SOURCES_SQL } from "../src/show-notes";
+import {
+  ADMIN_SHOW_NOTES_DRAFTS_SQL,
+  AUTOMATED_SHOW_NOTES_SOURCES_SQL
+} from "../src/show-notes";
 
 const migrationsDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url)
@@ -52,6 +55,9 @@ describe("editorial AI draft migration", () => {
       ]));
       expect(() => db.prepare(AUTOMATED_SHOW_NOTES_SOURCES_SQL).all(10))
         .not.toThrow();
+      expect(() => db.prepare(ADMIN_SHOW_NOTES_DRAFTS_SQL).all(
+        "episode_fixture"
+      )).not.toThrow();
       expect(() => db.prepare(AUTOMATED_CHAPTER_SOURCES_SQL).all(10))
         .not.toThrow();
       expect(() => db.prepare(AUTOMATED_CLIP_SOURCES_SQL).all(10))
