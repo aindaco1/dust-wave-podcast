@@ -102,8 +102,7 @@ describe("automatic show-notes drafts", () => {
         keywords: ["Ópera", "Selva"],
         grounding: {
           namedEntities: [{
-            name: "Ópera en la Selva",
-            evidence: "Ópera en la Selva"
+            name: "Ópera en la Selva"
           }],
           speakerAttributions: []
         }
@@ -137,7 +136,7 @@ describe("automatic show-notes drafts", () => {
       3,
       transcriptSha256,
       "@cf/meta/llama-4-scout-17b-16e-instruct",
-      "show-notes-v7-structured-sections"
+      "show-notes-v8-source-grounded-entities"
     ]));
     expect(statements.some(({ query }) => query.includes("UPDATE episodes")))
       .toBe(false);
