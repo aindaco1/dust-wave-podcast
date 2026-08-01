@@ -48,14 +48,17 @@ content, and deliberately cannot replay work or repeat provider side effects.
 Production queue behavior remains unchanged.
 
 Staging also discovers exact enhanced-master decisions, ready delivery audio,
-and source-language transcripts that need human review, then sends one
+source-language transcripts, and benchmark-qualified word alignments that need human review, then sends one
 bilingual Resend action message to a configured Super-admin. Each link signs in
 once, selects the authorized show and episode, and focuses the existing exact
 review control. Stable idempotency digests support three bounded delivery
 attempts; D1 retains only content-free action state and a login-token hash.
-Approval, rejection, editing drift, or stale evidence resolves the relevant
-reminder automatically. Downstream reminders remain blocked until the shared
-master decision is final, and production delivery remains disabled.
+Approval, rejection, editing drift, benchmark drift, or stale evidence resolves
+the relevant reminder automatically. Alignment mail appears only after the
+same structural, current-input, final-master, and private bilingual benchmark
+evidence required by the approval transaction. Downstream reminders remain
+blocked until the shared master decision is final, and production delivery
+remains disabled.
 
 Public release, premium-window, subscription-expiry, tax-rate, and publication
 job boundaries compare canonical millisecond UTC RFC 3339 timestamps against

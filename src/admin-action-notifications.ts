@@ -18,6 +18,7 @@ import {
 } from "./working-master-decision-evidence";
 
 export type AdminActionKind =
+  | "alignment_review"
   | "delivery_audio_approval"
   | "transcript_review"
   | "working_master_decision";
@@ -40,9 +41,12 @@ type AdminActionEvidence = {
   quality_control_policy_revision?: number;
   working_master_revision?: number;
   language?: string;
+  transcript_id?: string;
   transcript_revision?: number;
   transcript_sha256?: string;
   input_fingerprint?: string;
+  result_manifest_sha256?: string;
+  benchmark_run_id?: string;
 };
 
 type PendingAdminAction = {
@@ -145,7 +149,63 @@ export const TRANSCRIPT_REVIEW_EVIDENCE_SELECT = `
     AND transcript.content_sha256 IS NOT NULL
     AND job.status = 'succeeded'`;
 
+export const ALIGNMENT_REVIEW_EVIDENCE_SELECT = `
+  SELECT
+    revision.id AS target_id,
+    job.episode_id,
+    episode.show_id,
+    job.completed_at AS action_ready_at,
+    job.working_master_id AS source_master_id,
+    job.transcript_id,
+    job.language,
+    job.transcript_revision,
+    job.transcript_content_sha256 AS transcript_sha256,
+    job.input_fingerprint,
+    job.result_manifest_sha256,
+    benchmark.id AS benchmark_run_id
+  FROM transcript_alignment_revisions revision
+  JOIN transcript_alignment_jobs job
+    ON job.alignment_revision_id = revision.id
+  JOIN episodes episode ON episode.id = job.episode_id
+  JOIN episode_working_master_states state
+    ON state.episode_id = job.episode_id
+   AND state.current_master_id = job.working_master_id
+  JOIN episode_working_masters master
+    ON master.id = state.current_master_id
+   AND master.episode_id = episode.id
+  JOIN transcripts transcript ON transcript.id = job.transcript_id
+  JOIN alignment_passing_benchmark_evidence benchmark
+    ON benchmark.id = (
+      SELECT candidate.id
+      FROM alignment_passing_benchmark_evidence candidate
+      WHERE candidate.runner_revision = job.runner_revision
+        AND candidate.adapter = job.adapter
+        AND candidate.adapter_version = job.adapter_version
+        AND candidate.model = job.model
+        AND candidate.model_version = job.model_version
+        AND candidate.settings_version = job.settings_version
+        AND candidate.runner_digest = job.runner_digest
+      ORDER BY candidate.completed_at DESC, candidate.id DESC
+      LIMIT 1
+    )
+  WHERE episode.status IN ('draft', 'scheduled')
+    AND ${FINAL_WORKING_MASTER_DECISION_SQL}
+    AND revision.status = 'needs_review'
+    AND job.status = 'ready'
+    AND job.completed_at IS NOT NULL
+    AND job.result_manifest_sha256 IS NOT NULL
+    AND json_extract(job.quality_report_json, '$.structurallyEligible') = 1
+    AND transcript.status = 'approved'
+    AND transcript.revision = job.transcript_revision
+    AND transcript.content_sha256 = job.transcript_content_sha256`;
+
 const ACTION_DEFINITIONS: Record<AdminActionKind, ActionDefinition> = {
+  alignment_review: {
+    roles: ["super_admin", "admin"],
+    step: "transcript",
+    target: "alignment",
+    evidenceSelect: ALIGNMENT_REVIEW_EVIDENCE_SELECT
+  },
   working_master_decision: {
     roles: ["super_admin"],
     step: "media",
@@ -189,6 +249,30 @@ export function prepareResolveTranscriptReviewAction(
   targetId: string
 ): D1PreparedStatement {
   return prepareResolveAdminAction(db, "transcript_review", targetId);
+}
+
+export function prepareResolveAlignmentReviewAction(
+  db: D1Database,
+  targetId: string
+): D1PreparedStatement {
+  return db.prepare(
+    `UPDATE admin_action_notifications
+     SET
+       status = 'resolved',
+       lease_id = NULL,
+       lease_expires_at = NULL,
+       failure_code = NULL,
+       resolved_at = datetime('now'),
+       updated_at = datetime('now')
+     WHERE action_kind = 'alignment_review'
+       AND target_id = ?
+       AND status IN ('pending', 'sending', 'sent', 'failed')
+       AND EXISTS (
+         SELECT 1
+         FROM transcript_alignment_revisions revision
+         WHERE revision.id = ? AND revision.status = 'passed'
+       )`
+  ).bind(targetId, targetId);
 }
 
 function prepareResolveAdminAction(
@@ -507,13 +591,23 @@ async function actionDigest(
       evidence.processor_manifest_sha256,
       evidence.processor_report_sha256
     ]
-    : [
+    : actionKind === "transcript_review"
+      ? [
       evidence.source_master_id,
       evidence.language,
       String(evidence.transcript_revision),
       evidence.transcript_sha256,
       evidence.input_fingerprint
-    ];
+      ]
+      : [
+        evidence.source_master_id,
+        evidence.transcript_id,
+        evidence.language,
+        String(evidence.transcript_revision),
+        evidence.transcript_sha256,
+        evidence.input_fingerprint,
+        evidence.result_manifest_sha256
+      ];
   return sha256Hex([
     "podcast-admin-action-v2",
     actionKind,
@@ -528,7 +622,8 @@ function actionKinds(): AdminActionKind[] {
   return [
     "working_master_decision",
     "delivery_audio_approval",
-    "transcript_review"
+    "transcript_review",
+    "alignment_review"
   ];
 }
 

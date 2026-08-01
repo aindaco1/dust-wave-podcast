@@ -14,6 +14,9 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import {
+  prepareResolveAlignmentReviewAction
+} from "./admin-action-notifications";
+import {
   ALIGNMENT_RUNNER_DIGEST,
   ALIGNMENT_RUNNER_REPOSITORY,
   ALIGNMENT_RUNNER_REVISION,
@@ -749,6 +752,10 @@ export async function approveAdminEpisodeAlignment(
         benchmarkRunId: job.benchmark_run_id,
         alignedWordRatio: quality.alignedWordRatio
       }),
+      job.alignment_revision_id
+    ),
+    prepareResolveAlignmentReviewAction(
+      env.DB,
       job.alignment_revision_id
     )
   ]);

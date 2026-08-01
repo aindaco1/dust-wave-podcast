@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  prepareResolveAlignmentReviewAction,
   scheduleAdminActionNotifications,
   type AdminActionKind
 } from "../src/admin-action-notifications";
@@ -11,6 +12,32 @@ afterEach(() => {
 });
 
 describe("admin action notification automation", () => {
+  it("resolves alignment mail only after the exact revision is passed", () => {
+    let query = "";
+    let values: unknown[] = [];
+    const statement = {
+      bind(...bound: unknown[]) {
+        values = bound;
+        return statement;
+      }
+    };
+    const db = {
+      prepare(nextQuery: string) {
+        query = nextQuery;
+        return statement;
+      }
+    } as unknown as D1Database;
+
+    prepareResolveAlignmentReviewAction(db, "alignment_revision_fixture");
+
+    expect(query).toContain("action_kind = 'alignment_review'");
+    expect(query).toContain("revision.status = 'passed'");
+    expect(values).toEqual([
+      "alignment_revision_fixture",
+      "alignment_revision_fixture"
+    ]);
+  });
+
   it("preserves the existing master-review email and digest", async () => {
     const fixture = actionFixture();
     const fetchMock = successfulResend();
@@ -48,6 +75,11 @@ describe("admin action notification automation", () => {
 
   it.each([
     {
+      kind: "alignment_review" as const,
+      subject: "Podcast alignment ready for review",
+      deepLink: "step=transcript&target=alignment"
+    },
+    {
       kind: "delivery_audio_approval" as const,
       subject: "Podcast audio ready for review",
       deepLink: "step=media&target=delivery_audio"
@@ -76,6 +108,8 @@ describe("admin action notification automation", () => {
     expect(payload.text).toContain(deepLink);
     expect(payload.text).toContain("#magic-link=");
     expect(JSON.stringify(payload)).not.toContain("private/");
+    expect(JSON.stringify(payload)).not.toContain("e".repeat(64));
+    expect(JSON.stringify(payload)).not.toContain("benchmark_fixture");
   });
 
   it("retries a provider rejection three times with an identical request", async () => {
@@ -323,6 +357,20 @@ function actionEvidence(kind: AdminActionKind) {
       input_fingerprint: "d".repeat(64)
     };
   }
+  if (kind === "alignment_review") {
+    return {
+      ...base,
+      target_id: "alignment_revision_fixture",
+      source_master_id: "master_fixture",
+      transcript_id: "transcript_fixture",
+      language: "es",
+      transcript_revision: 1,
+      transcript_sha256: "c".repeat(64),
+      input_fingerprint: "d".repeat(64),
+      result_manifest_sha256: "e".repeat(64),
+      benchmark_run_id: "benchmark_fixture"
+    };
+  }
   return {
     ...base,
     target_id: "derivative_fixture",
@@ -336,6 +384,9 @@ function actionEvidence(kind: AdminActionKind) {
 }
 
 function queryActionKind(query: string): AdminActionKind | null {
+  if (query.includes("FROM transcript_alignment_revisions revision")) {
+    return "alignment_review";
+  }
   if (query.includes("FROM delivery_audio_jobs job")) {
     return "delivery_audio_approval";
   }

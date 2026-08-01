@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
 import {
+  ALIGNMENT_REVIEW_EVIDENCE_SELECT,
   DELIVERY_AUDIO_APPROVAL_EVIDENCE_SELECT,
   TRANSCRIPT_REVIEW_EVIDENCE_SELECT,
   WORKING_MASTER_DECISION_EVIDENCE_SELECT
@@ -80,6 +81,9 @@ describe("admin action notification migration", () => {
         `${TRANSCRIPT_REVIEW_EVIDENCE_SELECT} LIMIT 1`
       ).all()).not.toThrow();
       expect(() => db.prepare(
+        `${ALIGNMENT_REVIEW_EVIDENCE_SELECT} LIMIT 1`
+      ).all()).not.toThrow();
+      expect(() => db.prepare(
         `SELECT id
          FROM audio_enhancement_derivatives
          WHERE ${currentWorkingMasterDecisionEvidenceSql({
@@ -111,6 +115,13 @@ describe("admin action notification migration", () => {
             'transcript_review',
             'transcript_admin_action_migration',
             '${"1".repeat(64)}'
+          ),
+          (
+            'admin_action_alignment_migration',
+            'episode_admin_action_migration',
+            'alignment_review',
+            'alignment_admin_action_migration',
+            '${"2".repeat(64)}'
           );
       `);
       expect(db.prepare(`
@@ -118,6 +129,7 @@ describe("admin action notification migration", () => {
         FROM admin_action_notifications
         ORDER BY action_kind
       `).all()).toEqual([
+        { action_kind: "alignment_review" },
         { action_kind: "delivery_audio_approval" },
         { action_kind: "transcript_review" },
         { action_kind: "working_master_decision" }
