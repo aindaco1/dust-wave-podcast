@@ -41,6 +41,17 @@ describe("launch readiness monitor workflow", () => {
     expect(workflow).toContain("write-launch-readiness-summary.mjs");
     expect(workflow).toContain("report.json");
     expect(workflow).toContain("retention-days: 30");
-    expect(workflow).toContain('run: test "$GATE_STATUS" = "0"');
+    expect(workflow).toContain('test "$GATE_STATUS" = "0"');
+  });
+
+  it("reports a credential block without installing an expiring token", () => {
+    expect(workflow).toContain('echo "configured=false"');
+    expect(workflow).toContain(
+      "scoped Cloudflare staging read token is not configured"
+    );
+    expect(workflow).toContain(
+      "steps.gate.outputs.configured == 'true'"
+    );
+    expect(workflow).toContain('if [ "$GATE_CONFIGURED" != "true" ]');
   });
 });
