@@ -163,8 +163,13 @@ candidate Dust Wave YouTube uploads found English automatic captions and no
 owner-confirmed Spanish spoken-audio source. YouTube's translated caption
 options are not evidence that the underlying speech is Spanish.
 
-The Spanish 12-fixture corpus therefore remains a sourcing and rights blocker.
-Do not download an unapproved candidate, derive gold boundaries from
-machine-translated captions, or substitute the deterministic UI fixture for
-real benchmark evidence. Record the source authorization and spoken language
-before any private corpus download or segmentation.
+On August 1, 2026, the owner approved the native-Spanish interview
+`KVlzIKhqIWw` (36:28) for private benchmark testing. Its source metadata reports
+Spanish speech and YouTube exposes an original Spanish automatic-caption
+reference. `prepare:alignment-benchmark-source` now selects twelve distinct,
+non-overlapping, caption-dense two-to-five-minute windows, transcodes exact
+private PCM fixtures, and records source ranges, media/reference hashes,
+authorization, tool identity, and word-count evidence without committing media
+or transcript content. Automatic captions remain an unreviewed reference: the
+fixtures cannot become H1 gold until the Spanish transcript and sampled word
+boundaries are explicitly reviewed.

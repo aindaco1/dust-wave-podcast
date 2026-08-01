@@ -255,6 +255,15 @@ SHA-256, exposes only content-free summaries, and records replay-safe D1/audit
 evidence. Synthetic integration fixtures prove the path, but no real
 rights-cleared corpus has been imported.
 
+`npm run prepare:alignment-benchmark-source -- ...` prepares an approved local
+source without committing media or transcript content. It uses the existing
+YouTube JSON3 reference parser, chooses the requested number of non-overlapping
+caption-dense two-to-five-minute windows, writes deterministic 16 kHz mono PCM
+fixtures and clipped unreviewed references, and records source ranges, hashes,
+rights scope, FFmpeg identity, and explicit human-review requirements. It
+fails closed when duration or speech density is insufficient and never turns
+automatic captions into reviewed transcript or H1 gold evidence.
+
 Stripe staging readiness has a repeatable read-only operator gate:
 `npm run gate:stripe:staging`. It compares the exact D1 show/Price projection
 with test-mode Stripe Product/Price metadata, the hardened Customer Portal,
