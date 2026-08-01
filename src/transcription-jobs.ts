@@ -1,5 +1,7 @@
 import {
+  DEFAULT_CAPTION_SEGMENTATION_POLICY,
   normalizeSegmentTranscription,
+  type CaptionSegmentationPolicy,
   type NormalizedSegmentTranscription,
   type TimedTextLanguage
 } from "@dustwave/timed-text/transcription";
@@ -49,6 +51,7 @@ const READ_ROLES: AdminRole[] = [
 ];
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
 const TRANSCRIPTION_MODEL = "@cf/openai/whisper-large-v3-turbo";
+const TRANSCRIPTION_PIPELINE_VERSION = "workers-ai-segment-caption-v2";
 const RETRYABLE_FAILURES = new Set(["provider_failed", "storage_failed"]);
 const MAXIMUM_PROVIDER_RESPONSE_BYTES = 5 * 1024 * 1024;
 
@@ -124,6 +127,13 @@ export const AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL = `
     AND ${FINAL_WORKING_MASTER_DECISION_SQL}
     AND NOT EXISTS (
       SELECT 1
+      FROM transcripts transcript
+      WHERE transcript.episode_id = episode.id
+        AND transcript.language = episode.source_language
+        AND transcript.approved_revision IS NOT NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1
       FROM transcription_jobs job
       WHERE job.episode_id = episode.id
         AND job.working_master_id = master.id
@@ -131,6 +141,8 @@ export const AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL = `
         AND job.model = settings.model
         AND job.settings_revision = settings.revision
         AND job.settings_version = settings.settings_version
+        AND json_extract(job.settings_json, '$.pipelineVersion') =
+          '${TRANSCRIPTION_PIPELINE_VERSION}'
     )
   ORDER BY master.approved_at, episode.id
   LIMIT ?`;
@@ -400,11 +412,13 @@ async function ensureEpisodeTranscriptionJob(
 
   const vocabulary = normalizedVocabulary(source.vocabulary_json);
   const settings = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    pipelineVersion: TRANSCRIPTION_PIPELINE_VERSION,
     task: "transcribe",
     vadFilter: true,
     conditionOnPreviousText: true,
-    vocabulary
+    vocabulary,
+    captionSegmentationPolicy: DEFAULT_CAPTION_SEGMENTATION_POLICY
   };
   const settingsJson = JSON.stringify(settings);
   const inputFingerprint = await sha256Hex(JSON.stringify({
@@ -805,7 +819,9 @@ async function processPreparedChunkTranscription(
       })),
       {
         language: job.language as TimedTextLanguage,
-        sourceDurationMs: job.source_duration_ms
+        sourceDurationMs: job.source_duration_ms,
+        captionPolicy: parseSettings(job.settings_json)
+          .captionSegmentationPolicy
       }
     );
     const rawIndex = {
@@ -1114,7 +1130,9 @@ async function completeTranscriptionJob(
   const normalized = completion?.normalized
     ?? normalizeSegmentTranscription(providerResponse, {
       language: job.language as TimedTextLanguage,
-      durationMs: job.source_duration_ms
+      durationMs: job.source_duration_ms,
+      captionPolicy: parseSettings(job.settings_json)
+        .captionSegmentationPolicy
     });
   const transcriptCues = normalizeTranscriptCues(
     normalized.cues,
@@ -1679,16 +1697,25 @@ function parseSettings(value: string): {
   vadFilter: boolean;
   conditionOnPreviousText: boolean;
   vocabulary: string[];
+  captionSegmentationPolicy?: CaptionSegmentationPolicy;
 } {
   const parsed = JSON.parse(value) as {
     schemaVersion?: unknown;
+    pipelineVersion?: unknown;
     task?: unknown;
     vadFilter?: unknown;
     conditionOnPreviousText?: unknown;
     vocabulary?: unknown;
+    captionSegmentationPolicy?: unknown;
   };
+  const legacySettings = parsed.schemaVersion === 1;
+  const currentSettings = parsed.schemaVersion === 2
+    && parsed.pipelineVersion === TRANSCRIPTION_PIPELINE_VERSION
+    && isCurrentCaptionSegmentationPolicy(
+      parsed.captionSegmentationPolicy
+    );
   if (
-    parsed.schemaVersion !== 1
+    (!legacySettings && !currentSettings)
     || parsed.task !== "transcribe"
     || parsed.vadFilter !== true
     || parsed.conditionOnPreviousText !== true
@@ -1699,10 +1726,25 @@ function parseSettings(value: string): {
   return {
     vadFilter: true,
     conditionOnPreviousText: true,
-    vocabulary: parsed.vocabulary.map(
-      (entry) => vocabularyEntry(entry)
-    )
+    vocabulary: parsed.vocabulary.map((entry) => vocabularyEntry(entry)),
+    ...(currentSettings
+      ? { captionSegmentationPolicy: DEFAULT_CAPTION_SEGMENTATION_POLICY }
+      : {})
   };
+}
+
+function isCurrentCaptionSegmentationPolicy(
+  value: unknown
+): value is CaptionSegmentationPolicy {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const policy = value as Record<string, unknown>;
+  return Object.entries(DEFAULT_CAPTION_SEGMENTATION_POLICY).every(
+    ([key, expected]) => policy[key] === expected
+  ) && Object.keys(policy).length === Object.keys(
+    DEFAULT_CAPTION_SEGMENTATION_POLICY
+  ).length;
 }
 
 function normalizedVocabulary(value: string): string[] {

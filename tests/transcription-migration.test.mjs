@@ -215,6 +215,12 @@ describe("transcription orchestration migration", () => {
       expect(() => db.prepare(
         AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL
       ).all(10)).not.toThrow();
+      expect(AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL).toContain(
+        "workers-ai-segment-caption-v2"
+      );
+      expect(AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL).toContain(
+        "transcript.approved_revision IS NOT NULL"
+      );
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA integrity_check").get()).toEqual({
         integrity_check: "ok"
