@@ -86,7 +86,7 @@ describe("AI show-notes drafts", () => {
         sections: [{ heading: "Notes", bullets: ["Alonzo"] }],
         keywords: [],
         grounding: {
-          namedEntities: [{ name: "Alonzo", evidence: "Alonzo" }],
+          namedEntities: [{ name: "Alonzo" }],
           speakerAttributions: []
         }
       })
@@ -181,7 +181,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-      prompt_version: "show-notes-v7-structured-sections",
+      prompt_version: "show-notes-v8-source-grounded-entities",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -231,7 +231,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-        promptVersion: "show-notes-v7-structured-sections",
+        promptVersion: "show-notes-v8-source-grounded-entities",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
@@ -283,7 +283,7 @@ describe("show-notes model boundaries", () => {
         sections: [{ heading: "  Temas  ", bullets: ["  Uno  "] }],
         keywords: ["Cine", "cine", "Selva"],
         grounding: {
-          namedEntities: [{ name: "Selva", evidence: "Cine en la Selva" }],
+          namedEntities: [{ name: "Selva" }],
           speakerAttributions: []
         }
       })
@@ -335,7 +335,7 @@ describe("show-notes model boundaries", () => {
       response: {
         ...base,
         grounding: {
-          namedEntities: [{ name: "Alonzo", evidence: "Alonzo" }],
+          namedEntities: [{ name: "Alonzo" }],
           speakerAttributions: []
         }
       }
@@ -369,12 +369,10 @@ describe("show-notes model boundaries", () => {
     const grounding = {
       namedEntities: [
         {
-          name: "David Jennings",
-          evidence: "David Jennings and Alonzo explore independent film."
+          name: "David Jennings"
         },
         {
-          name: "Alonzo",
-          evidence: "David Jennings and Alonzo explore independent film."
+          name: "Alonzo"
         }
       ],
       speakerAttributions: []
@@ -424,8 +422,7 @@ async function showNotesFixture({
       keywords: ["Ópera en la Selva"],
       grounding: {
         namedEntities: [{
-          name: "Ópera en la Selva",
-          evidence: "Ópera en la Selva"
+          name: "Ópera en la Selva"
         }],
         speakerAttributions: []
       }
