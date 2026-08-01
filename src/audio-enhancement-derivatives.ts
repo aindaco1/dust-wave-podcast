@@ -1258,9 +1258,8 @@ export async function approveAdminAudioEnhancementDerivative(
     `derivative_approval_guard_${crypto.randomUUID().replace(/-/g, "")}`;
   const masterGuardId =
     `master_approval_guard_${crypto.randomUUID().replace(/-/g, "")}`;
-  let results;
   try {
-    results = await env.DB.batch([
+    await env.DB.batch([
       env.DB.prepare(
         `UPDATE audio_enhancement_derivatives
          SET
@@ -1369,16 +1368,10 @@ export async function approveAdminAudioEnhancementDerivative(
     }
     throw error;
   }
-  if (
-    Number(results[0]?.meta?.changes ?? 0) !== 1
-    || Number(results[3]?.meta?.changes ?? 0) !== 1
-  ) {
-    return derivativeConflict(
-      request,
-      env,
-      "audio_enhancement_derivative_master_conflict"
-    );
-  }
+  // The two publication_batch_guards abort this atomic batch unless both
+  // snapshot-bound updates changed exactly one row. A resolved batch is the
+  // authoritative commit signal; D1 statement metadata can report trigger-
+  // affected change counts that do not describe those guarded updates.
   return privateJson(request, env.ALLOWED_ORIGINS, {
     master: {
       id: masterId,
