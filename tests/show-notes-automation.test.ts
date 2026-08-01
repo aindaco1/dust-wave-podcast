@@ -136,7 +136,7 @@ describe("automatic show-notes drafts", () => {
       3,
       transcriptSha256,
       "@cf/meta/llama-4-scout-17b-16e-instruct",
-      "show-notes-v8-source-grounded-entities"
+      "show-notes-v9-full-source-grounding"
     ]));
     expect(statements.some(({ query }) => query.includes("UPDATE episodes")))
       .toBe(false);
