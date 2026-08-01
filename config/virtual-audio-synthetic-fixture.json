@@ -17,8 +17,11 @@
       "objectKey": "fixtures/virtual-audio/program-pre.mp3",
       "frequencyHz": 440,
       "durationSeconds": 5,
-      "bytes": 80666,
-      "sha256": "9b79d40d063bc6f3e4b86737e95ee7e2f9ba8b1639512f8c6017238f357142f3"
+      "frameBytes": 417,
+      "frameCount": 193,
+      "frameBase64": "//uQZAAAAmsLzp1gYAAAAA0goAABFmVFGBnqAAAAADSDAAAACmtt2MISzaANv00DAY1MNRggDB3ba21933/jcvtiEAAAABAMDwfB98oCBzE4P8EHTnT7uX85y/nOn3cuD4Pg+HwQDFQDB/Jggcy/gh0mLOU0YyPFhgZBDGP7aAYLwChk4oXG58XKYNIWhzjDAEIHJ3tB6EgJJiFhQGEuE8EBFQsHAJVwM5HA4TsyP4G4hgYU0BnTCKPgZlAAYJAxQkDED1U/hYkAECAwIQNlBuFf/BtUP2DFQWhCkQ1bqq/hkUY4QWEFhyRQIoFrv1deQ4XMLmIaMyOaUhzhzttD2v8okVIqXiLEWMSdLpkXmt1f/tl5ZdCQNCVwNrf+362QL////rVgDALAFUwDABVMDUA+TAHANYwGUEsM7VckzLqBuEw44JFMGyBNTAxQP4wOUDeMD5AvDASQEB5pG7tnTPR/Rre/KcORUfaJAix3DYeaOyrgCmLKKP1ElrtZQfao+LaBdJVqhW5DWGyJN1pi2l7W36ToivJueWlUmAAgApgG",
+      "bytes": 80481,
+      "sha256": "10cb552869b6ae251a6ed6e1bbff3eb946ce479c8f17d436268685d8e3de19f8"
     },
     {
       "id": "direct-ad",
@@ -27,8 +30,11 @@
       "objectKey": "fixtures/virtual-audio/direct-ad.mp3",
       "frequencyHz": 880,
       "durationSeconds": 2,
-      "bytes": 32600,
-      "sha256": "636ac232c639af13adda4c3513cf5e93362547d62221dd1e28c12f161c3f1f9a"
+      "frameBytes": 417,
+      "frameCount": 78,
+      "frameBase64": "//uQZAAAAjwL0Z08YAAAAA0goAABF/1RHlnqAAAAADSDAAAACn22/V6fQ9D0PV8eArDTIOIWDnCRiZlzUb8QiAAgEAxB8P6gQ5c/wQdOdPnOX85y/nOn3cuD59YPggCEQAMH3w+CBzLh/u6QAAAIkjBjDEMOUMBmQiCpa8YBgHZkmkrGJJE+YHAJBmmEhA4kgyHqgjW5EwMScTQ2dQUjCYAOMw0VYwMgOQNtxA9FkmjfA6l8DGqgNSkNTFuBpVgAhEDJEQMgXSU6/AXCAYUIBhRQN5QbMrv/AAAhyQWRBYUI5DFK//hgEUkGrg1cMaIKiCv/+OUKCFBENFyi5SHDnDnf//jpFAigR1C5hcxDRco5pSHO/+tTL9WTxiRUumReNll0YDaP5Wq/JMKqqkEcY6u1rJAAFGAcgIRgIoNYYEuCiGCogPRgfIT4Yc6GIGpQjz5h4QWyPBNBgEYA0YCaAtAYBPMASADQAMK+KSdcxSipJamiqoBNsaAlC5yVbeIIoHor/tXobvJdy5A58t/MPbYyKWsfljTvQ4G8t3KrGjAZ",
+      "bytes": 32526,
+      "sha256": "d1acb133bb1a5f933227c95a530b58342a89e7d2cc56ec7b160cf50423145211"
     },
     {
       "id": "program-post",
@@ -37,23 +43,26 @@
       "objectKey": "fixtures/virtual-audio/program-post.mp3",
       "frequencyHz": 554,
       "durationSeconds": 5,
-      "bytes": 80666,
-      "sha256": "b18e9f3a1c457b78621762eba1f4fba936e51f4e31c8dcdbc351f5aabc314cb6"
+      "frameBytes": 417,
+      "frameCount": 193,
+      "frameBase64": "//uQZAAAAmwNTZ1gwAAAAA0goAABF11NHtnqAAAAADSDAAAAAUjckLJmEZjKAjprs8BAjMo3KOsTi00lLRphsTd+H5eEEAAAAggQQBMHwfB8/BAENYPvyhyjw/w97+j39CMEAffLgQMZAH34EDHD/R7wKAAAAEElzCLFGMbcOYwDwJjBMFNMAAD8QDUHJmoqYeRYhupMmGOWOqZEb6pkIAtGGqGsYWIVhgoAEqSBwhREAIBlG4GyVmT4GqZgCkAMiORW3Ax5QBYGBggYGCDq1+F0gsOBsCD9QxSv/hb6KSDVwZGGNFA//iCo5QuYVsQ0XKLl//x1C5hcxDRmRlSaHOHO///JkipFTIixFjEmS6ZF7/63p/y8sumqjI2EowKr3dK7ooABx+L////96lkAAQAC4KATTAGQBwwDsCeMDDADDAuAE0wEArFNedHzDFvw6IwjwLNMH8ApQUF2InmAFgEQcARQ0yFpoRBpmXbrot79fQdmROCb8cu9na7tQ+dcaXppv1vV/3RaWYGaHWNAuz+lZGqiKlDRSGBAaYDDBgYW",
+      "bytes": 80481,
+      "sha256": "788e32495b34a7b54fcf71e809bc052c1e56cb92245412eec413ffd92f6fce92"
     }
   ],
   "assemblies": {
     "programOnly": {
       "filename": "program-only.mp3",
       "sourceIds": ["program-pre", "program-post"],
-      "bytes": 161332,
-      "sha256": "d7911b8003d5e4634cbdc2d9e2bdd0e3a85639baff279d18ab8c69b7ad884603"
+      "bytes": 160962,
+      "sha256": "1d2d1c8d89f57dc5ceb61e9ec19df572af09bf4da4c6e7803c0e366d24cfa768"
     },
     "virtual": {
       "filename": "virtual-midroll.mp3",
       "objectKey": "fixtures/virtual-audio/virtual-midroll.mp3",
       "sourceIds": ["program-pre", "direct-ad", "program-post"],
-      "bytes": 193932,
-      "sha256": "fe3fd3084f9720103f1a548162f5d707321d991565a54809c29297c784c5c249"
+      "bytes": 193488,
+      "sha256": "44b307a63fbd00b3bc88ecd1bb7cc0a2f78e95ef6e3cdd9eb1de7484b01aa869"
     }
   }
 }

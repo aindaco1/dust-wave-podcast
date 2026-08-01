@@ -52,9 +52,12 @@ FFmpeg/FFprobe evidence outside the repository with:
 npm run fixtures:virtual-audio -- /absolute/private/evidence/directory
 ```
 
-The generator refuses an implicit destination, emits checksums and probe
-metadata, verifies that program-only and mid-roll byte assemblies fully decode,
-and writes a manifest that can be projected into the Worker contract. Its
+The generator refuses an implicit destination, expands canonical
+self-contained MPEG seed frames without invoking an encoder, emits checksums
+and FFmpeg/FFprobe decode evidence, verifies that program-only and mid-roll
+byte assemblies fully decode, and writes a manifest that can be projected into
+the Worker contract. This keeps fixture bytes identical across macOS and Linux
+instead of depending on an OS FFmpeg/libmp3lame build. Its
 versioned contract lives in
 `config/virtual-audio-synthetic-fixture.json`; the generator, Worker diagnostic,
 load boundary patterns, and tests all consume that one source of byte counts,
