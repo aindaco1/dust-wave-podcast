@@ -358,6 +358,48 @@ export function safeAiUsage(value: unknown): Record<string, number> | null {
   return Object.keys(result).length ? result : null;
 }
 
+export function safeAiDraftFailureCode(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown_error";
+  const message = error.message;
+  if (message === "AI draft provider response must be an object") {
+    return "provider_response_not_object";
+  }
+  if (message === "AI draft provider response is not valid JSON") {
+    return "provider_response_invalid_json";
+  }
+  if (message === "AI draft provider output must be an object") {
+    return "provider_output_not_object";
+  }
+  if (message === "AI draft grounding is invalid") {
+    return "grounding_schema_invalid";
+  }
+  if (message === "AI draft grounding source is invalid") {
+    return "grounding_source_invalid";
+  }
+  if (message === "AI draft named-entity grounding is invalid") {
+    return "grounding_named_entity_invalid";
+  }
+  if (message === "AI draft speaker grounding is invalid") {
+    return "grounding_speaker_invalid";
+  }
+  if (/^AI draft namedEntities\[\d+\] is invalid$/u.test(message)) {
+    return "grounding_named_entity_schema_invalid";
+  }
+  if (/^AI draft speakerAttributions\[\d+\] is invalid$/u.test(message)) {
+    return "grounding_speaker_schema_invalid";
+  }
+  if (message.startsWith("AI draft provider grounding ")) {
+    return "grounding_text_invalid";
+  }
+  if (message === "AI draft provider response is invalid") {
+    return "provider_response_invalid";
+  }
+  if (message.startsWith("AI draft provider ")) {
+    return "draft_schema_invalid";
+  }
+  return error.name === "TypeError" ? "type_error" : "provider_error";
+}
+
 function collectForward(
   lines: string[],
   start: number,

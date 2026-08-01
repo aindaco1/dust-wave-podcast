@@ -12,6 +12,7 @@ import {
   generatedAiText,
   parseAiProviderJsonObject,
   projectTranscriptForAiDraft,
+  safeAiDraftFailureCode,
   safeAiUsage,
   validateAiDraftGrounding
 } from "./ai-drafts";
@@ -539,7 +540,8 @@ async function generateAutomaticShowNotesDraft(
         inputFingerprint,
         model: AI_DRAFT_MODEL,
         promptVersion: SHOW_NOTES_PROMPT_VERSION,
-        errorName: error instanceof Error ? error.name : "UnknownError"
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        failureCode: safeAiDraftFailureCode(error)
       }
     });
     return "failed";
