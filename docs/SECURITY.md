@@ -897,11 +897,14 @@ its Worker acknowledgement failed. See
 operational contract.
 
 Exhausted staging Queue messages are retained in an environment-specific DLQ
-instead of being silently deleted. The application has no DLQ producer binding
-and no automatic DLQ consumer yet, so a terminal provider ambiguity cannot be
-blindly replayed. The existing queue body remains the bounded ID/revision
-envelope and contains no credentials, private URLs, listener identity,
-transcript text, or media.
+instead of being silently deleted. A staging-only consumer persists one
+content-free, SHA-256-deduplicated D1 incident and acknowledges only after that
+write succeeds. It cannot produce to either Queue, call a provider, publish,
+send email, or change the source job. Raw bodies, errors, credentials, private
+URLs, listener identity, transcript text, and media are never stored. Invalid
+envelopes retain only their digest and fixed classification. The consumer uses
+long bounded retries for temporary D1 failures; production remains unchanged.
+See [`QUEUE_FAILURE_AUTOMATION.md`](QUEUE_FAILURE_AUTOMATION.md).
 
 ## Source-audio QC boundary
 

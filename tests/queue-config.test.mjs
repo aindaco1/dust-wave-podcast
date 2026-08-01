@@ -14,10 +14,18 @@ it("retains exhausted staging jobs in an isolated dead-letter queue", () => {
     max_batch_timeout: 5,
     max_retries: 3,
     dead_letter_queue: "dust-wave-podcast-jobs-staging-dlq"
+  }, {
+    queue: "dust-wave-podcast-jobs-staging-dlq",
+    max_batch_size: 10,
+    max_batch_timeout: 5,
+    max_retries: 100,
+    retry_delay: 300
   }]);
   expect(
     config.env.staging.queues.producers[0].queue,
   ).not.toBe(consumers[0].dead_letter_queue);
+  expect(consumers[1].dead_letter_queue).toBeUndefined();
+  expect(consumers[1].queue).toBe(consumers[0].dead_letter_queue);
 });
 
 it("keeps production queue behavior unchanged and environment-isolated", () => {
