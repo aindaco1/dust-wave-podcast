@@ -7,6 +7,8 @@ import {
   loadDistributionLaunchCertification,
   type DestinationLaunchCertification
 } from "./distribution-certification";
+import { buildDirectorySubmissionPacket } from
+  "./directory-submission-packet";
 import { recordDistributionObservation } from
   "./distribution-observation-store";
 import {
@@ -64,12 +66,27 @@ export async function listDistributionDestinations(
   }
   const show = await env.DB
     .prepare(
-      `SELECT id, title, rss_slug
+      `SELECT
+         id, slug, title, description, language, artwork_url, canonical_url,
+         rss_slug, podcast_guid, author_name, category, explicit
        FROM shows
        WHERE id = ?`
     )
     .bind(showId)
-    .first<{ id: string; title: string; rss_slug: string }>();
+    .first<{
+      id: string;
+      slug: string;
+      title: string;
+      description: string;
+      language: string;
+      artwork_url: string | null;
+      canonical_url: string;
+      rss_slug: string;
+      podcast_guid: string | null;
+      author_name: string;
+      category: string;
+      explicit: number;
+    }>();
   if (!show) {
     return privateJson(
       request,
@@ -214,12 +231,34 @@ export async function listDistributionDestinations(
     (maximum, channel) => Math.max(maximum, channel.publicationRevision),
     0
   );
+  const feedUrl =
+    `${env.FEED_ORIGIN.replace(/\/$/, "")}/${show.rss_slug}/rss.xml`;
+  const submissionPacket = buildDirectorySubmissionPacket({
+    show: {
+      id: show.id,
+      slug: show.slug,
+      title: show.title,
+      description: show.description,
+      language: show.language,
+      artworkUrl: show.artwork_url,
+      canonicalUrl: show.canonical_url,
+      podcastGuid: show.podcast_guid,
+      authorName: show.author_name,
+      category: show.category,
+      explicit: show.explicit === 1
+    },
+    feedUrl,
+    ownerName: show.author_name,
+    ownerEmail: env.PODCAST_OWNER_EMAIL,
+    feedValidation: launchCertification.feedValidation,
+    destinations
+  });
   return privateJson(request, env.ALLOWED_ORIGINS, {
     showId,
     showTitle: show.title,
     episodeId,
-    feedUrl:
-      `${env.FEED_ORIGIN.replace(/\/$/, "")}/${show.rss_slug}/rss.xml`,
+    feedUrl,
+    submissionPacket,
     semantics: "rss-follow-after-one-time-owner-setup",
     summary: {
       ...launchCertification.summary,

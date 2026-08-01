@@ -41,6 +41,7 @@ describe("streamlined publishing directory registry", () => {
         feedValidation: Record<string, unknown>;
       };
       destinations: Array<Record<string, unknown>>;
+      submissionPacket: Record<string, unknown>;
     };
 
     expect(response.status).toBe(200);
@@ -101,6 +102,36 @@ describe("streamlined publishing directory registry", () => {
     ]);
     expect(JSON.stringify(payload.destinations)).not.toContain(
       "owner_setup_status"
+    );
+    expect(payload.submissionPacket).toMatchObject({
+      schema: "dust-wave-directory-submission-packet",
+      version: 1,
+      containsCredentials: false,
+      show: {
+        id: "show_opera_en_la_selva",
+        slug: "opera-en-la-selva",
+        title: "Ópera en la Selva",
+        feedUrl:
+          "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
+        owner: {
+          name: "Dust Wave",
+          email: "podcasts@dustwave.xyz"
+        }
+      },
+      feedValidation: {
+        status: "valid",
+        feedSha256: "a".repeat(64)
+      },
+      destinations: [
+        expect.objectContaining({
+          id: "spotify",
+          submissionUrl: "https://podcasters.spotify.com/"
+        }),
+        expect.objectContaining({ id: "apple_podcasts" })
+      ]
+    });
+    expect(JSON.stringify(payload.submissionPacket)).not.toMatch(
+      /setupNotes|ownerAccountLabel|submissionEvidenceUrl|password|token/iu
     );
     expect(
       fixture.queries.some(({ query, values }) =>
@@ -700,11 +731,25 @@ async function distributionFixture({
               owner_setup_status: observationOwnerSetupStatus
             };
           }
-          if (query.includes("SELECT id, title, rss_slug")) {
+          if (
+            query.includes(
+              "id, slug, title, description, language, artwork_url, canonical_url"
+            )
+          ) {
             return {
               id: "show_opera_en_la_selva",
+              slug: "opera-en-la-selva",
               title: "Ópera en la Selva",
-              rss_slug: "opera-en-la-selva"
+              description: "Historias de música, bosque y comunidad.",
+              language: "es",
+              artwork_url: "https://dustwave.xyz/opera.jpg",
+              canonical_url:
+                "https://dustwave.xyz/podcasts/opera-en-la-selva/",
+              rss_slug: "opera-en-la-selva",
+              podcast_guid: "d21642df-1816-55c8-b308-6209066e9ef6",
+              author_name: "Dust Wave",
+              category: "Arts",
+              explicit: 0
             };
           }
           if (
