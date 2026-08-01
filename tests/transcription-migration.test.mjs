@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
+import { AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL } from
+  "../src/transcription-jobs";
+
 const migrationsDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url)
 );
@@ -209,6 +212,9 @@ describe("transcription orchestration migration", () => {
         failure_code: "source_invalid",
         completed: 1
       });
+      expect(() => db.prepare(
+        AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL
+      ).all(10)).not.toThrow();
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA integrity_check").get()).toEqual({
         integrity_check: "ok"

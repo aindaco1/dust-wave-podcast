@@ -293,8 +293,14 @@ iHeartRadio, and Deezer.
   only when the signed 5,000-pair/10,000-request gate is fresh, fully cleaned
   up, and unchanged across runtime-sensitive source; that evidence still
   cannot substitute for the real isolated client pilot.
-- Transcribe Spanish and English and expose bounded confidence/provenance. The
-  signed staging alignment bridge now binds the exact approved transcript,
+- Transcribe Spanish and English and expose bounded confidence/provenance.
+  Staging now creates a missing source-language job after the shared final
+  working-master decision, using the same fingerprint, current-policy QC,
+  immutable artifact, chunking, Queue-retry, and conditional audit primitive
+  as the Admin route. Direct jobs flow through the existing Queue scheduler;
+  large jobs flow through the existing normalized processor dispatcher.
+  Production exits before reading D1. The signed staging alignment bridge now
+  binds the exact approved transcript,
   working master, normalized projection, adapter, and pinned runner; validates
   every returned word; and stops at human review. Approval has no override:
   it requires a matching real English/Spanish benchmark and clean-environment

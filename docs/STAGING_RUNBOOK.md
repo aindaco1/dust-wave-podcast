@@ -371,8 +371,12 @@ policy revision, and resource/version evidence. Change the current source ETag
 or policy revision and confirm a new run is required. Never upload a fabricated
 episode to shared staging merely to make this path green.
 
-If the approved working master is larger than 16 MiB, queue transcription,
-copy the displayed chunk run ID, and dispatch:
+After the enhanced-master decision is final, allow the next five-minute
+scheduler run to create any missing source-language transcription job. Direct
+jobs must enter the existing Queue once; masters larger than 16 MiB must create
+one immutable chunk run and let the normalized processor dispatcher claim it.
+A second scheduler run must be idempotent. The Admin queue control and the
+following workflow command are recovery-only staging paths:
 
 ```sh
 gh workflow run process-transcription-chunks.yml \
@@ -380,7 +384,7 @@ gh workflow run process-transcription-chunks.yml \
   -f run_id="transcription_chunks_REPLACE_WITH_QUEUED_ID"
 ```
 
-GitHub accepts a manual dispatch only after the workflow file exists on the
+GitHub accepts a recovery dispatch only after the workflow file exists on the
 repository's default branch, even when `--ref` selects the reviewed release
 branch for the run. Before queueing a billable long-source rehearsal, verify
 that `process-transcription-chunks.yml` appears in the repository Actions

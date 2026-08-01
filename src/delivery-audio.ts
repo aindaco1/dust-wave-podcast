@@ -24,6 +24,9 @@ import {
 import { prepareAdminAuditAfterSingleChange } from "./audit";
 import type { PodcastEnv } from "./env";
 import {
+  FINAL_WORKING_MASTER_DECISION_SQL
+} from "./final-working-master";
+import {
   privateCorsHeaders,
   privateJson
 } from "./http";
@@ -175,26 +178,7 @@ export const AUTOMATED_DELIVERY_AUDIO_CANDIDATES_SQL = `WITH eligible AS (
    AND master.episode_id = episode.id
   WHERE episode.status IN ('draft', 'scheduled')
     AND episode.audio_key IS NULL
-    AND (
-      master.origin_kind = 'enhanced_derivative'
-      OR EXISTS (
-        SELECT 1
-        FROM audio_enhancement_derivatives rejected
-        WHERE rejected.episode_id = episode.id
-          AND rejected.source_master_id = master.id
-          AND rejected.status = 'stale'
-          AND rejected.rejected_at IS NOT NULL
-      )
-    )
-    AND NOT EXISTS (
-      SELECT 1
-      FROM audio_enhancement_derivatives active_derivative
-      WHERE active_derivative.episode_id = episode.id
-        AND active_derivative.source_master_id = master.id
-        AND active_derivative.status IN (
-          'queued', 'rendering', 'completing', 'ready'
-        )
-    )
+    AND ${FINAL_WORKING_MASTER_DECISION_SQL}
     AND NOT EXISTS (
       SELECT 1
       FROM delivery_audio_jobs delivery

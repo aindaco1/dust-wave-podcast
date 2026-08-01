@@ -24,15 +24,15 @@ webhook-projected multi-source entitlements, and the signed Stripe
 webhook/readiness boundary. Draft/approval/kill sponsor
 operations, deterministic targeting preview, bounded creative validation, and
 the signed processor/producer-review boundary for frame-aligned episode ad
-plans are implemented without connecting public audio assembly. The bilingual word-alignment
-storage contract, executable launch-quality evaluator, signed staging
+plans are implemented without connecting public audio assembly. The bilingual
+word-alignment storage contract, executable launch-quality evaluator, signed staging
 processor bridge, and normalized stable-ts/WhisperX runner are also
-implemented;
-the source-language Workers AI transcription adapter is now implemented behind
+implemented. The source-language Workers AI transcription adapter is now implemented behind
 an immutable working-master snapshot, Queue recovery, private R2 evidence, and
-versioned transcript review. A real rights-cleared transcription run plus the
-alignment adapter's human-reviewed benchmark evidence remain gated. Checkout
-remains disabled pending accountant-approved tax/provider evidence. Dynamic
+versioned transcript review. The first rights-cleared private transcription
+run completed; human transcript review and the alignment adapter's
+human-reviewed benchmark evidence remain gated. Checkout remains disabled
+pending accountant-approved tax/provider evidence. Dynamic
 audio now has a guarded public-enclosure runtime in code. Its isolated
 synthetic protocol and 10,000-request paired-load gates pass with exact
 cleanup, but both deployed modes remain non-automatic until the native-client,
@@ -190,9 +190,11 @@ and production is disabled.
 Source-language transcription accepts an explicit English/Spanish episode
 language and only the current approved working master. The job fingerprint
 binds the master SHA-256, model, language, and versioned settings; duplicate
-inputs reuse one stored job. Provider responses, normalized timed-text JSON,
-WebVTT, SRT, and plain text remain private in R2. Workers AI segment timing is
-normalized through `@dustwave/timed-text`; provider word records and speaker
+inputs reuse one stored job. Once the enhanced-master decision is final,
+staging creates the missing source-language job automatically through the same
+queue primitive used by the Admin API. Provider responses, normalized
+timed-text JSON, WebVTT, SRT, and plain text remain private in R2. Workers AI
+segment timing is normalized through `@dustwave/timed-text`; provider word records and speaker
 guesses are not imported. Direct Worker processing is capped at 16 MiB to
 bound base64 memory. Larger masters use the credential-minimized
 `process-transcription-chunks.yml` staging workflow: it verifies the immutable
