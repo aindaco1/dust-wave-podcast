@@ -9,12 +9,28 @@ export const MAXIMUM_AI_DRAFT_TRANSCRIPT_CHARACTERS = 48_000;
 export const AI_DRAFT_LIMIT_PER_EPISODE_PER_ADMIN_PER_HOUR = 6;
 
 const LANGUAGE_VALUES = new Set<TranscriptLanguage>(["en", "es"]);
+export const MAXIMUM_AI_DRAFT_GROUNDING_ITEMS = 24;
+export const MAXIMUM_AI_DRAFT_GROUNDING_NAME_CHARACTERS = 120;
+export const MAXIMUM_AI_DRAFT_GROUNDING_EVIDENCE_CHARACTERS = 500;
 
 export type AiDraftTranscriptProjection = {
   excerpt: string;
   includedCueCount: number;
   totalCueCount: number;
   truncated: boolean;
+};
+
+export type AiDraftGrounding = {
+  namedEntities: Array<{ name: string; evidence: string }>;
+  speakerAttributions: Array<{
+    speakerLabel: string;
+    evidence: string;
+  }>;
+};
+
+export type AiDraftGroundingSource = {
+  evidenceTexts: string[];
+  confirmedSpeakerLabels?: string[];
 };
 
 export function aiDraftLanguage(
@@ -213,6 +229,118 @@ export function generatedAiText(
   return normalized;
 }
 
+export function validateAiDraftGrounding(
+  value: unknown,
+  source: AiDraftGroundingSource
+): AiDraftGrounding {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || !Array.isArray(source.evidenceTexts)
+  ) {
+    throw new TypeError("AI draft grounding is invalid");
+  }
+  const grounding = value as Record<string, unknown>;
+  if (
+    Object.keys(grounding).sort().join(",")
+      !== "namedEntities,speakerAttributions"
+    || !Array.isArray(grounding.namedEntities)
+    || !Array.isArray(grounding.speakerAttributions)
+    || grounding.namedEntities.length > MAXIMUM_AI_DRAFT_GROUNDING_ITEMS
+    || grounding.speakerAttributions.length > MAXIMUM_AI_DRAFT_GROUNDING_ITEMS
+  ) {
+    throw new TypeError("AI draft grounding is invalid");
+  }
+  const evidenceTexts = source.evidenceTexts
+    .map(normalizeGroundingText)
+    .filter(Boolean);
+  if (!evidenceTexts.length) {
+    throw new TypeError("AI draft grounding source is invalid");
+  }
+  const confirmedSpeakerLabels = new Map<string, string>();
+  for (const value of source.confirmedSpeakerLabels ?? []) {
+    const label = generatedAiText(
+      value,
+      "confirmedSpeakerLabel",
+      MAXIMUM_AI_DRAFT_GROUNDING_NAME_CHARACTERS,
+      { allowNewlines: false }
+    );
+    confirmedSpeakerLabels.set(normalizeGroundingText(label), label);
+  }
+
+  const namedEntities: AiDraftGrounding["namedEntities"] = [];
+  const seenEntities = new Set<string>();
+  for (const [index, rawEntity] of grounding.namedEntities.entries()) {
+    const entity = exactGroundingRecord(
+      rawEntity,
+      ["evidence", "name"],
+      `namedEntities[${index}]`
+    );
+    const name = generatedAiText(
+      entity.name,
+      "grounding name",
+      MAXIMUM_AI_DRAFT_GROUNDING_NAME_CHARACTERS,
+      { allowNewlines: false }
+    );
+    const evidence = generatedAiText(
+      entity.evidence,
+      "grounding evidence",
+      MAXIMUM_AI_DRAFT_GROUNDING_EVIDENCE_CHARACTERS,
+      { allowNewlines: false }
+    );
+    const comparableName = normalizeGroundingText(name);
+    const comparableEvidence = normalizeGroundingText(evidence);
+    if (
+      seenEntities.has(comparableName)
+      || !comparableEvidence.includes(comparableName)
+      || !evidenceTexts.some((text) => text.includes(comparableEvidence))
+    ) {
+      throw new TypeError("AI draft named-entity grounding is invalid");
+    }
+    seenEntities.add(comparableName);
+    namedEntities.push({ name, evidence });
+  }
+
+  const speakerAttributions: AiDraftGrounding["speakerAttributions"] = [];
+  const seenAttributions = new Set<string>();
+  for (
+    const [index, rawAttribution]
+    of grounding.speakerAttributions.entries()
+  ) {
+    const attribution = exactGroundingRecord(
+      rawAttribution,
+      ["evidence", "speakerLabel"],
+      `speakerAttributions[${index}]`
+    );
+    const speakerLabel = generatedAiText(
+      attribution.speakerLabel,
+      "speaker label",
+      MAXIMUM_AI_DRAFT_GROUNDING_NAME_CHARACTERS,
+      { allowNewlines: false }
+    );
+    const evidence = generatedAiText(
+      attribution.evidence,
+      "speaker evidence",
+      MAXIMUM_AI_DRAFT_GROUNDING_EVIDENCE_CHARACTERS,
+      { allowNewlines: false }
+    );
+    const comparableLabel = normalizeGroundingText(speakerLabel);
+    const comparableEvidence = normalizeGroundingText(evidence);
+    if (
+      seenAttributions.has(comparableLabel)
+      || !confirmedSpeakerLabels.has(comparableLabel)
+      || !comparableEvidence.includes(`${comparableLabel}:`)
+      || !evidenceTexts.some((text) => text.includes(comparableEvidence))
+    ) {
+      throw new TypeError("AI draft speaker grounding is invalid");
+    }
+    seenAttributions.add(comparableLabel);
+    speakerAttributions.push({ speakerLabel, evidence });
+  }
+  return { namedEntities, speakerAttributions };
+}
+
 export function safeAiUsage(value: unknown): Record<string, number> | null {
   const usage = (
     value
@@ -284,4 +412,28 @@ function formatTimestamp(milliseconds: number): string {
   return [hours, minutes, seconds]
     .map((value) => String(value).padStart(2, "0"))
     .join(":");
+}
+
+function exactGroundingRecord(
+  value: unknown,
+  keys: string[],
+  field: string
+): Record<string, unknown> {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || Object.keys(value).sort().join(",") !== keys.join(",")
+  ) {
+    throw new TypeError(`AI draft ${field} is invalid`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeGroundingText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/gu, " ")
+    .trim();
 }

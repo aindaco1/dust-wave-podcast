@@ -96,7 +96,14 @@ describe("automatic show-notes drafts", () => {
       response: JSON.stringify({
         summary: "Resumen factual.",
         showNotesMarkdown: "## Temas\n\n- Evidencia revisada",
-        keywords: ["Ópera", "Selva"]
+        keywords: ["Ópera", "Selva"],
+        grounding: {
+          namedEntities: [{
+            name: "Ópera en la Selva",
+            evidence: "Ópera en la Selva"
+          }],
+          speakerAttributions: []
+        }
       }),
       usage: { total_tokens: 123 }
     }));
@@ -127,7 +134,7 @@ describe("automatic show-notes drafts", () => {
       3,
       transcriptSha256,
       "@cf/meta/llama-3.1-8b-instruct-fast",
-      "show-notes-v1"
+      "show-notes-v2-grounded"
     ]));
     expect(statements.some(({ query }) => query.includes("UPDATE episodes")))
       .toBe(false);

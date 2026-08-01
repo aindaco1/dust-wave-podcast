@@ -24,7 +24,7 @@ describe("AI show-notes drafts", () => {
       draft: {
         summary: "A factual summary.",
         showNotesMarkdown: "## In this episode\n\n- A reviewed point",
-        keywords: ["Dust Wave", "Podcast"]
+        keywords: ["Ópera en la Selva"]
       },
       source: {
         language: "es",
@@ -47,6 +47,9 @@ describe("AI show-notes drafts", () => {
       temperature: 0.2,
       response_format: { type: "json_schema" }
     });
+    expect(JSON.stringify(fixture.aiRun.mock.calls[0][1])).toContain(
+      "speakerAttributions"
+    );
     expect(
       fixture.writes.some(({ query }) => query.includes("UPDATE episodes"))
     ).toBe(false);
@@ -103,7 +106,8 @@ describe("AI show-notes drafts", () => {
         response: JSON.stringify({
           summary: "Safe",
           showNotesMarkdown: "<script>alert(1)</script>",
-          keywords: []
+          keywords: [],
+          grounding: { namedEntities: [], speakerAttributions: [] }
         })
       }
     });
@@ -138,7 +142,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-3.1-8b-instruct-fast",
-      prompt_version: "show-notes-v1",
+      prompt_version: "show-notes-v2-grounded",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -188,7 +192,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-3.1-8b-instruct-fast",
-        promptVersion: "show-notes-v1",
+        promptVersion: "show-notes-v2-grounded",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
@@ -223,13 +227,31 @@ describe("show-notes model boundaries", () => {
   });
 
   it("normalizes valid JSON output and rejects active or deceptive text", () => {
+    const episode = {
+      title: "Ópera en la Selva",
+      summary: "Existing reviewed summary."
+    };
+    const projection = projectTranscriptForShowNotes(approvedTranscript([{
+      id: "cue_grounding",
+      startsAtMs: 0,
+      endsAtMs: 1_000,
+      speakerLabel: "Jay",
+      text: "Cine en la Selva"
+    }]));
     expect(parseShowNotesProviderResponse({
       response: JSON.stringify({
         summary: "  Resumen revisable.  ",
         showNotesMarkdown: "## Temas\r\n\r\n- Uno  ",
-        keywords: ["Cine", "cine", "Selva"]
+        keywords: ["Cine", "cine", "Selva"],
+        grounding: {
+          namedEntities: [{ name: "Selva", evidence: "Cine en la Selva" }],
+          speakerAttributions: [{
+            speakerLabel: "Jay",
+            evidence: "Jay: Cine en la Selva"
+          }]
+        }
       })
-    })).toEqual({
+    }, { episode, projection })).toEqual({
       summary: "Resumen revisable.",
       showNotesMarkdown: "## Temas\n\n- Uno",
       keywords: ["Cine", "Selva"]
@@ -238,16 +260,59 @@ describe("show-notes model boundaries", () => {
       response: JSON.stringify({
         summary: "Resumen",
         showNotesMarkdown: "<img src=x onerror=alert(1)>",
-        keywords: []
+        keywords: [],
+        grounding: { namedEntities: [], speakerAttributions: [] }
       })
-    })).toThrow(/showNotesMarkdown is invalid/);
+    }, { episode, projection })).toThrow(/showNotesMarkdown is invalid/);
     expect(() => parseShowNotesProviderResponse({
       response: JSON.stringify({
         summary: "Resumen\u202eespoofed",
         showNotesMarkdown: "Safe",
-        keywords: []
+        keywords: [],
+        grounding: { namedEntities: [], speakerAttributions: [] }
       })
-    })).toThrow(/summary is invalid/);
+    }, { episode, projection })).toThrow(/summary is invalid/);
+  });
+
+  it("rejects ungrounded names and unconfirmed speaker attribution", () => {
+    const episode = {
+      title: "Ópera en la Selva",
+      summary: "Existing reviewed summary."
+    };
+    const projection = projectTranscriptForShowNotes(approvedTranscript([{
+      id: "cue_grounding",
+      startsAtMs: 0,
+      endsAtMs: 1_000,
+      speakerLabel: "",
+      text: "David: una afirmación sin etiqueta confirmada."
+    }]));
+    const base = {
+      summary: "Resumen",
+      showNotesMarkdown: "Notas",
+      keywords: []
+    };
+
+    expect(() => parseShowNotesProviderResponse({
+      response: {
+        ...base,
+        grounding: {
+          namedEntities: [{ name: "Alonzo", evidence: "Alonzo" }],
+          speakerAttributions: []
+        }
+      }
+    }, { episode, projection })).toThrow(/named-entity grounding is invalid/);
+    expect(() => parseShowNotesProviderResponse({
+      response: {
+        ...base,
+        grounding: {
+          namedEntities: [],
+          speakerAttributions: [{
+            speakerLabel: "David",
+            evidence: "David: una afirmación sin etiqueta confirmada."
+          }]
+        }
+      }
+    }, { episode, projection })).toThrow(/speaker grounding is invalid/);
   });
 });
 
@@ -259,7 +324,14 @@ async function showNotesFixture({
     response: JSON.stringify({
       summary: "A factual summary.",
       showNotesMarkdown: "## In this episode\n\n- A reviewed point",
-      keywords: ["Dust Wave", "Podcast"]
+      keywords: ["Ópera en la Selva"],
+      grounding: {
+        namedEntities: [{
+          name: "Ópera en la Selva",
+          evidence: "Ópera en la Selva"
+        }],
+        speakerAttributions: []
+      }
     }),
     usage: {
       prompt_tokens: 120,
