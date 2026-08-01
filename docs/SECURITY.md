@@ -896,6 +896,13 @@ its Worker acknowledgement failed. See
 [`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md) for the
 operational contract.
 
+Exhausted staging Queue messages are retained in an environment-specific DLQ
+instead of being silently deleted. The application has no DLQ producer binding
+and no automatic DLQ consumer yet, so a terminal provider ambiguity cannot be
+blindly replayed. The existing queue body remains the bounded ID/revision
+envelope and contains no credentials, private URLs, listener identity,
+transcript text, or media.
+
 ## Source-audio QC boundary
 
 Source-audio QC reuses the clip processor's dedicated staging HMAC secret but
