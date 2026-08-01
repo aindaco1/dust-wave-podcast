@@ -3,7 +3,6 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import {
-  AI_DRAFT_MODEL,
   MAXIMUM_AI_DRAFT_GROUNDING_EVIDENCE_CHARACTERS,
   MAXIMUM_AI_DRAFT_GROUNDING_ITEMS,
   MAXIMUM_AI_DRAFT_GROUNDING_NAME_CHARACTERS,
@@ -41,7 +40,10 @@ const MAXIMUM_SHOW_NOTES_CHARACTERS = 8_000;
 const MAXIMUM_KEYWORDS = 10;
 const MAXIMUM_KEYWORD_CHARACTERS = 60;
 const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
-export const SHOW_NOTES_PROMPT_VERSION = "show-notes-v3-grounded-retry";
+export const SHOW_NOTES_MODEL =
+  "@cf/meta/llama-4-scout-17b-16e-instruct";
+export const SHOW_NOTES_PROMPT_VERSION =
+  "show-notes-v4-grounded-llama4";
 
 type EpisodePromptRow = {
   title: string;
@@ -356,7 +358,7 @@ export async function createAdminEpisodeShowNotesDraft(
       includedCueCount: projection.includedCueCount,
       totalCueCount: projection.totalCueCount,
       truncated: projection.truncated,
-      model: AI_DRAFT_MODEL
+      model: SHOW_NOTES_MODEL
     }
   });
   if (!generationClaimed) {
@@ -391,7 +393,7 @@ export async function createAdminEpisodeShowNotesDraft(
         transcriptRevision: transcript.revision,
         transcriptSha256: transcript.contentSha256,
         draftSha256,
-        model: AI_DRAFT_MODEL,
+        model: SHOW_NOTES_MODEL,
         usage: safeAiUsage(providerResponse)
       }
     });
@@ -407,7 +409,7 @@ export async function createAdminEpisodeShowNotesDraft(
         truncated: projection.truncated
       },
       outputLanguage,
-      model: AI_DRAFT_MODEL,
+      model: SHOW_NOTES_MODEL,
       reviewRequired: true,
       saved: false
     });
@@ -422,7 +424,7 @@ export async function createAdminEpisodeShowNotesDraft(
         outputLanguage,
         transcriptRevision: transcript.revision,
         transcriptSha256: transcript.contentSha256,
-        model: AI_DRAFT_MODEL,
+        model: SHOW_NOTES_MODEL,
         errorName: error instanceof Error ? error.name : "UnknownError"
       }
     });
@@ -467,7 +469,7 @@ async function generateAutomaticShowNotesDraft(
     source.source_language,
     outputLanguage,
     episodeEvidenceSha256,
-    AI_DRAFT_MODEL,
+    SHOW_NOTES_MODEL,
     SHOW_NOTES_PROMPT_VERSION
   ].join(":"));
   const projection = projectTranscriptForShowNotes(transcript);
@@ -485,7 +487,7 @@ async function generateAutomaticShowNotesDraft(
     transcriptTruncated: projection.truncated,
     episodeEvidenceSha256,
     outputLanguage,
-    model: AI_DRAFT_MODEL,
+    model: SHOW_NOTES_MODEL,
     promptVersion: SHOW_NOTES_PROMPT_VERSION,
     inputFingerprint
   });
@@ -518,7 +520,7 @@ async function generateAutomaticShowNotesDraft(
         transcriptSha256: source.transcript_sha256,
         inputFingerprint,
         draftSha256,
-        model: AI_DRAFT_MODEL,
+        model: SHOW_NOTES_MODEL,
         promptVersion: SHOW_NOTES_PROMPT_VERSION,
         includedCueCount: projection.includedCueCount,
         totalCueCount: projection.totalCueCount,
@@ -538,7 +540,7 @@ async function generateAutomaticShowNotesDraft(
         transcriptRevision: source.transcript_revision,
         transcriptSha256: source.transcript_sha256,
         inputFingerprint,
-        model: AI_DRAFT_MODEL,
+        model: SHOW_NOTES_MODEL,
         promptVersion: SHOW_NOTES_PROMPT_VERSION,
         errorName: error instanceof Error ? error.name : "UnknownError",
         failureCode: safeAiDraftFailureCode(error)
@@ -571,7 +573,7 @@ async function requestShowNotesDraft(
   let repairFailureCode: string | null = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const providerResponse = await env.AI.run(
-      AI_DRAFT_MODEL,
+      SHOW_NOTES_MODEL,
       {
         messages: showNotesMessages({
           episode,
