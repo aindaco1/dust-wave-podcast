@@ -254,6 +254,11 @@ import {
   queueAdminEpisodeTranscription
 } from "./transcription-jobs";
 import {
+  acknowledgeProcessorDispatch,
+  claimProcessorDispatches,
+  rejectProcessorDispatchLease
+} from "./processor-dispatches";
+import {
   approveAdminEpisodeTranscript,
   listAdminEpisodeTranscripts,
   saveAdminEpisodeTranscript,
@@ -497,6 +502,10 @@ const ADMIN_AD_PLAN_APPROVE_PATH =
   /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_AD_PLAN_REJECT_PATH =
   /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/reject$/;
+const PROCESSOR_DISPATCH_CLAIM_PATH =
+  "/v1/processor/dispatches/claim";
+const PROCESSOR_DISPATCH_RESULT_PATH =
+  /^\/v1\/processor\/dispatches\/([A-Za-z0-9_-]+)\/(dispatched|failed)$/;
 const PROCESSOR_AD_PLAN_COMPLETE_PATH =
   /^\/v1\/processor\/ad-plans\/([A-Za-z0-9_-]+)\/complete$/;
 const PROCESSOR_CLIP_RENDER_COMPLETE_PATH =
@@ -2005,6 +2014,25 @@ async function routeRequest(
   const uploadMatch = url.pathname.match(ADMIN_UPLOAD_PATH);
   if (uploadMatch && method === "DELETE") {
     return abortMultipartUpload(request, env, uploadMatch[1]);
+  }
+  if (url.pathname === PROCESSOR_DISPATCH_CLAIM_PATH && method === "POST") {
+    return claimProcessorDispatches(request, env);
+  }
+  const processorDispatchResultMatch = url.pathname.match(
+    PROCESSOR_DISPATCH_RESULT_PATH
+  );
+  if (processorDispatchResultMatch && method === "POST") {
+    return processorDispatchResultMatch[2] === "dispatched"
+      ? acknowledgeProcessorDispatch(
+          request,
+          env,
+          processorDispatchResultMatch[1]
+        )
+      : rejectProcessorDispatchLease(
+          request,
+          env,
+          processorDispatchResultMatch[1]
+        );
   }
   const processorAdPlanCompleteMatch = url.pathname.match(
     PROCESSOR_AD_PLAN_COMPLETE_PATH

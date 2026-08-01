@@ -25,6 +25,14 @@ const feedValidationSourcePath = path.resolve(
   "src/feed-validation.ts"
 );
 const requiredDestinations = 10;
+const dynamicAdPilotRequirements = Object.freeze([
+  Object.freeze({ field: "approvedPlans", label: "approved episode ad plan" }),
+  Object.freeze({ field: "selectedDecisions", label: "selected ad decision" }),
+  Object.freeze({
+    field: "directQualifications",
+    label: "qualified direct-sponsor download"
+  })
+]);
 
 const stagingPosture = Object.freeze({
   AD_DECISION_MODE: "staging_validate",
@@ -179,19 +187,18 @@ export function evaluateLaunchStagingReadiness(snapshot) {
 
   const dynamicAds = snapshot.dynamicAds ?? {};
   const virtualAudioReady = snapshot.virtualAudioEvidence?.passed === true;
+  const missingDynamicAdEvidence = dynamicAdPilotRequirements
+    .filter(({ field }) => boundedCount(dynamicAds[field]) === 0)
+    .map(({ label }) => label);
   const dynamicAdReady = virtualAudioReady
-    && boundedCount(dynamicAds.approvedPlans) > 0
-    && boundedCount(dynamicAds.selectedDecisions) > 0
-    && boundedCount(dynamicAds.directQualifications) > 0;
+    && missingDynamicAdEvidence.length === 0;
   add(
     dynamicAdReady ? "PASS" : "BLOCK",
     "dynamic_ads",
     "Dynamic-ad durable pilot record",
     dynamicAdReady
       ? "current synthetic load plus approved plan, selected decision, and direct completion evidence exist"
-      : virtualAudioReady
-        ? "synthetic protocol/load passed; complete the isolated durable client pilot"
-        : "run the current signed synthetic protocol/load gate, then complete the isolated durable client pilot"
+      : dynamicAdBlockDetail(virtualAudioReady, missingDynamicAdEvidence)
   );
 
   add(
@@ -494,8 +501,10 @@ function launchStateStatements(episodeId, validatorVersion) {
         SELECT COUNT(*) FROM ad_impression_qualifications qualification
         JOIN ad_decisions decision
           ON decision.id = qualification.decision_id
+        JOIN ad_campaigns campaign
+          ON campaign.id = qualification.campaign_id
         WHERE decision.show_id = ${showId}
-          AND qualification.campaign_id IS NOT NULL
+          AND campaign.campaign_type = 'direct'
           AND qualification.qualification_reason = 'download_complete'
       ) AS direct_qualifications;
     PRAGMA foreign_key_check;`;
@@ -534,6 +543,17 @@ function presentDynamicAds(row) {
     selectedDecisions: boundedCount(row?.selected_decisions),
     directQualifications: boundedCount(row?.direct_qualifications)
   };
+}
+
+function dynamicAdBlockDetail(virtualAudioReady, missingEvidence) {
+  const requirements = [];
+  if (!virtualAudioReady) {
+    requirements.push("run the current signed synthetic protocol/load gate");
+  }
+  if (missingEvidence.length > 0) {
+    requirements.push(`missing durable evidence: ${missingEvidence.join(", ")}`);
+  }
+  return requirements.join("; ");
 }
 
 function loadVirtualAudioEvidence(filename) {

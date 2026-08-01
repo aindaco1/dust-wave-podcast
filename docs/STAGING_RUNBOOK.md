@@ -36,6 +36,11 @@ structured `job_failed` event before retrying; never log a job payload or
 private URL. Add automatic tracing only after a redacting Tail Worker or
 token-free route passes an independent security gate.
 
+Processor transport is automated through the signed pull boundary documented
+in [`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md).
+Before enabling its scheduled workflow, run its focused tests and confirm
+production keeps `PROCESSOR_DISPATCH_MODE=disabled`.
+
 ## 2. Back up and migrate staging
 
 ```sh

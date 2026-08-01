@@ -19,6 +19,7 @@ import {
 import {
   scheduleRssImportExecutions
 } from "./rss-import-executions";
+import { syncProcessorDispatches } from "./processor-dispatches";
 
 export default {
   async fetch(
@@ -99,7 +100,8 @@ export default {
       cleanupPodcastAnalytics(env.DB),
       cleanupVirtualAudioDiagnosticLeases(env.DB),
       schedulePendingAnnouncementDeliveries(env),
-      schedulePendingTranscriptions(env)
+      schedulePendingTranscriptions(env),
+      syncProcessorDispatches(env)
     ]);
   }
 } satisfies ExportedHandler<PodcastEnv, PodcastJob>;

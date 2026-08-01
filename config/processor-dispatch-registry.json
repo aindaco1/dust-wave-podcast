@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "stagingOrigin": "https://dust-wave-podcast-staging.jogo.workers.dev",
+  "githubApiVersion": "2026-03-10",
+  "processors": {
+    "audio_qc": {
+      "workflow": "process-audio-qc.yml",
+      "input": "run_id"
+    },
+    "audio_enhancement_preview": {
+      "workflow": "process-audio-enhancement-preview.yml",
+      "input": "job_id"
+    },
+    "audio_enhancement_derivative": {
+      "workflow": "process-audio-enhancement-derivative.yml",
+      "input": "job_id"
+    },
+    "delivery_audio": {
+      "workflow": "process-delivery-audio.yml",
+      "input": "job_id"
+    },
+    "transcription_chunks": {
+      "workflow": "process-transcription-chunks.yml",
+      "input": "run_id"
+    },
+    "alignment": {
+      "workflow": "process-alignment.yml",
+      "input": "job_id"
+    },
+    "clip_render": {
+      "workflow": "process-clip-render.yml",
+      "input": "render_id"
+    },
+    "youtube_audio_rendition": {
+      "workflow": "process-youtube-audio-rendition.yml",
+      "input": "rendition_id"
+    }
+  }
+}

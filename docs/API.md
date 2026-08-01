@@ -654,6 +654,22 @@ remain visible on their directory but never increase summary or claim counts.
 This does not submit a show, store credentials, or claim that a directory
 ingests instantly.
 
+### Isolated-staging processor dispatcher
+
+These HMAC-authenticated routes are `404` unless isolated staging has
+`PROCESSOR_DISPATCH_MODE=github_actions_pull`. They lease only closed-registry
+processor type, target ID, and manifest-digest records; they never return
+media URLs, content, listener data, or provider credentials.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/dispatches/claim` | Reconcile existing source jobs and conditionally lease at most four due jobs |
+| `POST` | `/v1/processor/dispatches/{dispatchId}/dispatched` | Idempotently bind an accepted GitHub workflow run ID to the exact lease |
+| `POST` | `/v1/processor/dispatches/{dispatchId}/failed` | Reject the exact lease and schedule bounded backoff after a GitHub dispatch failure |
+
+The complete trust, retry, registry, deployment, and rollback contract is in
+[`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md).
+
 ### Isolated-staging transcription chunk processor
 
 These HMAC-authenticated routes are `404` in production. They use the existing

@@ -876,6 +876,26 @@ same conditional-R2 transport and exact checksum/manifest checks as Admin,
 wildcard read-only CORS, one-minute revalidation, a canonical News-page link,
 and noindex. Production keeps the mode disabled.
 
+## Processor-dispatch boundary
+
+Automatic staging dispatch is a pull boundary: a scheduled GitHub workflow
+uses its short-lived repository token to claim a bounded set of D1 leases from
+the Worker. The Worker never stores a GitHub token and the dispatcher never
+receives media URLs, object keys, listener data, transcript text, or provider
+credentials. Claim and result bodies use the existing timestamped
+media-processor HMAC contract, and the routes remain absent outside the exact
+staging dispatch mode.
+
+The checked-in registry is closed to eight ID-only workflows. D1 source tables
+remain authoritative; the dispatcher ledger stores transport evidence only.
+Conditional leases, per-source uniqueness, target-specific GitHub concurrency,
+five-attempt backoff, manifest-digest equality, and terminal-state
+reconciliation prevent transport retries from becoming competing processor
+state. An accepted GitHub run is never immediately rejected merely because
+its Worker acknowledgement failed. See
+[`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md) for the
+operational contract.
+
 ## Source-audio QC boundary
 
 Source-audio QC reuses the clip processor's dedicated staging HMAC secret but

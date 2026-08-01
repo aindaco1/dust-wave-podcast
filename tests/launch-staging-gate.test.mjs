@@ -165,6 +165,30 @@ describe("launch staging gate", () => {
     expect(report.nextAction?.detail).toContain(
       "Enhancement decision - listen and promote or reject"
     );
+    expect(report.nodes.find(({ id }) => id === "dynamic_ads")?.detail)
+      .toBe(
+        "missing durable evidence: selected ad decision, "
+        + "qualified direct-sponsor download"
+      );
+  });
+
+  it("names both synthetic and durable dynamic-ad evidence when absent", () => {
+    const snapshot = readySnapshot();
+    snapshot.virtualAudioEvidence = null;
+    snapshot.dynamicAds = {
+      approvedPlans: 0,
+      selectedDecisions: 0,
+      directQualifications: 0
+    };
+
+    const report = evaluateLaunchStagingReadiness(snapshot);
+
+    expect(report.nodes.find(({ id }) => id === "dynamic_ads")?.detail)
+      .toBe(
+        "run the current signed synthetic protocol/load gate; "
+        + "missing durable evidence: approved episode ad plan, "
+        + "selected ad decision, qualified direct-sponsor download"
+      );
   });
 
   it("prioritizes safety failures ahead of earlier promotion blocks", () => {
