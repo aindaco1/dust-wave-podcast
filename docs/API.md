@@ -421,6 +421,8 @@ projection rather than maintaining processor-specific UI policy.
 | `PATCH` | `/v1/admin/reviews/{id}` | producer+; admin+ for approval/reopen | Optimistically update target review state/assignment |
 | `PATCH` | `/v1/admin/review-comments/{id}` | producer+ | Optimistically resolve/reopen or assign a review note |
 | `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
+| `POST` | `/v1/admin/episodes/{id}/clips/draft` | producer+ | Propose bounded bilingual social ranges from one verified approved transcript; never saves or renders |
+| `GET` | `/v1/admin/episodes/{id}/clips/drafts` | producer+ | List current private automatic proposals pinned to the exact master, transcript, and passed alignment; never applies them |
 | `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
 | `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
 | `GET`, `HEAD` | `/v1/admin/clip-renders/{renderId}/captions.{vtt\|srt}` | analyst+ | Download checksum-bound relative WebVTT or SubRip rebuilt from the exact approved caption manifest |
@@ -955,8 +957,16 @@ approval, or publication state. The browser repeats the contract and can place
 one candidate only into a new unsaved vertical segment recipe after confirming
 replacement of populated fields. The ordinary clip PUT remains the sole save
 path; H1 alignment, private render, approval, and publication remain separate.
-Staging enables the feature; production keeps
-`CLIP_DRAFT_AI_ENABLED=false`.
+Staging automation uses the same strict generator only after the exact final
+master, approved speaker-confirmed transcript, and human-approved passing word
+alignment exist. A shared aligned-editorial source query prevents chapter and
+clip eligibility drift; the private proposal ledger supplies the same
+four-minute lease, three-attempt ceiling, and exact fingerprints. The clip
+fingerprint binds master, transcript, alignment, episode title/duration,
+language, model, and prompt version. `GET /clips/drafts` revalidates all of
+that current evidence and the candidate ranges before returning private JSON;
+it never applies a candidate. Production keeps both
+`CLIP_DRAFT_AUTOMATION_MODE=disabled` and `CLIP_DRAFT_AI_ENABLED=false`.
 
 ### Saved transcript caption export
 

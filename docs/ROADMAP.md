@@ -179,8 +179,13 @@ iHeartRadio, and Deezer.
   identities; the Worker derives every timestamp and audits no generated text.
   A bilingual review card can fill only a new unsaved vertical segment recipe.
   Existing versioned save, H1 word alignment, private rendering, approval, and
-  publication controls remain the only state-changing path. Staging is enabled
-  and production remains disabled.
+  publication controls remain the only state-changing path. Staging automation
+  now waits for the final working master, exact approved speaker-confirmed
+  transcript, and its human-approved passing word alignment. It shares the
+  chapter eligibility SQL and private proposal lease/retry ledger, but retains
+  clip-specific prompt, output validation, fingerprint, and audit policy.
+  Current-only Admin reads never apply candidates. Production exits before D1
+  and both automation and AI remain disabled.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
   speaker labels, Admin approval, and matching-alignment readiness. Canonical

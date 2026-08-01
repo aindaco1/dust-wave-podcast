@@ -15,7 +15,8 @@ import {
   listAdminEpisodeChapterDrafts
 } from "./chapter-drafts";
 import {
-  createAdminEpisodeClipDraft
+  createAdminEpisodeClipDraft,
+  listAdminEpisodeClipDrafts
 } from "./clip-drafts";
 import {
   getAdminAdQualificationReconciliation
@@ -397,6 +398,8 @@ const ADMIN_EPISODE_CHAPTER_DRAFTS_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/drafts$/;
 const ADMIN_EPISODE_CLIP_DRAFT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/draft$/;
+const ADMIN_EPISODE_CLIP_DRAFTS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/drafts$/;
 const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_READINESS_PATH =
@@ -1386,6 +1389,16 @@ async function routeRequest(
       request,
       env,
       adminEpisodeClipDraftMatch[1]
+    );
+  }
+  const adminEpisodeClipDraftsMatch = url.pathname.match(
+    ADMIN_EPISODE_CLIP_DRAFTS_PATH
+  );
+  if (adminEpisodeClipDraftsMatch && method === "GET") {
+    return listAdminEpisodeClipDrafts(
+      request,
+      env,
+      adminEpisodeClipDraftsMatch[1]
     );
   }
   const adminEpisodeReadinessMatch = url.pathname.match(

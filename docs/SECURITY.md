@@ -671,7 +671,18 @@ the source digest, full coverage, ordering, duration, and text, renders only DOM
 text nodes, and requires confirmation before replacing populated recipe
 fields. A candidate can fill only a new local segment recipe. The existing clip
 PUT, H1 alignment, render, approval, and publication paths remain independent
-explicit gates. Staging is enabled; production is fail-closed.
+explicit gates.
+
+Automatic discovery is stricter than manual drafting. Chapters and clips
+reuse one aligned-editorial SQL boundary requiring the current final working
+master, latest speaker-confirmed approved transcript, an exact ready alignment
+job, a passed alignment revision, and its human approval. Clip proposals reuse
+the private editorial claim/lease/completion/failure ledger with four claims
+per scheduler run, a four-minute lease, three attempts per exact fingerprint,
+and content-free system audits. Current-only reads recheck the master,
+transcript, alignment, episode title/duration, and every derived cue range.
+Production exits before D1 under `CLIP_DRAFT_AUTOMATION_MODE=disabled`; its
+separate Workers AI flag is also off.
 
 Public transcript reads are slug-addressed and fail closed behind the same
 published/due/public-or-free-or-early-access/ready-media policy as canonical
