@@ -67,6 +67,20 @@ describe("processor dispatch automation", () => {
     })).toBe(false);
   });
 
+  it("keeps every normalized D1 compound view within the remote term limit", () => {
+    const migration = readFileSync(
+      join(migrationsDirectory, "0067_processor_dispatch_automation.sql"),
+      "utf8"
+    );
+    for (const definition of migration.split(/CREATE VIEW /).slice(1)) {
+      const statement = definition.split(";")[0];
+      expect((statement.match(/UNION ALL/g) ?? []).length).toBeLessThan(5);
+    }
+    expect(migration).toContain("CREATE VIEW processor_dispatch_audio_sources");
+    expect(migration).toContain("CREATE VIEW processor_dispatch_editorial_sources");
+    expect(migration).toContain("CREATE VIEW processor_dispatch_sources");
+  });
+
   it("leases exact queued work once and acknowledges a GitHub run idempotently", async () => {
     const claimResponse = await claimProcessorDispatches(
       signedRequest("/v1/processor/dispatches/claim", {

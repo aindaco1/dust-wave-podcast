@@ -3,7 +3,9 @@ PRAGMA foreign_keys = ON;
 -- Normalize the existing processor-specific tables without moving their
 -- business state into a second workflow model. The dispatcher stores only the
 -- durable target identity, exact manifest digest, lease, and GitHub run ID.
-CREATE VIEW processor_dispatch_sources AS
+-- D1 limits one flat compound SELECT to five terms. Keep the normalized
+-- projection in two bounded groups and combine only those two views.
+CREATE VIEW processor_dispatch_audio_sources AS
 SELECT
   'audio_qc' AS processor_type,
   id AS target_id,
@@ -60,21 +62,22 @@ SELECT
     ELSE 'failed'
   END,
   requested_at
-FROM delivery_audio_jobs
-UNION ALL
+FROM delivery_audio_jobs;
+
+CREATE VIEW processor_dispatch_editorial_sources AS
 SELECT
-  'transcription_chunks',
-  id,
+  'transcription_chunks' AS processor_type,
+  id AS target_id,
   processor_manifest_sha256,
-  status,
+  status AS source_status,
   CASE
     WHEN status = 'queued' THEN 'pending'
     WHEN status = 'running' THEN 'running'
     WHEN status = 'ready' THEN 'succeeded'
     WHEN status = 'stale' THEN 'canceled'
     ELSE 'failed'
-  END,
-  created_at
+  END AS lifecycle_status,
+  created_at AS source_requested_at
 FROM transcription_chunk_runs
 UNION ALL
 SELECT
@@ -119,6 +122,11 @@ SELECT
   END,
   requested_at
 FROM episode_youtube_audio_renditions;
+
+CREATE VIEW processor_dispatch_sources AS
+SELECT * FROM processor_dispatch_audio_sources
+UNION ALL
+SELECT * FROM processor_dispatch_editorial_sources;
 
 CREATE TABLE processor_dispatches (
   id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 240),
