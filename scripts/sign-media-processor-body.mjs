@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -16,6 +16,11 @@ if (!bodyPath || !secret) {
 }
 const body = await readFile(path.resolve(bodyPath), "utf8");
 const signed = mediaProcessorSignature(body, secret);
-process.stdout.write(
-  `timestamp=${signed.timestamp}\nsignature=${signed.signature}\n`
-);
+const outputs =
+  `timestamp=${signed.timestamp}\nsignature=${signed.signature}\n`;
+if (process.env.GITHUB_OUTPUT) {
+  process.stdout.write(`::add-mask::${signed.signature}\n`);
+  await appendFile(process.env.GITHUB_OUTPUT, outputs, "utf8");
+} else {
+  process.stdout.write(outputs);
+}

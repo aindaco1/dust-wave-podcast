@@ -42,7 +42,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/manifest-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Fetch private checksummed manifest
         env:
@@ -74,7 +73,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/source-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream immutable private source
         env:
@@ -125,7 +123,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit immutable chunk inventory
         env:
@@ -158,7 +155,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/failure-callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit bounded failure evidence
         if: ${{ failure() && steps.chunking.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}

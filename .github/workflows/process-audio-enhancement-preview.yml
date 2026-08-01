@@ -42,7 +42,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-enhancement/manifest-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Fetch private checksummed manifest
         env:
@@ -74,7 +73,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-enhancement/source-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream immutable private source
         env:
@@ -120,7 +118,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-enhancement/original-upload-payload.txt
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream checksummed private original preview
         env:
@@ -150,7 +147,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-enhancement/enhanced-upload-payload.txt
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream checksummed private enhanced preview
         env:
@@ -190,7 +186,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-enhancement/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit ready evidence
         if: ${{ success() }}
@@ -224,7 +219,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-enhancement/failure-callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit failure evidence
         if: ${{ failure() && steps.enhancement.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}

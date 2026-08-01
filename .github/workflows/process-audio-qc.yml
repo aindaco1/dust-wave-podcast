@@ -48,7 +48,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-qc/manifest-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Fetch private checksummed manifest
         env:
@@ -80,7 +79,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-qc/source-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream immutable private source
         env:
@@ -123,7 +121,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-qc/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit measured QC evidence
         if: ${{ success() }}
@@ -157,7 +154,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/audio-qc/failure-callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit failure evidence
         if: ${{ failure() && steps.qc.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}

@@ -47,7 +47,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/manifest-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Fetch exact private alignment manifest
         env:
@@ -99,7 +98,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/source-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream immutable private working master
         env:
@@ -157,7 +155,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit immutable private alignment result
         id: submit
@@ -195,7 +192,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/failure-callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit bounded failure evidence
         if: ${{ failure() && steps.alignment.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}

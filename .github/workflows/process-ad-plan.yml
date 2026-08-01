@@ -96,7 +96,6 @@ jobs:
         run: >-
           node scripts/sign-ad-plan-callback.mjs
           work/ad-plan/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit evidence for human review
         env:
