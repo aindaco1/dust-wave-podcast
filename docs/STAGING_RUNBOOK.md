@@ -802,7 +802,11 @@ a staging Worker secret containing an existing Super-admin address. Keep the
 raw address out of D1, logs, screenshots, and this repository. The next
 five-minute trigger discovers the same exact ready/QC evidence, creates one
 content-free `admin_action_notifications` row, and sends a bilingual Resend
-link to `?show=...&episode=...&step=media&target=working_master`. Confirm:
+link to `?show=...&episode=...&step=media&target=working_master`. After that
+decision, the same ledger must create only the actions that become ready:
+`target=delivery_audio` for the normalized player asset and
+`step=transcript&target=transcript_review` for the exact initial transcript
+revision. Confirm:
 
 - one accepted request uses `podcast-admin-action/<action-digest>` as its
   idempotency key and a 15-minute single-use magic link;

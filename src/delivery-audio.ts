@@ -16,6 +16,9 @@ import {
 
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import {
+  prepareResolveDeliveryAudioAction
+} from "./admin-action-notifications";
+import {
   hasAdminRoleForShow,
   requireAdmin,
   requireRecentAdminAuthentication,
@@ -1134,7 +1137,8 @@ export async function approveAdminDeliveryAudioJob(
         peaksSha256: job.peaks_sha256,
         processorReportSha256: job.processor_report_sha256
       }
-    })
+    }),
+    prepareResolveDeliveryAudioAction(env.DB, jobId)
   ]);
   if (
     Number(results[0]?.meta?.changes ?? 0) !== 1

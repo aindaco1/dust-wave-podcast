@@ -260,6 +260,12 @@ iHeartRadio, and Deezer.
   retried three times; promotion, rejection, master drift, or policy drift
   resolves it automatically. The recipient remains a Worker secret and
   production mode is disabled.
+- The same ledger now covers normalized delivery-audio approval and initial
+  transcript review. Both downstream actions require the shared final-master
+  predicate, preserve the original master-action digest, use allowlisted
+  episode-centered deep links, and resolve in the approval transaction or when
+  revision/evidence drift makes them obsolete. Existing action rows migrate
+  losslessly; no recipient, content, object key, or usable token enters D1.
 - The delivery boundary now snapshots that exact current master into one
   deterministic 44.1 kHz stereo 128 kbps MP3 and bounded
   `dustwave-player-peaks-v1` document. The staging-only workflow fully decodes
