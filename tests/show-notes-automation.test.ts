@@ -134,7 +134,7 @@ describe("automatic show-notes drafts", () => {
       3,
       transcriptSha256,
       "@cf/meta/llama-3.1-8b-instruct-fast",
-      "show-notes-v2-grounded"
+      "show-notes-v3-grounded-retry"
     ]));
     expect(statements.some(({ query }) => query.includes("UPDATE episodes")))
       .toBe(false);

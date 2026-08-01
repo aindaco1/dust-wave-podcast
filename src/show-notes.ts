@@ -41,7 +41,7 @@ const MAXIMUM_SHOW_NOTES_CHARACTERS = 8_000;
 const MAXIMUM_KEYWORDS = 10;
 const MAXIMUM_KEYWORD_CHARACTERS = 60;
 const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
-export const SHOW_NOTES_PROMPT_VERSION = "show-notes-v2-grounded";
+export const SHOW_NOTES_PROMPT_VERSION = "show-notes-v3-grounded-retry";
 
 type EpisodePromptRow = {
   title: string;
@@ -568,36 +568,54 @@ async function requestShowNotesDraft(
   draftSha256: string;
   providerResponse: unknown;
 }> {
-  const providerResponse = await env.AI.run(
-    AI_DRAFT_MODEL,
-    {
-      messages: showNotesMessages({
-        episode,
-        projection,
-        sourceLanguage,
-        outputLanguage
-      }),
-      response_format: {
-        type: "json_schema",
-        json_schema: showNotesResponseSchema()
+  let repairFailureCode: string | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const providerResponse = await env.AI.run(
+      AI_DRAFT_MODEL,
+      {
+        messages: showNotesMessages({
+          episode,
+          projection,
+          sourceLanguage,
+          outputLanguage,
+          repairFailureCode
+        }),
+        response_format: {
+          type: "json_schema",
+          json_schema: showNotesResponseSchema()
+        },
+        max_tokens: 2_000,
+        temperature: 0.2,
+        seed: 41_729 + attempt
       },
-      max_tokens: 1_200,
-      temperature: 0.2,
-      seed: 41_729
-    },
-    {
-      tags: ["dust-wave-podcast", tag, outputLanguage]
+      {
+        tags: ["dust-wave-podcast", tag, outputLanguage]
+      }
+    );
+    try {
+      const draft = parseShowNotesProviderResponse(providerResponse, {
+        episode,
+        projection
+      });
+      return {
+        draft,
+        draftSha256: await sha256Hex(JSON.stringify(draft)),
+        providerResponse
+      };
+    } catch (error) {
+      const failureCode = safeAiDraftFailureCode(error);
+      if (
+        attempt === 0
+        && failureCode !== "provider_error"
+        && failureCode !== "unknown_error"
+      ) {
+        repairFailureCode = failureCode;
+        continue;
+      }
+      throw error;
     }
-  );
-  const draft = parseShowNotesProviderResponse(providerResponse, {
-    episode,
-    projection
-  });
-  return {
-    draft,
-    draftSha256: await sha256Hex(JSON.stringify(draft)),
-    providerResponse
-  };
+  }
+  throw new TypeError("AI draft provider response is invalid");
 }
 
 export function projectTranscriptForShowNotes(
@@ -686,12 +704,14 @@ function showNotesMessages({
   episode,
   projection,
   sourceLanguage,
-  outputLanguage
+  outputLanguage,
+  repairFailureCode
 }: {
   episode: EpisodePromptRow;
   projection: TranscriptProjection;
   sourceLanguage: TranscriptLanguage;
   outputLanguage: TranscriptLanguage;
+  repairFailureCode: string | null;
 }): Array<{ role: string; content: string }> {
   const outputLanguageName = outputLanguage === "es" ? "Spanish" : "English";
   return [
@@ -704,11 +724,18 @@ function showNotesMessages({
         + "facts, or calls to action. Use only evidence present in the source. "
         + "List every named person, organization, place, product, or program "
         + "used in the draft under grounding.namedEntities with a short exact "
-        + "source substring containing that name. If exact evidence is absent, "
-        + "use a generic role instead. List every named-speaker attribution "
+        + "source substring containing that name; keep each substring to one "
+        + "sentence. If exact evidence is absent, use a generic role instead. "
+        + "List every named-speaker attribution "
         + "under grounding.speakerAttributions with an exact transcript "
         + "substring that includes the confirmed `Speaker:` label. Never "
         + "attribute a statement when that confirmed label is absent. "
+        + (repairFailureCode
+          ? `A prior response failed ${repairFailureCode}. Regenerate from `
+            + "the supplied source only; do not reuse its output. Every "
+            + "grounding evidence value must be copied verbatim from one "
+            + "source field. "
+          : "")
         + `Write in ${outputLanguageName}. Return only the requested JSON.`
     },
     {

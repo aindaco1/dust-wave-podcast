@@ -43,7 +43,7 @@ describe("AI show-notes drafts", () => {
       "@cf/meta/llama-3.1-8b-instruct-fast"
     );
     expect(fixture.aiRun.mock.calls[0][1]).toMatchObject({
-      max_tokens: 1_200,
+      max_tokens: 2_000,
       temperature: 0.2,
       response_format: { type: "json_schema" }
     });
@@ -64,6 +64,29 @@ describe("AI show-notes drafts", () => {
     expect(JSON.stringify(auditMetadata)).not.toContain(
       "Contenido aprobado"
     );
+  });
+
+  it("repairs one invalid response without retaining its content", async () => {
+    const fixture = await showNotesFixture();
+    fixture.aiRun.mockResolvedValueOnce({
+      response: JSON.stringify({
+        summary: "A draft that needs repair.",
+        showNotesMarkdown: "Notes",
+        keywords: [],
+        grounding: {
+          namedEntities: [{ name: "Alonzo", evidence: "Alonzo" }],
+          speakerAttributions: []
+        }
+      })
+    });
+
+    const response = await handleRequest(fixture.request(), fixture.env);
+
+    expect(response.status).toBe(200);
+    expect(fixture.aiRun).toHaveBeenCalledTimes(2);
+    const repairInput = JSON.stringify(fixture.aiRun.mock.calls[1][1]);
+    expect(repairInput).toContain("grounding_named_entity_invalid");
+    expect(repairInput).not.toContain("Alonzo");
   });
 
   it("fails closed before model invocation without a verified approval", async () => {
@@ -117,6 +140,7 @@ describe("AI show-notes drafts", () => {
     expect(await response.json()).toEqual({
       error: "show_notes_ai_unavailable"
     });
+    expect(fixture.aiRun).toHaveBeenCalledTimes(2);
     expect(
       fixture.writes.some(({ values }) =>
         values.includes("show_notes.draft_failed")
@@ -142,7 +166,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-3.1-8b-instruct-fast",
-      prompt_version: "show-notes-v2-grounded",
+      prompt_version: "show-notes-v3-grounded-retry",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -192,7 +216,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-3.1-8b-instruct-fast",
-        promptVersion: "show-notes-v2-grounded",
+        promptVersion: "show-notes-v3-grounded-retry",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
