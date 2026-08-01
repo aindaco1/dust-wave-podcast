@@ -254,7 +254,8 @@
   and announcements use durable delivery-ID idempotency. Redirects fail closed.
   Scheduled maintenance removes expired rate buckets, consumed login tokens,
   and revoked/expired sessions after a one-day diagnostic buffer.
-- Human-action mail for enhanced-master, delivery-audio, and transcript review
+- Human-action mail for enhanced-master, delivery-audio, transcript review,
+  and alignment review
   uses a separate secret recipient address and a content-derived idempotency
   digest. The usable token is deterministically
   derived with the admin-session secret only while the Worker is running; D1
@@ -264,12 +265,16 @@
   return path is same-origin and limited to the English/Spanish Podcast admin.
 - Scheduled delivery rechecks the same current-master/QC predicate used by the
   promote/reject operation. Delivery-audio and transcript actions additionally
-  require that shared decision to be final and bind their exact render or
-  transcript revision evidence. The configured recipient must hold an allowed
+  require that shared decision to be final and bind their exact render,
+  transcript revision, or alignment evidence. Alignment mail additionally
+  requires the same structural eligibility, current input, pinned runner, and
+  private passing bilingual benchmark evidence enforced by the approval
+  trigger. The configured recipient must hold an allowed
   role for the show. Delivery leases one action at a time and uses three
   identical attempts. Approval, rejection, editing, policy drift, or master
   drift resolves the action; no link can bypass recent-authentication, CSRF,
-  object revalidation, speaker confirmation, or exact-revision checks.
+  object revalidation, speaker confirmation, benchmark, or exact-revision
+  checks.
   `ADMIN_ACTION_NOTIFICATION_MODE` is live only in staging and remains disabled
   in production.
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing

@@ -141,6 +141,7 @@ export async function sendAdminActionMagicLink(
     loginUrl
   }: {
     actionKind:
+      | "alignment_review"
       | "delivery_audio_approval"
       | "transcript_review"
       | "working_master_decision";
@@ -183,6 +184,7 @@ export async function sendAdminActionMagicLink(
 
 function adminActionCopy(
   actionKind:
+    | "alignment_review"
     | "delivery_audio_approval"
     | "transcript_review"
     | "working_master_decision"
@@ -212,6 +214,17 @@ function adminActionCopy(
       spanish:
         "La transcripción del podcast en el idioma original está lista para revisión editorial y de hablantes.",
       action: "Review transcript / Revisar transcripción"
+    };
+  }
+  if (actionKind === "alignment_review") {
+    return {
+      subject:
+        "Podcast alignment ready for review / Alineación del podcast lista para revisión",
+      english:
+        "The exact transcript and audio alignment passed its automated structural and benchmark gates and needs final review.",
+      spanish:
+        "La alineación exacta de la transcripción y el audio aprobó los controles estructurales y de referencia y necesita revisión final.",
+      action: "Review alignment / Revisar alineación"
     };
   }
   return {

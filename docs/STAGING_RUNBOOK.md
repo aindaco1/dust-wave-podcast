@@ -829,7 +829,10 @@ link to `?show=...&episode=...&step=media&target=working_master`. After that
 decision, the same ledger must create only the actions that become ready:
 `target=delivery_audio` for the normalized player asset and
 `step=transcript&target=transcript_review` for the exact initial transcript
-revision. Confirm:
+revision. After an exact alignment result and matching private bilingual
+benchmark become approval-ready, the same ledger may add only
+`step=transcript&target=alignment`. Migration `0072` must preserve every
+existing action row before this fourth kind is enabled. Confirm:
 
 - one accepted request uses `podcast-admin-action/<action-digest>` as its
   idempotency key and a 15-minute single-use magic link;
@@ -839,8 +842,9 @@ revision. Confirm:
 - non-Super-admin or unknown recipient setup fails closed without disclosing
   whether an account exists;
 - three provider failures reuse byte-identical content and end in `failed`;
-- promote/reject, current-master change, or QC-policy drift moves the row to
-  `resolved`; and
+- promote/reject, current-master change, QC-policy drift, transcript drift, or
+  benchmark drift moves the applicable row to `resolved`; alignment approval
+  resolves its reminder in the same atomic batch; and
 - D1 contains no email, usable token, login URL, media key, transcript, or
   provider response body.
 
