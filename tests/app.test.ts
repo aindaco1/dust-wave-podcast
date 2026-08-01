@@ -23,7 +23,8 @@ function createShowDatabase(): D1Database {
     description_en: "Beauty and joy. And a bit of tech from time to time.",
     language: "es",
     status: "coming_soon",
-    artwork_url: "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
+    artwork_url:
+      "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork-feed.jpg",
     canonical_url: "https://dustwave.xyz/podcasts/opera-en-la-selva/",
     youtube_channel_url: "https://youtube.com/@dustwavecollective",
     premium_enabled: 1,

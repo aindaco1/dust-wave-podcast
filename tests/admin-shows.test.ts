@@ -11,7 +11,7 @@ describe("show settings mutations", () => {
     const response = await handleRequest(fixture.request({
       title: "Ópera en la Selva",
       artworkUrl:
-        "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
+        "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork-feed.jpg",
       youtubeChannelUrl:
         "https://www.youtube.com/@dustwavecollective",
       earlyAccessDays: 7,
@@ -27,7 +27,7 @@ describe("show settings mutations", () => {
       query.includes("UPDATE shows")
     );
     expect(update?.values).toEqual(expect.arrayContaining([
-      "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
+      "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork-feed.jpg",
       "https://www.youtube.com/@dustwavecollective",
       7,
       0,

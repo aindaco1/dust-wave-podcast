@@ -4,12 +4,14 @@ import { requireAdmin } from "./admin-auth";
 import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
 import { servePublicFeed } from "./feed";
+import { PublicFeedValidationError } from "./feed-validation-error";
+import { validatePublicFeedResources } from "./feed-validation-resources";
 import { privateJson } from "./http";
 import { isPodcastGuid } from "./podcast-guid";
 import { validIdentifier } from "./validation";
 
 export const PUBLIC_FEED_VALIDATOR_VERSION =
-  "dustwave-rss-launch-v3";
+  "dustwave-rss-launch-v4";
 const MAXIMUM_FEED_BYTES = 5 * 1024 * 1024;
 
 type FeedValidationShow = {
@@ -33,15 +35,7 @@ export type PublicFeedValidationEvidence = {
   validatedAt: string;
 };
 
-export class PublicFeedValidationError extends Error {
-  code: string;
-
-  constructor(message: string, code: string) {
-    super(message);
-    this.name = "PublicFeedValidationError";
-    this.code = code;
-  }
-}
+export { PublicFeedValidationError } from "./feed-validation-error";
 
 export async function retryAdminPublicFeedValidation(
   request: Request,
@@ -120,6 +114,7 @@ export async function validateAndRecordPublicFeed(
     }
     const xml = await readBoundedFeedText(response, MAXIMUM_FEED_BYTES);
     const validation = validatePublicPodcastFeed(xml, feedUrl);
+    await validatePublicFeedResources(env, xml, feedUrl);
     const feedSha256 = await sha256Hex(xml);
     if (response.headers.get("etag") !== `"${feedSha256}"`) {
       throw new PublicFeedValidationError(
