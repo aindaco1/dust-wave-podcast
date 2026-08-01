@@ -19,6 +19,7 @@
     "gate:episode:staging": "node scripts/check-episode-staging-gate.mjs",
     "gate:stripe:staging": "node scripts/check-stripe-staging-readiness.mjs",
     "gate:launch:staging": "node scripts/check-launch-staging-readiness.mjs",
+    "prepare:alignment-benchmark-source": "node scripts/prepare-alignment-benchmark-source.mjs",
     "audit:transcript-reference": "node scripts/audit-transcript-reference.mjs",
     "deploy:staging:dry": "wrangler deploy --env staging --dry-run",
     "deploy:production:dry": "wrangler deploy --env production --dry-run",

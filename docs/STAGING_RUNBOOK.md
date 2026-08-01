@@ -778,6 +778,30 @@ bounded retryable failure and confirm the same job reopens; force five claimed
 attempts and confirm the sixth claim fails closed. Change the transcript or
 working master and confirm the original job becomes stale.
 
+For an explicitly approved private source, prepare candidate corpus windows
+locally before any transcript or alignment work. The output directory must not
+already exist, all media and references remain outside Git, and the rights
+record must identify the actual approval rather than inferring it from a public
+URL:
+
+```sh
+npm run prepare:alignment-benchmark-source -- \
+  --audio /private/source.m4a \
+  --reference /private/source.es-orig.json3 \
+  --output /private/alignment-benchmark/source-id/candidates \
+  --source-id source-id \
+  --language es \
+  --source-url https://www.youtube.com/watch?v=source-id \
+  --source-title "Approved interview" \
+  --rights-approved-by "Approver" \
+  --rights-approved-at YYYY-MM-DD
+```
+
+The command reports only aggregate counts, paths, and hashes. Inspect the
+private inventory and independently review/correct the transcript before
+creating runner requests. A successful preparation is sourcing evidence, not
+an H1 pass.
+
 Do not click approval or claim H1 until the 24 rights-cleared English/Spanish
 fixtures, 100 unclipped preview reviews, both 60-minute resource runs,
 idempotency checks, and clean-environment reproduction have produced one exact
