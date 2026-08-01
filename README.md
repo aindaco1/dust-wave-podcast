@@ -428,6 +428,8 @@ non-secret human inputs that gate production are kept in
 - [`docs/API.md`](docs/API.md) — current HTTP surface and authentication
   contract
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries and secret handling
+- [`docs/PROCESSOR_DISPATCH_AUTOMATION.md`](docs/PROCESSOR_DISPATCH_AUTOMATION.md)
+  — staging processor discovery, GitHub dispatch, retries, and rollback
 - [`docs/ALIGNMENT_GATE.md`](docs/ALIGNMENT_GATE.md) — English/Spanish
   word-alignment evidence and launch thresholds
 - [`docs/CLIP_RENDER_GATE.md`](docs/CLIP_RENDER_GATE.md) — staging clip
