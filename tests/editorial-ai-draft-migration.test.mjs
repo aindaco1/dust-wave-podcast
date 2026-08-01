@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
+import { AUTOMATED_CHAPTER_SOURCES_SQL } from "../src/chapter-drafts";
 import { AUTOMATED_SHOW_NOTES_SOURCES_SQL } from "../src/show-notes";
 
 const migrationsDirectory = fileURLToPath(
@@ -27,6 +28,7 @@ describe("editorial AI draft migration", () => {
         "episode_id",
         "working_master_id",
         "source_transcript_id",
+        "source_alignment_revision_id",
         "source_transcript_revision",
         "source_transcript_sha256",
         "included_cue_count",
@@ -49,6 +51,15 @@ describe("editorial AI draft migration", () => {
       ]));
       expect(() => db.prepare(AUTOMATED_SHOW_NOTES_SOURCES_SQL).all(10))
         .not.toThrow();
+      expect(() => db.prepare(AUTOMATED_CHAPTER_SOURCES_SQL).all(10))
+        .not.toThrow();
+      const tableSql = db.prepare(
+        "SELECT sql FROM sqlite_schema WHERE name = 'editorial_ai_drafts'"
+      ).get().sql;
+      expect(tableSql).toContain("'show_notes', 'chapters'");
+      expect(tableSql).toContain(
+        "kind != 'chapters' OR source_alignment_revision_id IS NOT NULL"
+      );
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"

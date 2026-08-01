@@ -187,7 +187,12 @@ silently proposes a table of contents from a partial transcript. Provider
 output may select only exact cue IDs, which the Worker maps back to immutable
 cue start times before the normal chapter validator runs. Applying a proposal
 only replaces unsaved chapter-editor state. Saving and Admin approval remain
-separate explicit actions. Staging is enabled and production is disabled.
+separate explicit actions. In staging, the scheduler now prepares the missing
+primary/show-language proposals only after the same final-master predicate and
+the exact approved transcript have passed human word-alignment review. The
+shared private AI-draft ledger pins that alignment revision, bounds recovery to
+three attempts, and never writes chapter state. Production exits before D1 and
+both chapter automation and AI are disabled.
 
 The clip factory also has a bilingual, review-only social-candidate assistant
 on that shared boundary. It requires complete approved-transcript coverage and

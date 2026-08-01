@@ -413,6 +413,7 @@ projection rather than maintaining processor-specific UI policy.
 | `POST` | `/v1/admin/episodes/{id}/show-notes/draft` | producer+ | Generate one bounded bilingual review draft from the latest verified approved transcript; never saves or publishes |
 | `GET` | `/v1/admin/episodes/{id}/chapters` | analyst+ | Current normalized chapter rows plus version/approval state |
 | `POST` | `/v1/admin/episodes/{id}/chapters/draft` | producer+ | Propose bounded bilingual chapter markers from every cue in one verified approved transcript; never saves or approves |
+| `GET` | `/v1/admin/episodes/{id}/chapters/drafts` | producer+ | List current private automatic proposals pinned to the exact master, transcript, and passed alignment; never applies them |
 | `PUT` | `/v1/admin/episodes/{id}/chapters` | producer+ | Idempotent optimistic chapter revision |
 | `POST` | `/v1/admin/episodes/{id}/chapters/approve` | admin+ | Approve one exact chapter revision |
 | `GET` | `/v1/admin/episodes/{id}/reviews` | analyst+ | Current reviewable targets, exact-revision history, comments, blockers, and non-enforcing readiness |
@@ -920,13 +921,17 @@ title pairs. The Worker requires the first cue, rejects missing, duplicate, or
 reordered identities, derives start times from exact verified cues, creates
 deterministic draft-only IDs, and reruns the ordinary chapter validator.
 
-The response contains exact transcript revision/digest/count evidence,
-`reviewRequired: true`, and `saved: false`. It stores no proposal text and
-cannot write chapter revisions or approvals. The browser renders titles with
-DOM text nodes; “Replace unsaved chapters” only changes the local chapter
-editor after confirmation. The existing `PUT` and Admin approval routes remain
-the only persistence/publication path. Staging enables the feature; production
-keeps `CHAPTER_DRAFT_AI_ENABLED=false`.
+The manual response contains exact transcript revision/digest/count evidence,
+`reviewRequired: true`, and `saved: false`; it stores no proposal text.
+Staging automation uses the same strict generator only after the exact final
+master, approved transcript, and human-approved passing word alignment exist.
+It persists a private, retry-bounded proposal keyed by all of that evidence;
+`GET /chapters/drafts` revalidates it before returning it and never applies it.
+The browser renders titles with DOM text nodes; “Replace unsaved chapters”
+only changes the local chapter editor after confirmation. The existing `PUT`
+and Admin approval routes remain the only persistence/publication path.
+Production keeps both `CHAPTER_DRAFT_AUTOMATION_MODE=disabled` and
+`CHAPTER_DRAFT_AI_ENABLED=false`.
 
 ### Review-only AI social clip candidates
 

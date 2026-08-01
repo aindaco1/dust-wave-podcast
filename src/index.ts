@@ -35,6 +35,7 @@ import {
 } from "./delivery-audio";
 import { scheduleAutomaticAlignmentJobs } from "./alignment-jobs";
 import { scheduleAutomaticShowNotesDrafts } from "./show-notes";
+import { scheduleAutomaticChapterDrafts } from "./chapter-drafts";
 
 export default {
   async fetch(
@@ -119,6 +120,7 @@ export default {
       scheduleAutomaticAlignmentJobs(env)
     ]);
     await scheduleAutomaticShowNotesDrafts(env);
+    await scheduleAutomaticChapterDrafts(env);
     await Promise.all([
       scheduleDuePublications(env),
       scheduleRssImportExecutions(env),

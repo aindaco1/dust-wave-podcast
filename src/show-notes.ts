@@ -11,10 +11,12 @@ import {
   projectTranscriptForAiDraft,
   safeAiUsage
 } from "./ai-drafts";
+import { recordAdminAudit } from "./audit";
 import {
-  prepareAdminAuditAfterSingleChange,
-  recordAdminAudit
-} from "./audit";
+  claimEditorialAiDraft,
+  completeEditorialAiDraft,
+  failEditorialAiDraft
+} from "./editorial-ai-draft-ledger";
 import type { PodcastEnv } from "./env";
 import { FINAL_WORKING_MASTER_DECISION_SQL } from "./final-working-master";
 import { privateJson } from "./http";
@@ -34,7 +36,6 @@ const MAXIMUM_SHOW_NOTES_CHARACTERS = 8_000;
 const MAXIMUM_KEYWORDS = 10;
 const MAXIMUM_KEYWORD_CHARACTERS = 60;
 const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
-const MAXIMUM_AUTOMATED_ATTEMPTS = 3;
 export const SHOW_NOTES_PROMPT_VERSION = "show-notes-v1";
 
 type EpisodePromptRow = {
@@ -459,67 +460,26 @@ async function generateAutomaticShowNotesDraft(
     AI_DRAFT_MODEL,
     SHOW_NOTES_PROMPT_VERSION
   ].join(":"));
-  const draftId = `editorial_draft_${inputFingerprint.slice(0, 40)}`;
-  const leaseId = `editorial_draft_lease_${crypto.randomUUID()}`;
   const projection = projectTranscriptForShowNotes(transcript);
-  const inserted = await env.DB.prepare(
-    `INSERT OR IGNORE INTO editorial_ai_drafts (
-       id, episode_id, working_master_id, kind, source_transcript_id,
-       source_language, source_transcript_revision, source_transcript_sha256,
-       included_cue_count, total_cue_count, transcript_truncated,
-       episode_evidence_sha256, output_language, model, prompt_version,
-       input_fingerprint,
-       status, attempt_count, lease_id, lease_expires_at
-     ) VALUES (
-       ?, ?, ?, 'show_notes', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-       'generating', 1, ?, datetime('now', '+4 minutes')
-     )`
-  ).bind(
-    draftId,
-    source.episode_id,
-    source.working_master_id,
-    source.transcript_id,
-    source.source_language,
-    source.transcript_revision,
-    source.transcript_sha256,
-    projection.includedCueCount,
-    projection.totalCueCount,
-    projection.truncated ? 1 : 0,
+  const claim = await claimEditorialAiDraft(env.DB, {
+    episodeId: source.episode_id,
+    workingMasterId: source.working_master_id,
+    kind: "show_notes",
+    sourceTranscriptId: source.transcript_id,
+    sourceAlignmentRevisionId: null,
+    sourceLanguage: source.source_language,
+    sourceTranscriptRevision: source.transcript_revision,
+    sourceTranscriptSha256: source.transcript_sha256,
+    includedCueCount: projection.includedCueCount,
+    totalCueCount: projection.totalCueCount,
+    transcriptTruncated: projection.truncated,
     episodeEvidenceSha256,
     outputLanguage,
-    AI_DRAFT_MODEL,
-    SHOW_NOTES_PROMPT_VERSION,
-    inputFingerprint,
-    leaseId
-  ).run();
-  let claimed = Number(inserted.meta?.changes ?? 0) === 1;
-  if (!claimed) {
-    const recovered = await env.DB.prepare(
-      `UPDATE editorial_ai_drafts
-       SET
-         status = 'generating',
-         attempt_count = attempt_count + 1,
-         lease_id = ?,
-         lease_expires_at = datetime('now', '+4 minutes'),
-         draft_json = NULL,
-         draft_sha256 = NULL,
-         failure_code = NULL,
-         completed_at = NULL,
-         updated_at = datetime('now')
-       WHERE input_fingerprint = ?
-         AND attempt_count < ?
-         AND (
-           status = 'failed'
-           OR (status = 'generating' AND lease_expires_at <= datetime('now'))
-         )`
-    ).bind(
-      leaseId,
-      inputFingerprint,
-      MAXIMUM_AUTOMATED_ATTEMPTS
-    ).run();
-    claimed = Number(recovered.meta?.changes ?? 0) === 1;
-  }
-  if (!claimed) return "skipped";
+    model: AI_DRAFT_MODEL,
+    promptVersion: SHOW_NOTES_PROMPT_VERSION,
+    inputFingerprint
+  });
+  if (!claim) return "skipped";
 
   try {
     const { draft, draftSha256, providerResponse } =
@@ -534,88 +494,45 @@ async function generateAutomaticShowNotesDraft(
         tag: "show-notes-automatic"
       });
     const draftJson = JSON.stringify(draft);
-    const [completion] = await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE editorial_ai_drafts
-         SET
-           status = 'ready',
-           lease_id = NULL,
-           lease_expires_at = NULL,
-           draft_json = ?,
-           draft_sha256 = ?,
-           failure_code = NULL,
-           completed_at = datetime('now'),
-           updated_at = datetime('now')
-         WHERE id = ?
-           AND input_fingerprint = ?
-           AND status = 'generating'
-           AND lease_id = ?`
-      ).bind(
-        draftJson,
-        draftSha256,
-        draftId,
+    const completed = await completeEditorialAiDraft(env.DB, claim, {
+      draftJson,
+      draftSha256,
+      auditAction: "show_notes.automatic_draft_completed",
+      auditMetadata: {
+        automated: true,
+        episodeId: source.episode_id,
+        workingMasterId: source.working_master_id,
+        sourceLanguage: source.source_language,
+        outputLanguage,
+        transcriptRevision: source.transcript_revision,
+        transcriptSha256: source.transcript_sha256,
         inputFingerprint,
-        leaseId
-      ),
-      prepareAdminAuditAfterSingleChange(env.DB, {
-        adminUserId: null,
-        action: "show_notes.automatic_draft_completed",
-        targetType: "editorial_ai_draft",
-        targetId: draftId,
-        metadata: {
-          automated: true,
-          episodeId: source.episode_id,
-          workingMasterId: source.working_master_id,
-          sourceLanguage: source.source_language,
-          outputLanguage,
-          transcriptRevision: source.transcript_revision,
-          transcriptSha256: source.transcript_sha256,
-          inputFingerprint,
-          draftSha256,
-          model: AI_DRAFT_MODEL,
-          promptVersion: SHOW_NOTES_PROMPT_VERSION,
-          includedCueCount: projection.includedCueCount,
-          totalCueCount: projection.totalCueCount,
-          truncated: projection.truncated,
-          usage: safeAiUsage(providerResponse)
-        }
-      })
-    ]);
-    return Number(completion.meta?.changes ?? 0) === 1 ? "ready" : "failed";
+        draftSha256,
+        model: AI_DRAFT_MODEL,
+        promptVersion: SHOW_NOTES_PROMPT_VERSION,
+        includedCueCount: projection.includedCueCount,
+        totalCueCount: projection.totalCueCount,
+        truncated: projection.truncated,
+        usage: safeAiUsage(providerResponse)
+      }
+    });
+    return completed ? "ready" : "failed";
   } catch (error) {
-    await env.DB.batch([
-      env.DB.prepare(
-        `UPDATE editorial_ai_drafts
-         SET
-           status = 'failed',
-           lease_id = NULL,
-           lease_expires_at = NULL,
-           failure_code = 'provider_or_validation_failed',
-           updated_at = datetime('now')
-         WHERE id = ?
-           AND input_fingerprint = ?
-           AND status = 'generating'
-           AND lease_id = ?`
-      ).bind(draftId, inputFingerprint, leaseId),
-      prepareAdminAuditAfterSingleChange(env.DB, {
-        adminUserId: null,
-        action: "show_notes.automatic_draft_failed",
-        targetType: "editorial_ai_draft",
-        targetId: draftId,
-        metadata: {
-          automated: true,
-          episodeId: source.episode_id,
-          sourceLanguage: source.source_language,
-          outputLanguage,
-          transcriptRevision: source.transcript_revision,
-          transcriptSha256: source.transcript_sha256,
-          inputFingerprint,
-          model: AI_DRAFT_MODEL,
-          promptVersion: SHOW_NOTES_PROMPT_VERSION,
-          errorName: error instanceof Error ? error.name : "UnknownError"
-        }
-      })
-    ]);
+    await failEditorialAiDraft(env.DB, claim, {
+      auditAction: "show_notes.automatic_draft_failed",
+      auditMetadata: {
+        automated: true,
+        episodeId: source.episode_id,
+        sourceLanguage: source.source_language,
+        outputLanguage,
+        transcriptRevision: source.transcript_revision,
+        transcriptSha256: source.transcript_sha256,
+        inputFingerprint,
+        model: AI_DRAFT_MODEL,
+        promptVersion: SHOW_NOTES_PROMPT_VERSION,
+        errorName: error instanceof Error ? error.name : "UnknownError"
+      }
+    });
     return "failed";
   }
 }
