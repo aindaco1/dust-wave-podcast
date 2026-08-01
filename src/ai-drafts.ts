@@ -5,7 +5,7 @@ import {
 } from "./validation";
 
 export const AI_DRAFT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-export const MAXIMUM_AI_DRAFT_TRANSCRIPT_CHARACTERS = 48_000;
+export const MAXIMUM_AI_DRAFT_TRANSCRIPT_CHARACTERS = 80_000;
 export const AI_DRAFT_LIMIT_PER_EPISODE_PER_ADMIN_PER_HOUR = 6;
 
 const LANGUAGE_VALUES = new Set<TranscriptLanguage>(["en", "es"]);

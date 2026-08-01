@@ -6,6 +6,7 @@ import {
   MAXIMUM_AI_DRAFT_GROUNDING_EVIDENCE_CHARACTERS,
   MAXIMUM_AI_DRAFT_GROUNDING_ITEMS,
   MAXIMUM_AI_DRAFT_GROUNDING_NAME_CHARACTERS,
+  MAXIMUM_AI_DRAFT_TRANSCRIPT_CHARACTERS,
   aiDraftLanguage,
   claimAiDraftGeneration,
   generatedAiText,
@@ -47,7 +48,7 @@ const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
 export const SHOW_NOTES_MODEL =
   "@cf/meta/llama-4-scout-17b-16e-instruct";
 export const SHOW_NOTES_PROMPT_VERSION =
-  "show-notes-v8-source-grounded-entities";
+  "show-notes-v9-full-source-grounding";
 
 const GENERIC_SPEAKER_ATTRIBUTION = new RegExp(
   String.raw`\b(?:he|she|they|hosts?|guests?|speakers?|`
@@ -653,7 +654,7 @@ async function requestShowNotesDraft(
 
 export function projectTranscriptForShowNotes(
   transcript: VerifiedApprovedTranscript,
-  maximumCharacters = 48_000
+  maximumCharacters = MAXIMUM_AI_DRAFT_TRANSCRIPT_CHARACTERS
 ): TranscriptProjection {
   const projection = projectTranscriptForAiDraft(
     transcript,

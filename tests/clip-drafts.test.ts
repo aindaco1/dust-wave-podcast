@@ -96,7 +96,7 @@ describe("AI clip review drafts", () => {
   it("requires complete bounded transcript coverage", async () => {
     const fixture = await clipDraftFixture({
       cueCount: 100,
-      cueTextLength: 700
+      cueTextLength: 900
     });
     const response = await handleRequest(fixture.request(), fixture.env);
 

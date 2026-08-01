@@ -181,7 +181,7 @@ describe("AI show-notes drafts", () => {
       current_episode_summary: "Existing reviewed summary.",
       output_language: "es",
       model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-      prompt_version: "show-notes-v8-source-grounded-entities",
+      prompt_version: "show-notes-v9-full-source-grounding",
       draft_json: JSON.stringify({
         summary: "Resumen listo para revisar.",
         showNotesMarkdown: "## Temas\n\n- Punto verificado",
@@ -231,7 +231,7 @@ describe("AI show-notes drafts", () => {
         },
         outputLanguage: "es",
         model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-        promptVersion: "show-notes-v8-source-grounded-entities",
+        promptVersion: "show-notes-v9-full-source-grounding",
         draftSha256: "b".repeat(64),
         completedAt: "2026-07-30 10:05:00",
         reviewRequired: true,
@@ -263,6 +263,25 @@ describe("show-notes model boundaries", () => {
     expect(first.excerpt).toContain("11-evidence");
     expect(first.excerpt).toContain("approved transcript cues omitted");
     expect(first.includedCueCount).toBeLessThan(first.totalCueCount);
+  });
+
+  it("keeps a long launch transcript whole inside the model input bound", () => {
+    const transcript = approvedTranscript(
+      Array.from({ length: 650 }, (_unused, index) => ({
+        id: `cue_long_${index}`,
+        startsAtMs: index * 1_000,
+        endsAtMs: (index + 1) * 1_000,
+        speakerLabel: "",
+        text: `${index}-${"source evidence ".repeat(5)}`
+      }))
+    );
+    const projection = projectTranscriptForShowNotes(transcript);
+
+    expect(projection.excerpt.length).toBeGreaterThan(48_000);
+    expect(projection.excerpt.length).toBeLessThanOrEqual(80_000);
+    expect(projection.includedCueCount).toBe(650);
+    expect(projection.totalCueCount).toBe(650);
+    expect(projection.truncated).toBe(false);
   });
 
   it("normalizes valid JSON output and rejects active or deceptive text", () => {
