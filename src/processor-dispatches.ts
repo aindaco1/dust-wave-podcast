@@ -81,6 +81,33 @@ export async function syncProcessorDispatches(
     env.DB.prepare(
       `UPDATE processor_dispatches
        SET
+         status = 'queued',
+         next_attempt_at = datetime('now'),
+         lease_id = NULL,
+         lease_expires_at = NULL,
+         github_run_id = NULL,
+         failure_code = NULL,
+         last_error = NULL,
+         leased_at = NULL,
+         dispatched_at = NULL,
+         started_at = NULL,
+         completed_at = NULL,
+         updated_at = datetime('now')
+       WHERE status IN ('failed', 'canceled')
+         AND attempt_count < ${MAXIMUM_ATTEMPTS}
+         AND EXISTS (
+           SELECT 1
+           FROM processor_dispatch_sources source
+           WHERE source.processor_type = processor_dispatches.processor_type
+             AND source.target_id = processor_dispatches.target_id
+             AND source.processor_manifest_sha256 =
+               processor_dispatches.processor_manifest_sha256
+             AND source.lifecycle_status = 'pending'
+         )`
+    ),
+    env.DB.prepare(
+      `UPDATE processor_dispatches
+       SET
          status = 'running',
          started_at = COALESCE(started_at, datetime('now')),
          updated_at = datetime('now')

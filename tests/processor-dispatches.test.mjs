@@ -230,6 +230,110 @@ describe("processor dispatch automation", () => {
     });
   });
 
+  it("revives the exact terminal dispatch when its source is retried", async () => {
+    sqlite.exec(`
+      INSERT INTO shows (
+        id, slug, title, canonical_url, rss_slug
+      ) VALUES (
+        'show_dispatch_retry_fixture',
+        'dispatch-retry-fixture',
+        'Dispatch retry fixture',
+        'https://dustwave.xyz/podcasts/dispatch-retry-fixture/',
+        'dispatch-retry-fixture'
+      );
+      INSERT INTO episodes (
+        id, show_id, slug, title, canonical_url, source_language
+      ) VALUES (
+        'episode_dispatch_retry_fixture',
+        'show_dispatch_retry_fixture',
+        'retried-audio',
+        'Retried audio',
+        'https://dustwave.xyz/news/podcasts/dispatch-retry-fixture/retried-audio/',
+        'en'
+      );
+      INSERT INTO media_uploads (
+        id, show_id, episode_id, kind, object_key, r2_upload_id,
+        filename, content_type, expected_bytes, status, completed_bytes,
+        object_etag
+      ) VALUES (
+        'upload_dispatch_retry_fixture',
+        'show_dispatch_retry_fixture',
+        'episode_dispatch_retry_fixture',
+        'source_audio',
+        'staging/dispatch-retry-fixture/source.wav',
+        'r2-dispatch-retry-fixture',
+        'source.wav',
+        'audio/wav',
+        1024,
+        'completed',
+        1024,
+        'source-retry-etag'
+      );
+      INSERT INTO audio_qc_runs (
+        id, episode_id, source_upload_id, source_object_key,
+        source_object_bytes, source_object_etag, source_mime_type,
+        policy_revision, policy_json, processor_manifest_sha256
+      ) VALUES (
+        'audio_qc_fixture',
+        'episode_dispatch_retry_fixture',
+        'upload_dispatch_retry_fixture',
+        'staging/dispatch-retry-fixture/source.wav',
+        1024,
+        'source-retry-etag',
+        'audio/wav',
+        1,
+        '{"schemaVersion":"audio-qc-policy-v1","revision":1}',
+        '${manifestSha256}'
+      );
+      UPDATE processor_dispatches
+      SET
+        status = 'failed',
+        attempt_count = 1,
+        github_run_id = '123456789',
+        failure_code = 'source_failed',
+        last_error = 'The exact source processor failed.',
+        leased_at = datetime('now', '-3 minutes'),
+        dispatched_at = datetime('now', '-2 minutes'),
+        started_at = datetime('now', '-1 minute'),
+        completed_at = datetime('now')
+      WHERE id = 'processor_dispatch_audio_qc_fixture';
+    `);
+
+    const response = await claimProcessorDispatches(
+      signedRequest("/v1/processor/dispatches/claim", {
+        action: "claim",
+        dispatcher: "github-actions",
+        maximum: 1
+      }),
+      env
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      dispatches: [{
+        id: "processor_dispatch_audio_qc_fixture",
+        processorType: "audio_qc",
+        targetId: "audio_qc_fixture",
+        processorManifestSha256: manifestSha256,
+        attempt: 2
+      }]
+    });
+    expect(sqlite.prepare(
+      `SELECT status, attempt_count, github_run_id, failure_code,
+              last_error, dispatched_at, started_at, completed_at
+       FROM processor_dispatches
+       WHERE id = 'processor_dispatch_audio_qc_fixture'`
+    ).get()).toEqual({
+      status: "leased",
+      attempt_count: 2,
+      github_run_id: null,
+      failure_code: null,
+      last_error: null,
+      dispatched_at: null,
+      started_at: null,
+      completed_at: null
+    });
+  });
+
   it("requeues a failed dispatch with bounded backoff and rejects a stale lease", async () => {
     const claim = await (await claimProcessorDispatches(
       signedRequest("/v1/processor/dispatches/claim", {
