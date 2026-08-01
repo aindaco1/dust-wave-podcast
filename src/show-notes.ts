@@ -127,6 +127,43 @@ export type ShowNotesDraft = {
   keywords: string[];
 };
 
+export const ADMIN_SHOW_NOTES_DRAFTS_SQL =
+  `SELECT
+     draft.id, draft.source_language, draft.source_transcript_revision,
+     draft.source_transcript_sha256, draft.included_cue_count,
+     draft.total_cue_count, draft.transcript_truncated,
+     draft.episode_evidence_sha256, draft.output_language,
+     draft.model, draft.prompt_version,
+     episode.title AS current_episode_title,
+     episode.summary AS current_episode_summary,
+     draft.draft_json, draft.draft_sha256, draft.completed_at
+   FROM editorial_ai_drafts draft
+   JOIN episodes episode ON episode.id = draft.episode_id
+   JOIN episode_working_master_states state
+     ON state.episode_id = draft.episode_id
+    AND state.current_master_id = draft.working_master_id
+   WHERE draft.episode_id = ?
+     AND draft.kind = 'show_notes'
+     AND draft.status = 'ready'
+     AND EXISTS (
+       SELECT 1
+       FROM transcript_approvals approval
+       JOIN transcript_revisions revision
+         ON revision.transcript_id = approval.transcript_id
+        AND revision.revision = approval.revision
+       WHERE approval.transcript_id = draft.source_transcript_id
+         AND approval.revision = (
+           SELECT MAX(latest.revision)
+           FROM transcript_approvals latest
+           WHERE latest.transcript_id = draft.source_transcript_id
+         )
+         AND revision.revision = draft.source_transcript_revision
+         AND revision.content_sha256 = draft.source_transcript_sha256
+         AND revision.speaker_labels_confirmed = 1
+     )
+   ORDER BY draft.completed_at DESC, draft.id DESC
+   LIMIT 10`;
+
 export async function listAdminEpisodeShowNotesDrafts(
   request: Request,
   env: PodcastEnv,
@@ -139,42 +176,8 @@ export async function listAdminEpisodeShowNotesDrafts(
     EDIT_ROLES
   );
   if (authorized instanceof Response) return authorized;
-  const rows = await env.DB.prepare(
-    `SELECT
-       id, source_language, source_transcript_revision,
-       source_transcript_sha256, included_cue_count, total_cue_count,
-       transcript_truncated, draft.episode_evidence_sha256, output_language,
-       model, prompt_version,
-       episode.title AS current_episode_title,
-       episode.summary AS current_episode_summary,
-       draft.draft_json, draft.draft_sha256, draft.completed_at
-     FROM editorial_ai_drafts draft
-     JOIN episodes episode ON episode.id = draft.episode_id
-     JOIN episode_working_master_states state
-       ON state.episode_id = draft.episode_id
-      AND state.current_master_id = draft.working_master_id
-     WHERE draft.episode_id = ?
-       AND draft.kind = 'show_notes'
-       AND draft.status = 'ready'
-       AND EXISTS (
-         SELECT 1
-         FROM transcript_approvals approval
-         JOIN transcript_revisions revision
-           ON revision.transcript_id = approval.transcript_id
-          AND revision.revision = approval.revision
-         WHERE approval.transcript_id = draft.source_transcript_id
-           AND approval.revision = (
-             SELECT MAX(latest.revision)
-             FROM transcript_approvals latest
-             WHERE latest.transcript_id = draft.source_transcript_id
-           )
-           AND revision.revision = draft.source_transcript_revision
-           AND revision.content_sha256 = draft.source_transcript_sha256
-           AND revision.speaker_labels_confirmed = 1
-       )
-     ORDER BY draft.completed_at DESC, draft.id DESC
-     LIMIT 10`
-  ).bind(authorized.episode.id).all<SavedShowNotesDraftRow>();
+  const rows = await env.DB.prepare(ADMIN_SHOW_NOTES_DRAFTS_SQL)
+    .bind(authorized.episode.id).all<SavedShowNotesDraftRow>();
   const drafts: Array<Record<string, unknown>> = [];
   for (const row of rows.results) {
     try {
