@@ -121,10 +121,6 @@ export default {
     _controller: ScheduledController,
     env: PodcastEnv
   ): Promise<void> {
-    // Keep the bounded external provider probe ahead of the D1-heavy batch so
-    // it cannot inherit a nearly exhausted subrequest budget. The durable
-    // cadence/lease makes this a cheap no-op on ordinary five-minute ticks.
-    await scheduleYouTubeProviderAccessCheck(env);
     await Promise.all([
       scheduleAutomatedDeliveryAudioJobs(env),
       scheduleAutomaticTranscriptionJobs(env),
@@ -146,7 +142,8 @@ export default {
       schedulePendingAnnouncementDeliveries(env),
       schedulePendingTranscriptions(env),
       syncProcessorDispatches(env),
-      scheduleAdminActionNotifications(env)
+      scheduleAdminActionNotifications(env),
+      scheduleYouTubeProviderAccessCheck(env)
     ]);
   }
 } satisfies ExportedHandler<PodcastEnv, PodcastJob>;

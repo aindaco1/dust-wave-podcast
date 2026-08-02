@@ -330,7 +330,9 @@ them as launch blockers.
   content, URLs, recipient identity, hashes, or secret values. YouTube access
   is now refreshed on a leased 12-hour success / one-hour failure cadence and
   recorded as content-free exact-channel health; the report keeps that node
-  separate from the inspected unlisted-upload requirement. Its dynamic-ad node
+  separate from the inspected unlisted-upload requirement. The first live
+  scheduled check passed against the exact staging channel at
+  `2026-08-02 02:40:13 UTC` without uploading. Its dynamic-ad node
   accepts synthetic performance evidence only when the signed
   5,000-pair/10,000-request gate is fresh, fully cleaned up, and unchanged
   across runtime-sensitive source; that evidence still cannot substitute for
