@@ -1,5 +1,6 @@
 import type { PodcastEnv } from "./env";
 import {
+  isValidYouTubeChannelId,
   verifyYouTubeChannelAccess,
   youtubeProviderConfigured,
   YouTubeProviderError
@@ -22,6 +23,26 @@ type ProviderHealthRow = {
 type YouTubeVerifier = (
   env: PodcastEnv
 ) => Promise<{ channelId: string }>;
+
+export async function youtubeChannelAccessEvidenceCurrent(
+  db: D1Database,
+  expectedChannelId: unknown
+): Promise<boolean> {
+  if (!isValidYouTubeChannelId(expectedChannelId)) return false;
+  const row = await db.prepare(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM provider_access_health
+       WHERE provider = 'youtube'
+         AND status = 'ready'
+         AND account_reference = ?
+         AND last_success_at >= datetime('now', '-24 hours')
+         AND lease_token IS NULL
+         AND lease_expires_at IS NULL
+     ) AS current`
+  ).bind(expectedChannelId).first<{ current: number }>();
+  return Number(row?.current) === 1;
+}
 
 /**
  * Refreshes and verifies the exact configured YouTube channel on a bounded

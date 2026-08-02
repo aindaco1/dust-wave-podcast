@@ -38,6 +38,13 @@ export function youtubeProviderConfigured(env: PodcastEnv): boolean {
   return youtubeProviderConfig(env) !== null;
 }
 
+export function isValidYouTubeChannelId(
+  value: unknown
+): value is string {
+  return typeof value === "string"
+    && /^[A-Za-z0-9_-]{6,200}$/.test(value);
+}
+
 export async function verifyYouTubeChannelAccess(
   env: PodcastEnv
 ): Promise<{ channelId: string }> {
@@ -241,7 +248,7 @@ function youtubeProviderConfig(
     || !env.YOUTUBE_CLIENT_SECRET
     || !env.YOUTUBE_REFRESH_TOKEN
     || !env.YOUTUBE_CHANNEL_ID
-    || !/^[A-Za-z0-9_-]{6,200}$/.test(env.YOUTUBE_CHANNEL_ID)
+    || !isValidYouTubeChannelId(env.YOUTUBE_CHANNEL_ID)
   ) {
     return null;
   }

@@ -2090,6 +2090,11 @@ YouTube hold, and premium-bonus YouTube exclusion only after their production
 contract tests pass in that workflow. The root publication plan carries an
 explicit `public_release` timing and Publish derives `scheduled_at` from it;
 the policy rehearsal therefore exercises the same timing source as the admin.
+The workflow runs these local adapters before fixture reconciliation. That
+reconciliation may then advance YouTube channel identity only from the
+existing provider-health row when it exactly matches the configured channel,
+is less than 24 hours old, and has no active lease; it performs no provider
+call and returns no account reference.
 Scenarios needing a real Checkout, test-clock renewal/refund, native client,
 unlisted YouTube object, or directory ingestion remain `pending` until their
 adapters produce truthful evidence. A pending or passing synthetic scenario

@@ -38,7 +38,8 @@ describe("Launch Lab automation", () => {
     for (const testFile of [
       "tests/distribution.test.ts",
       "tests/feed-validation.test.ts",
-      "tests/publication-intent.test.ts"
+      "tests/publication-intent.test.ts",
+      "tests/launch-lab-youtube-health.test.mjs"
     ]) {
       expect(workflow).toContain(testFile);
     }
@@ -49,6 +50,8 @@ describe("Launch Lab automation", () => {
       { provider: "youtube", scenario: "early_access_hold", observedStatus: "held" },
       { provider: "youtube", scenario: "premium_bonus_exclusion", observedStatus: "excluded" }
     ]));
+    expect(workflow.indexOf("Rehearse DRY contract adapters"))
+      .toBeLessThan(workflow.indexOf("Reconcile the immutable staging fixture"));
   });
 
   it("uses one purpose-bound secret without broad Cloudflare credentials", () => {
