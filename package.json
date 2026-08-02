@@ -1,6 +1,6 @@
 {
   "name": "@dustwave/podcast",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Dust Wave podcast API, media orchestration, premium feeds, and publishing jobs",
   "type": "module",
@@ -16,6 +16,7 @@
     "matrix:virtual-audio": "node scripts/run-virtual-audio-protocol-matrix.mjs",
     "load:virtual-audio": "node scripts/run-virtual-audio-load-gate.mjs",
     "gate:virtual-audio:staging": "node scripts/run-virtual-audio-staging-gate.mjs",
+    "gate:sponsor-demo": "node scripts/run-direct-sponsor-demo-gate.mjs",
     "gate:episode:staging": "node scripts/check-episode-staging-gate.mjs",
     "gate:stripe:staging": "node scripts/check-stripe-staging-readiness.mjs",
     "gate:launch:staging": "node scripts/check-launch-staging-readiness.mjs",
