@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasPublicationDestination,
-  planEpisodePublication
+  planEpisodePublication,
+  publicationIntentScheduledAt
 } from "../src/publication-intent";
 
 describe("root publication intent", () => {
@@ -20,6 +21,8 @@ describe("root publication intent", () => {
       expect(plan.newsMode).toBe(newsMode);
       expect(plan.intents.map(({ destination }) => destination))
         .toEqual(Array.from(destinations));
+      expect(plan.intents.map(({ releaseTiming }) => releaseTiming))
+        .toEqual(destinations.map(() => "public_release"));
       expect(hasPublicationDestination(plan, "youtube"))
         .toBe(access !== "premium_bonus" && videoSourceKey !== null);
     }
@@ -37,5 +40,22 @@ describe("root publication intent", () => {
       "news",
       "youtube"
     ]);
+  });
+
+  it("holds an early-access YouTube intent until public release", () => {
+    const premiumAt = "2026-08-01T12:00:00.000Z";
+    const publicAt = "2026-08-08T12:00:00.000Z";
+    const plan = planEpisodePublication({
+      access: "early_access",
+      videoSourceKey: "video/source.mp4"
+    });
+    const youtube = plan.intents.find(({ destination }) =>
+      destination === "youtube"
+    );
+
+    expect(youtube).toBeDefined();
+    expect(publicationIntentScheduledAt(youtube!, { publicAt })).toBe(publicAt);
+    expect(publicationIntentScheduledAt(youtube!, { publicAt }))
+      .not.toBe(premiumAt);
   });
 });

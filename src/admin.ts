@@ -20,7 +20,10 @@ import {
   type PublicationGateAssessment,
   type PublicationGateRequest
 } from "./publication-gate";
-import { planEpisodePublication } from "./publication-intent";
+import {
+  planEpisodePublication,
+  publicationIntentScheduledAt
+} from "./publication-intent";
 import {
   buildEpisodePublicationReadiness,
   type PublicationReadinessSnapshot
@@ -735,7 +738,6 @@ export async function publishAdminEpisode(
     publicAt,
     canonicalUrl: episode.canonical_url
   });
-  const scheduledAt = publicAt;
   const destinations = await env.DB
     .prepare(
       `SELECT
@@ -859,6 +861,7 @@ export async function publishAdminEpisode(
   });
   const queueJobs = publicationPlan.intents.map((intent) => ({
     intent,
+    scheduledAt: publicationIntentScheduledAt(intent, { publicAt }),
     job: makeJob(
       intent.jobType,
       episode.show_id,
@@ -907,7 +910,7 @@ export async function publishAdminEpisode(
       `INSERT INTO publication_batch_guards (id, update_succeeded)
        VALUES (?, changes())`
     ).bind(publicationGuardId),
-    ...queueJobs.map(({ intent, job }) =>
+    ...queueJobs.map(({ intent, job, scheduledAt }) =>
     env.DB.prepare(
       `INSERT OR IGNORE INTO distribution_jobs (
          id, episode_id, destination, status, scheduled_at,
@@ -1067,8 +1070,9 @@ export async function publishAdminEpisode(
   if ((results[0]?.meta?.changes ?? 0) !== 1) {
     return publicationConflictResponse(request, env);
   }
-  if (new Date(scheduledAt).getTime() <= Date.now()) {
-    for (const { job } of queueJobs) {
+  const publicationStartedAt = Date.now();
+  for (const { job, scheduledAt } of queueJobs) {
+    if (new Date(scheduledAt).getTime() <= publicationStartedAt) {
       await env.JOBS.send(job);
     }
   }

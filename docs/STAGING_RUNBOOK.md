@@ -2084,7 +2084,12 @@ directories, ads, and Pool. The scheduled real-schema lifecycle replay may
 mark Stripe's synthetic `webhook_contract` and Pool's seven synthetic
 grant/redeem/duplicate/revoke/expiry/overlap/feed-rotation scenarios, plus the
 RSS enclosure HEAD/range and approved transcript/chapter contracts, only after
-their exact production route tests pass in the same workflow.
+their exact production route tests pass in the same workflow. It may also mark
+the credential-free directory packet, canonical feed validation, early-access
+YouTube hold, and premium-bonus YouTube exclusion only after their production
+contract tests pass in that workflow. The root publication plan carries an
+explicit `public_release` timing and Publish derives `scheduled_at` from it;
+the policy rehearsal therefore exercises the same timing source as the admin.
 Scenarios needing a real Checkout, test-clock renewal/refund, native client,
 unlisted YouTube object, or directory ingestion remain `pending` until their
 adapters produce truthful evidence. A pending or passing synthetic scenario

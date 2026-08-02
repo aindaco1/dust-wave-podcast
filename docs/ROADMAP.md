@@ -500,6 +500,14 @@ them as launch blockers.
   body-free enclosure `HEAD`, one streamed byte range, and approved-only
   Podcasting 2.0 transcript/chapter declarations. Tampered transcript evidence
   remains absent, and synthetic success remains non-launch evidence.
+- The scheduled directory/YouTube policy rehearsal now generates the
+  credential-free submission packet, validates the exact canonical feed, and
+  exercises the same root-publication plan consumed by Publish. Every root
+  intent is explicitly scheduled for public release, so early-access YouTube
+  remains held until `public_at`, while premium-only bonuses cannot create a
+  YouTube intent. These four synthetic outcomes remain non-launch evidence;
+  real owner verification, ingestion/recovery, and unlisted uploads stay
+  pending.
 - The first Subscribers workbench boundary now exposes only Super-admin,
   private/no-store, keyset-paginated aggregate/source state, feed and consent
   booleans, and bounded formula-safe CSV. It intentionally excludes every
