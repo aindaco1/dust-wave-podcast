@@ -38,6 +38,10 @@ describe("Launch Lab hosted Checkout", () => {
     expect((await advance()).phase).toBe("customer_ready");
     expect((await advance()).phase).toBe("attempt_ready");
     expect((await advance()).phase).toBe("session_open");
+    expect(provider.sessionCreateParams).toMatchObject({
+      success_url: "https://dust-wave-website-staging.pages.dev/admin/podcasts/?checkout=launch-lab-success",
+      cancel_url: "https://dust-wave-website-staging.pages.dev/admin/podcasts/?checkout=launch-lab-canceled"
+    });
     expect(await advance()).toMatchObject({
       phase: "session_open",
       requiresBrowser: true,
@@ -237,7 +241,8 @@ function providerFixture() {
   const provider = {
     paths: [],
     sessionStatus: "open",
-    paymentStatus: "unpaid"
+    paymentStatus: "unpaid",
+    sessionCreateParams: null
   };
   provider.sessionObject = () => ({
     id: sessionId,
@@ -282,6 +287,9 @@ function providerFixture() {
     ) {
       object = { id: customerId, object: "customer", deleted: true };
     } else if (url.pathname === "/v1/checkout/sessions" && method === "POST") {
+      provider.sessionCreateParams = Object.fromEntries(
+        new URLSearchParams(String(init.body ?? ""))
+      );
       object = provider.sessionObject();
     } else if (
       url.pathname === `/v1/checkout/sessions/${sessionId}/expire`
