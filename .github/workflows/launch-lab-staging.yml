@@ -44,7 +44,7 @@ jobs:
           LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
           OBSERVATIONS: ${{ runner.temp }}/launch-lab-contracts.json
         run: |
-          npm run launch-lab:contracts > "$OBSERVATIONS"
+          node scripts/build-launch-lab-contract-observations.mjs > "$OBSERVATIONS"
           npm run launch-lab -- record "$OBSERVATIONS"
 
       - name: Probe deployed public fixture isolation
@@ -52,7 +52,7 @@ jobs:
           LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
           OBSERVATIONS: ${{ runner.temp }}/launch-lab-runtime.json
         run: |
-          npm run launch-lab:probe > "$OBSERVATIONS"
+          node scripts/probe-launch-lab-public-boundary.mjs > "$OBSERVATIONS"
           npm run launch-lab -- record "$OBSERVATIONS"
 
       - name: Rehearse Resend outcomes
@@ -70,7 +70,8 @@ jobs:
         env:
           LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
           LAUNCH_LAB_REPORT: ${{ runner.temp }}/launch-lab-status.json
-        run: npm run launch-lab -- status > "$LAUNCH_LAB_REPORT"
+        run: >-
+          node scripts/launch-lab-client.mjs status > "$LAUNCH_LAB_REPORT"
 
       - name: Add bounded rehearsal summary
         if: ${{ always() }}
