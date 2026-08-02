@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  evaluateStripeStagingReadiness
+  evaluateStripeStagingReadiness,
+  stripeStagingInventorySql
 } from "../scripts/check-stripe-staging-readiness.mjs";
 
 describe("read-only Stripe staging readiness gate", () => {
+  it("excludes immutable fixtures from products, prices, and tax readiness", () => {
+    expect(stripeStagingInventorySql.match(/test_fixture = 0/g)).toHaveLength(3);
+    expect(stripeStagingInventorySql).toContain(
+      "FROM show_tax_rate_assignments"
+    );
+    expect(stripeStagingInventorySql).not.toMatch(
+      /FROM tax_rate_versions\s+WHERE status = 'approved'/
+    );
+  });
+
   it("accepts the safe inactive provider posture and retains the tax blocker", () => {
     const report = evaluateStripeStagingReadiness(readinessFixture());
 

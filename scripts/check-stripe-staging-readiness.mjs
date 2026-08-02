@@ -18,6 +18,45 @@ const requiredWebhookEvents = [
   "customer.subscription.resumed"
 ];
 
+export const stripeStagingInventorySql = `SELECT
+  id, premium_enabled, billing_mode, stripe_product_id
+FROM shows
+WHERE premium_enabled = 1
+  AND test_fixture = 0
+ORDER BY id;
+SELECT
+  p.id, p.show_id, p.billing_period, p.amount_cents, p.currency,
+  p.stripe_price_id, p.stripe_lookup_key, p.tax_behavior,
+  p.provider_mode, s.stripe_product_id
+FROM show_prices p
+JOIN shows s ON s.id = p.show_id
+WHERE p.active = 1
+  AND s.test_fixture = 0
+ORDER BY p.show_id, p.billing_period;
+SELECT COUNT(DISTINCT t.id) AS approved_tax_versions
+FROM show_tax_rate_assignments a
+JOIN tax_rate_versions t ON t.id = a.tax_rate_version_id
+JOIN shows s ON s.id = a.show_id
+WHERE t.status = 'approved'
+  AND t.rate_parts_per_million IS NOT NULL
+  AND t.provider_mode = 'test'
+  AND t.stripe_tax_rate_id IS NOT NULL
+  AND t.effective_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  AND (
+    t.expires_at IS NULL
+    OR t.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  )
+  AND s.billing_mode = 'test'
+  AND s.premium_enabled = 1
+  AND s.test_fixture = 0;
+SELECT COUNT(*) AS checkout_attempts
+FROM subscription_checkout_attempts;
+SELECT
+  COUNT(*) AS stripe_events,
+  COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0)
+    AS failed_stripe_events
+FROM stripe_event_journal;`;
+
 export function evaluateStripeStagingReadiness(snapshot) {
   const results = [];
   const add = (status, label, detail) => {
@@ -218,29 +257,7 @@ export function loadStripeStagingSnapshot() {
     "--remote",
     "--json",
     "--command",
-    `SELECT
-       id, premium_enabled, billing_mode, stripe_product_id
-     FROM shows
-     WHERE premium_enabled = 1
-     ORDER BY id;
-     SELECT
-       p.id, p.show_id, p.billing_period, p.amount_cents, p.currency,
-       p.stripe_price_id, p.stripe_lookup_key, p.tax_behavior,
-       p.provider_mode, s.stripe_product_id
-     FROM show_prices p
-     JOIN shows s ON s.id = p.show_id
-     WHERE p.active = 1
-     ORDER BY p.show_id, p.billing_period;
-     SELECT COUNT(*) AS approved_tax_versions
-     FROM tax_rate_versions
-     WHERE status = 'approved';
-     SELECT COUNT(*) AS checkout_attempts
-     FROM subscription_checkout_attempts;
-     SELECT
-       COUNT(*) AS stripe_events,
-       COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0)
-         AS failed_stripe_events
-     FROM stripe_event_journal;`
+    stripeStagingInventorySql
   ]);
   const queryResults = d1.map(({ results }) => results ?? []);
   const shows = queryResults[0] ?? [];

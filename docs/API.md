@@ -25,7 +25,7 @@ representation in D1.
 | `GET`, `HEAD` | `/episodes/{episode-id}/audio` | Public R2-backed audio with byte ranges |
 | `GET`, `HEAD` | `/v1/media/{episode-id}` | Media alias for staging and diagnostics |
 | `GET`, `HEAD` | `/v1/ads/decisions/{decision-id}/audio` | Expiring HMAC-bound immutable virtual audio; unavailable outside an explicit decision mode |
-| `POST` | `/v1/webhooks/stripe` | Signed Stripe event intake |
+| `POST` | `/v1/webhooks/stripe` | Signed, mode-bound, idempotent Stripe event intake with durable subscription-event ordering |
 | `POST` | `/v1/shows/{slug}/tax/quote` | Rate-limited, no-store manual subscription-tax estimate |
 | `POST` | `/v1/shows/{slug}/checkout` | Turnstile-protected Stripe subscription Checkout start/resume |
 
