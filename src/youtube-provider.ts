@@ -9,6 +9,7 @@ const CHANNEL_LOOKUP_URL =
   "https://www.googleapis.com/youtube/v3/channels";
 const VIDEO_LOOKUP_URL = "https://www.googleapis.com/youtube/v3/videos";
 const MAXIMUM_PROVIDER_RESPONSE_BYTES = 64_000;
+const NO_FOLLOW_REDIRECT = "manual" as const;
 const TOKEN_TIMEOUT_MS = 10_000;
 const METADATA_TIMEOUT_MS = 15_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
@@ -59,7 +60,7 @@ async function verifyAuthenticatedChannel(
   url.searchParams.set("maxResults", "50");
   const response = await fetchWithTimeout(url, {
     headers: { authorization: `Bearer ${accessToken}` },
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError(
       "youtube_channel_verification_failed"
@@ -138,7 +139,7 @@ export async function uploadUnlistedYouTubeVideo(
         selfDeclaredMadeForKids: false
       }
     }),
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_upload_session_failed");
   });
@@ -156,7 +157,7 @@ export async function uploadUnlistedYouTubeVideo(
       "content-type": "video/mp4"
     },
     body,
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, uploadTimeoutMs).catch(() => {
     throw new YouTubeProviderError("youtube_upload_failed");
   });
@@ -266,7 +267,7 @@ async function refreshAccessToken(
       refresh_token: config.refreshToken,
       grant_type: "refresh_token"
     }).toString(),
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, TOKEN_TIMEOUT_MS).catch((error: unknown) => {
     throw new YouTubeProviderError(oauthTransportFailureCode(error));
   });
@@ -341,7 +342,7 @@ async function verifyUploadedVideo(
   url.searchParams.set("id", videoId);
   const response = await fetchWithTimeout(url, {
     headers: { authorization: `Bearer ${accessToken}` },
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_verification_failed");
   });

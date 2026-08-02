@@ -1912,6 +1912,9 @@ description or response body, and a browser access token must never be copied
 into Worker configuration or evidence. The check runs before the D1-heavy
 maintenance batch so its external request has an isolated subrequest budget;
 its cadence and lease keep ordinary five-minute invocations provider-free.
+Google requests use manual redirect handling because the Cloudflare runtime
+throws before exposing Google's ordinary response with `redirect: error`;
+every `3xx` is still rejected without following or forwarding credentials.
 
 1. Leave `YOUTUBE_PUBLISH_MODE=dry_run`, prepare the immutable current-render
    draft in Marketing, and have a recently authenticated super-admin approve

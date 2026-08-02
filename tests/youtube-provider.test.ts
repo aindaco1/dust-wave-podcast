@@ -59,6 +59,7 @@ describe("YouTube provider adapter", () => {
     );
     const oauthRequest = providerFetch.mock.calls[0][1] as RequestInit;
     expect(typeof oauthRequest.body).toBe("string");
+    expect(oauthRequest.redirect).toBe("manual");
     expect(new URLSearchParams(String(oauthRequest.body)).get("grant_type"))
       .toBe("refresh_token");
     expect(String(providerFetch.mock.calls[1][0])).toContain(
@@ -227,6 +228,25 @@ describe("YouTube provider adapter", () => {
       message: "youtube_oauth_invalid_grant"
     } satisfies Partial<YouTubeProviderError>);
     expect(providerFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an OAuth redirect without following it", async () => {
+    const providerFetch = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 307,
+        headers: { location: "https://attacker.example/token" }
+      })
+    );
+    vi.stubGlobal("fetch", providerFetch);
+
+    await expect(
+      verifyYouTubeChannelAccess(configuredEnv())
+    ).rejects.toMatchObject({
+      code: "youtube_oauth_request_rejected"
+    } satisfies Partial<YouTubeProviderError>);
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+    const request = providerFetch.mock.calls[0][1] as RequestInit;
+    expect(request.redirect).toBe("manual");
   });
 
   it("separates OAuth network failure from provider rejection", async () => {

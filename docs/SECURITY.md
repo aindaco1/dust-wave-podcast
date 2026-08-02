@@ -247,7 +247,8 @@
   approval refreshes OAuth and requires the bounded authenticated `mine=true`
   channel list to contain the exact configured channel ID. The adapter
   repeats that check with the consumer's fresh access token before creating an
-  upload session, hard-pins Google origins, disables redirects, bounds provider
+  upload session, hard-pins Google origins, uses manual redirect handling and
+  rejects every `3xx` without following it, bounds provider
   JSON, streams the conditionally read private R2 body, verifies returned
   channel/privacy, and fails closed if the mode is restored before consumption.
 - Saved marketing links accept only bounded text and the show's existing
