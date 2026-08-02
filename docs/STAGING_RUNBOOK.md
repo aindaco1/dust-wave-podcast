@@ -2070,6 +2070,10 @@ Resend terminal evidence normally arrives through the signed webhook adapter.
 When a synthetic message remains accepted, a rerun may retrieve that exact
 already-sent provider object through the bounded read-only adapter. This
 fallback does not resend, follow redirects, or retain recipient identity.
+Complaint rehearsal may legitimately report `delivered` before the later
+`complained` event; that intermediate state must remain running. A same-commit
+rerun may recover an older premature mismatch only after the exact stored
+provider object reports the expected normalized suppression state.
 
 Super-admins can inspect the same content-free evidence through
 `GET /v1/admin/launch-lab`. Loading this view does not refresh or otherwise

@@ -111,6 +111,95 @@ describe("Launch Lab Resend matrix", () => {
     expect(database.rows.get("delivered")?.observed_status).toBe("delivered");
   });
 
+  it("keeps delivery intermediate until the complaint suppression arrives", async () => {
+    const database = scenarioDatabase({
+      complained: {
+        id: "lab_launch_lab_run_0004_resend_complained",
+        scenario: "complained",
+        expected_status: "suppressed",
+        state: "running",
+        observed_status: "accepted",
+        provider_id: "email_complaint_ordering",
+        failure_code: null
+      }
+    });
+    expect(await recordLaunchLabResendWebhook(database.db, {
+      scenarioId: "lab_launch_lab_run_0004_resend_complained",
+      providerId: "email_complaint_ordering",
+      status: "delivered"
+    })).toBe(true);
+    expect(database.rows.get("complained")).toMatchObject({
+      state: "running",
+      observed_status: "delivered"
+    });
+
+    expect(await recordLaunchLabResendWebhook(database.db, {
+      scenarioId: "lab_launch_lab_run_0004_resend_complained",
+      providerId: "email_complaint_ordering",
+      status: "suppressed"
+    })).toBe(true);
+    expect(database.rows.get("complained")).toMatchObject({
+      state: "passed",
+      observed_status: "suppressed"
+    });
+  });
+
+  it("recovers a stored terminal mismatch by retrieval without resending", async () => {
+    const database = scenarioDatabase({
+      delivered: terminalScenario(
+        "launch_lab_run_0005",
+        "delivered",
+        "delivered"
+      ),
+      bounced: terminalScenario(
+        "launch_lab_run_0005",
+        "bounced",
+        "suppressed"
+      ),
+      complained: {
+        id: "lab_launch_lab_run_0005_resend_complained",
+        scenario: "complained",
+        expected_status: "suppressed",
+        state: "failed",
+        observed_status: "delivered",
+        provider_id: "email_complaint_recovery",
+        failure_code: null
+      },
+      suppressed: terminalScenario(
+        "launch_lab_run_0005",
+        "suppressed",
+        "suppressed"
+      )
+    });
+    const requests: Array<{ url: string; method: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      requests.push({ url: String(url), method: String(init?.method) });
+      return new Response(JSON.stringify({
+        id: "email_complaint_recovery",
+        last_event: "complained"
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }));
+    const env = {
+      DB: database.db,
+      RESEND_API_KEY: "re_test_fixture",
+      PODCAST_EMAIL_FROM: "Dust Wave Podcasts <podcasts@dustwave.xyz>"
+    } as unknown as PodcastEnv;
+
+    await runLaunchLabResendMatrix(env, "launch_lab_run_0005");
+
+    expect(requests).toEqual([{
+      url: "https://api.resend.com/emails/email_complaint_recovery",
+      method: "GET"
+    }]);
+    expect(database.rows.get("complained")).toMatchObject({
+      state: "passed",
+      observed_status: "suppressed"
+    });
+  });
+
   it("reconciles an already-sent synthetic suppression without resending", async () => {
     const database = scenarioDatabase({
       delivered: terminalScenario(
@@ -189,7 +278,7 @@ type Scenario = {
 
 function terminalScenario(
   runId: string,
-  scenario: Exclude<Scenario["scenario"], "suppressed">,
+  scenario: Scenario["scenario"],
   observedStatus: string
 ): Scenario {
   return {
@@ -256,18 +345,19 @@ function scenarioDatabase(
         },
         async first() {
           if (!query.includes("RETURNING id")) return null;
-          const status = String(values[2]);
-          const id = String(values[5]);
-          const providerId = String(values[6]);
+          const status = String(values[0]);
+          const id = String(values[8]);
+          const providerId = String(values[9]);
           const row = [...rows.values()].find((value) => value.id === id);
           if (!row || (row.provider_id && row.provider_id !== providerId)) {
             return null;
           }
-          if (!["passed", "failed"].includes(row.state)) {
+          if (row.state !== "passed" && status === row.expected_status) {
             row.observed_status = status;
-            row.state = status === row.expected_status
-              ? "passed"
-              : ["delivered", "suppressed", "failed"].includes(status)
+            row.state = "passed";
+          } else if (row.state !== "passed" && row.state !== "failed") {
+            row.observed_status = status;
+            row.state = ["suppressed", "failed"].includes(status)
               ? "failed"
               : "running";
           }

@@ -54,18 +54,21 @@ const WEBHOOK_QUERY = [
   "UPDATE launch_lab_provider_scenarios",
   "SET",
   "  state = CASE",
-  "    WHEN state IN ('passed', 'failed') THEN state",
+  "    WHEN state = 'passed' THEN state",
   "    WHEN ? = expected_status THEN 'passed'",
-  "    WHEN ? IN ('delivered', 'suppressed', 'failed') THEN 'failed'",
+  "    WHEN state = 'failed' THEN state",
+  "    WHEN ? IN ('suppressed', 'failed') THEN 'failed'",
   "    ELSE 'running'",
   "  END,",
   "  observed_status = CASE",
-  "    WHEN state IN ('passed', 'failed') THEN observed_status",
+  "    WHEN state = 'passed' THEN observed_status",
+  "    WHEN ? = expected_status THEN ?",
+  "    WHEN state = 'failed' THEN observed_status",
   "    ELSE ?",
   "  END,",
   "  provider_id = COALESCE(provider_id, NULLIF(?, '')),",
   "  completed_at = CASE",
-  "    WHEN ? IN ('delivered', 'suppressed', 'failed')",
+  "    WHEN ? = expected_status OR ? IN ('suppressed', 'failed')",
   "      THEN datetime('now')",
   "    ELSE completed_at",
   "  END,",
@@ -128,7 +131,12 @@ export async function runLaunchLabResendMatrix(
   }));
   const afterSend = await loadRows(env.DB, runId);
   await Promise.all(afterSend.map(async (row) => {
-    if (row.state !== "running" || !row.provider_id) return;
+    const recoverableMismatch = row.state === "failed"
+      && !row.failure_code;
+    if (
+      (row.state !== "running" && !recoverableMismatch)
+      || !row.provider_id
+    ) return;
     const status = await getLaunchLabResendDeliveryStatus(
       env,
       row.provider_id
@@ -173,7 +181,10 @@ export async function recordLaunchLabResendWebhook(
     status,
     status,
     status,
+    status,
+    status,
     providerId,
+    status,
     status,
     suppliedScenarioId,
     providerId
