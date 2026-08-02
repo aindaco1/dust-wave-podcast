@@ -268,12 +268,29 @@ async function refreshAccessToken(
     }),
     redirect: "error"
   }, TOKEN_TIMEOUT_MS).catch(() => {
-    throw new YouTubeProviderError("youtube_oauth_failed");
+    throw new YouTubeProviderError("youtube_oauth_network_failed");
   });
   if (!response.ok) {
-    throw new YouTubeProviderError("youtube_oauth_failed");
+    let providerCode = "";
+    try {
+      const rejected = await boundedJson(
+        response,
+        "youtube_oauth_response_invalid"
+      );
+      providerCode = typeof rejected.error === "string"
+        ? rejected.error
+        : "";
+    } catch {
+      // Provider bodies are intentionally discarded. The status-independent
+      // fallback remains actionable without retaining potentially sensitive
+      // response text.
+    }
+    throw new YouTubeProviderError(oauthFailureCode(providerCode));
   }
-  const payload = await boundedJson(response, "youtube_oauth_failed");
+  const payload = await boundedJson(
+    response,
+    "youtube_oauth_response_invalid"
+  );
   const accessToken = typeof payload.access_token === "string"
     ? payload.access_token
     : "";
@@ -285,9 +302,26 @@ async function refreshAccessToken(
     || accessToken.length > 4096
     || tokenType.toLowerCase() !== "bearer"
   ) {
-    throw new YouTubeProviderError("youtube_oauth_failed");
+    throw new YouTubeProviderError("youtube_oauth_response_invalid");
   }
   return accessToken;
+}
+
+function oauthFailureCode(providerCode: string): string {
+  switch (providerCode) {
+    case "invalid_grant":
+      return "youtube_oauth_invalid_grant";
+    case "invalid_client":
+      return "youtube_oauth_invalid_client";
+    case "unauthorized_client":
+      return "youtube_oauth_unauthorized_client";
+    case "invalid_request":
+      return "youtube_oauth_invalid_request";
+    case "unsupported_grant_type":
+      return "youtube_oauth_unsupported_grant_type";
+    default:
+      return "youtube_oauth_request_rejected";
+  }
 }
 
 async function verifyUploadedVideo(

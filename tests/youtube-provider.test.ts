@@ -201,7 +201,41 @@ describe("YouTube provider adapter", () => {
         body: new Response("clip").body as ReadableStream
       }
     )).rejects.toMatchObject({
-      code: "youtube_oauth_failed"
+      code: "youtube_oauth_response_invalid"
+    } satisfies Partial<YouTubeProviderError>);
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a revoked OAuth grant without retaining provider details", async () => {
+    const providerFetch = vi.fn().mockResolvedValue(jsonResponse(
+      {
+        error: "invalid_grant",
+        error_description: "sensitive provider detail"
+      },
+      400
+    ));
+    vi.stubGlobal("fetch", providerFetch);
+
+    await expect(
+      verifyYouTubeChannelAccess(configuredEnv())
+    ).rejects.toMatchObject({
+      code: "youtube_oauth_invalid_grant",
+      message: "youtube_oauth_invalid_grant"
+    } satisfies Partial<YouTubeProviderError>);
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("separates OAuth network failure from provider rejection", async () => {
+    const providerFetch = vi.fn().mockRejectedValue(
+      new Error("sensitive transport detail")
+    );
+    vi.stubGlobal("fetch", providerFetch);
+
+    await expect(
+      verifyYouTubeChannelAccess(configuredEnv())
+    ).rejects.toMatchObject({
+      code: "youtube_oauth_network_failed",
+      message: "youtube_oauth_network_failed"
     } satisfies Partial<YouTubeProviderError>);
     expect(providerFetch).toHaveBeenCalledTimes(1);
   });
@@ -288,8 +322,9 @@ function configuredEnv(): PodcastEnv {
   } as PodcastEnv;
 }
 
-function jsonResponse(value: unknown): Response {
+function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
+    status,
     headers: { "content-type": "application/json" }
   });
 }
