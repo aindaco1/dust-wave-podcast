@@ -1903,8 +1903,13 @@ invocations cannot duplicate the provider read. The composed launch gate
 requires a successful exact-channel check from the last 24 hours as its own
 node; that node never substitutes for the separately required inspected
 unlisted upload. A failed check stores only a bounded failure code. Reauthorize
-the dedicated staging consent grant if it expires, and never copy a browser
-access token into Worker configuration or evidence.
+the dedicated staging consent grant when it reports `youtube_oauth_invalid_grant`;
+repair the dedicated client when it reports `youtube_oauth_invalid_client` or
+`youtube_oauth_unauthorized_client`. Network, rejected-request, and malformed-
+response states remain distinct; timeouts are separated from other transport
+failures. The adapter never stores Google's error
+description or response body, and a browser access token must never be copied
+into Worker configuration or evidence.
 
 1. Leave `YOUTUBE_PUBLISH_MODE=dry_run`, prepare the immutable current-render
    draft in Marketing, and have a recently authenticated super-admin approve

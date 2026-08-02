@@ -265,10 +265,10 @@ async function refreshAccessToken(
       client_secret: config.clientSecret,
       refresh_token: config.refreshToken,
       grant_type: "refresh_token"
-    }),
+    }).toString(),
     redirect: "error"
-  }, TOKEN_TIMEOUT_MS).catch(() => {
-    throw new YouTubeProviderError("youtube_oauth_network_failed");
+  }, TOKEN_TIMEOUT_MS).catch((error: unknown) => {
+    throw new YouTubeProviderError(oauthTransportFailureCode(error));
   });
   if (!response.ok) {
     let providerCode = "";
@@ -322,6 +322,12 @@ function oauthFailureCode(providerCode: string): string {
     default:
       return "youtube_oauth_request_rejected";
   }
+}
+
+function oauthTransportFailureCode(error: unknown): string {
+  return error instanceof Error && error.name === "AbortError"
+    ? "youtube_oauth_timeout"
+    : "youtube_oauth_transport_failed";
 }
 
 async function verifyUploadedVideo(

@@ -162,7 +162,10 @@
   timestamps, and a consecutive-failure count. Access tokens, refresh tokens,
   client credentials, provider bodies, and account profile data never enter
   D1 or logs. Success remains separate from controlled unlisted-upload
-  evidence and cannot authorize or enqueue an upload.
+  evidence and cannot authorize or enqueue an upload. Known OAuth failures are
+  reduced to a fixed allowlist (`invalid_grant`, client authorization,
+  malformed response, rejection, timeout, or transport failure); Google error
+  descriptions and all other provider response content are discarded.
 - Announcement review is structurally side-effect free. Approval writes a
   durable, audited, idempotent outbox. Staging is explicitly `dry_run`,
   production is explicitly `disabled`, and the live sender fails closed unless

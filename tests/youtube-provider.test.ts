@@ -57,6 +57,10 @@ describe("YouTube provider adapter", () => {
     expect(String(providerFetch.mock.calls[0][0])).toBe(
       "https://oauth2.googleapis.com/token"
     );
+    const oauthRequest = providerFetch.mock.calls[0][1] as RequestInit;
+    expect(typeof oauthRequest.body).toBe("string");
+    expect(new URLSearchParams(String(oauthRequest.body)).get("grant_type"))
+      .toBe("refresh_token");
     expect(String(providerFetch.mock.calls[1][0])).toContain(
       "/youtube/v3/channels"
     );
@@ -234,8 +238,23 @@ describe("YouTube provider adapter", () => {
     await expect(
       verifyYouTubeChannelAccess(configuredEnv())
     ).rejects.toMatchObject({
-      code: "youtube_oauth_network_failed",
-      message: "youtube_oauth_network_failed"
+      code: "youtube_oauth_transport_failed",
+      message: "youtube_oauth_transport_failed"
+    } satisfies Partial<YouTubeProviderError>);
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports an OAuth timeout without exposing its cause", async () => {
+    const timeout = new Error("sensitive timeout detail");
+    timeout.name = "AbortError";
+    const providerFetch = vi.fn().mockRejectedValue(timeout);
+    vi.stubGlobal("fetch", providerFetch);
+
+    await expect(
+      verifyYouTubeChannelAccess(configuredEnv())
+    ).rejects.toMatchObject({
+      code: "youtube_oauth_timeout",
+      message: "youtube_oauth_timeout"
     } satisfies Partial<YouTubeProviderError>);
     expect(providerFetch).toHaveBeenCalledTimes(1);
   });
