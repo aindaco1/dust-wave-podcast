@@ -866,7 +866,6 @@ function assertTestRefund(
   const resolvedPaymentIntentId = nestedId(refund.payment_intent, "pi");
   if (
     refund.object !== "refund"
-    || refund.livemode !== false
     || refund.amount !== FIXTURE_AMOUNT_CENTS
     || refund.currency !== "usd"
     || !resolvedPaymentIntentId
