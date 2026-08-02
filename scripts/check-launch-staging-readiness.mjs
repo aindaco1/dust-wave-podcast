@@ -86,6 +86,15 @@ export function evaluateLaunchStagingReadiness(snapshot) {
       : "a launch-state statement reported or could not prove zero writes"
   );
 
+  add(
+    Number(snapshot.show?.test_fixture) === 0 ? "PASS" : "FAIL",
+    "fixture_exclusion",
+    "Launch Lab exclusion",
+    Number(snapshot.show?.test_fixture) === 0
+      ? "the selected launch show is not a staging fixture"
+      : "a Launch Lab fixture can never satisfy launch readiness"
+  );
+
   addPostureNode(
     add,
     "staging_posture",
@@ -407,6 +416,7 @@ function launchStateStatements(episodeId, validatorVersion) {
   return `
     SELECT
       show.id, show.status, show.premium_enabled, show.rss_slug,
+      show.test_fixture,
       show.youtube_channel_url
     FROM shows show
     WHERE show.id = ${showId};

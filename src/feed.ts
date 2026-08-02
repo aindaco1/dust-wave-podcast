@@ -24,6 +24,7 @@ type FeedShow = {
   author_name: string;
   category: string;
   explicit: number;
+  test_fixture: number;
 };
 
 type FeedEpisode = {
@@ -62,7 +63,9 @@ export async function servePublicFeed(
          id, slug, title, description, language, artwork_url, canonical_url,
          rss_slug, podcast_guid, author_name, category, explicit
        FROM shows
-       WHERE rss_slug = ? AND status != 'archived'`
+       WHERE rss_slug = ?
+         AND status != 'archived'
+         AND test_fixture = 0`
     )
     .bind(rssSlug)
     .first<FeedShow>();
@@ -134,7 +137,8 @@ export async function servePrivateFeed(
       `SELECT
          sh.id, sh.slug, sh.title, sh.description, sh.language,
          sh.artwork_url, sh.canonical_url, sh.rss_slug, sh.author_name,
-         sh.podcast_guid, sh.category, sh.explicit, f.last_used_at
+         sh.podcast_guid, sh.category, sh.explicit, sh.test_fixture,
+         f.last_used_at
        FROM private_feed_tokens f
        JOIN subscriptions s
          ON s.listener_id = f.listener_id
@@ -279,6 +283,7 @@ function renderFeed(
     </itunes:owner>
     ${show.artwork_url ? `<itunes:image href="${escapeXml(show.artwork_url)}"/>` : ""}
     <podcast:locked owner="${escapeXml(ownerEmail)}">yes</podcast:locked>
+    ${show.test_fixture === 1 ? "<itunes:block>yes</itunes:block>" : ""}
     ${show.podcast_guid
       ? `<podcast:guid>${escapeXml(show.podcast_guid)}</podcast:guid>`
       : ""}

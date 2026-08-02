@@ -55,7 +55,8 @@ function readySnapshot() {
       id: "show_fixture",
       premium_enabled: 1,
       rss_slug: "fixture",
-      youtube_channel_url: "https://youtube.com/@fixture"
+      youtube_channel_url: "https://youtube.com/@fixture",
+      test_fixture: 0
     },
     episodeReport: {
       nextAction: null,
@@ -105,7 +106,7 @@ describe("launch staging gate", () => {
     const report = evaluateLaunchStagingReadiness(readySnapshot());
 
     expect(report.summary).toEqual({
-      passCount: 13,
+      passCount: 14,
       failCount: 0,
       blockCount: 0,
       waitCount: 0,
@@ -113,6 +114,21 @@ describe("launch staging gate", () => {
       launchReady: true
     });
     expect(report.nextAction).toBeNull();
+  });
+
+  it("fails closed when a Launch Lab fixture is selected", () => {
+    const snapshot = readySnapshot();
+    snapshot.show.test_fixture = 1;
+
+    const report = evaluateLaunchStagingReadiness(snapshot);
+
+    expect(report.summary.safe).toBe(false);
+    expect(report.summary.launchReady).toBe(false);
+    expect(report.nodes.find(({ id }) => id === "fixture_exclusion"))
+      .toMatchObject({
+        status: "FAIL",
+        detail: "a Launch Lab fixture can never satisfy launch readiness"
+      });
   });
 
   it("fails closed for unsafe modes, missing secret names, or writes", () => {

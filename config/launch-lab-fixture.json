@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "dust-wave-launch-lab-fixture-v1",
+  "show": {
+    "id": "show_dust_wave_launch_lab",
+    "slug": "dust-wave-launch-lab",
+    "title": "Dust Wave Launch Lab",
+    "description": "Laboratorio privado de publicación. Contenido sintético; no publicar.",
+    "descriptionEn": "Private publishing rehearsal. Synthetic content; do not publish.",
+    "language": "es",
+    "status": "coming_soon",
+    "rssSlug": "dust-wave-launch-lab",
+    "authorName": "Dust Wave",
+    "category": "Arts",
+    "premiumEnabled": true,
+    "earlyAccessDays": 2,
+    "freeMiniEpisodeEnabled": true,
+    "explicit": false,
+    "testFixture": true
+  },
+  "safeguards": {
+    "stagingOnly": true,
+    "publicCatalog": false,
+    "launchEligible": false,
+    "billable": false,
+    "rssDirectoryBlocked": true
+  }
+}

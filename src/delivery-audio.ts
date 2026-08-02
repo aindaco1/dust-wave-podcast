@@ -1227,6 +1227,12 @@ export async function servePublicEpisodePeaks(
        AND episode.audio_key = job.output_object_key
        AND episode.audio_bytes = job.output_object_bytes
        AND episode.audio_etag = job.output_object_etag
+       AND EXISTS (
+         SELECT 1
+         FROM shows public_show
+         WHERE public_show.id = episode.show_id
+           AND public_show.test_fixture = 0
+       )
      LIMIT 1`
   ).bind(episodeId).first<DeliveryJobRow>();
   if (!job) return publicPeaksNotFound();

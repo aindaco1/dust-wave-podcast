@@ -256,7 +256,7 @@ async function feedFixture({
           }
           if (
             query.includes("FROM episodes")
-            && query.includes("WHERE id = ?")
+            && query.includes("WHERE e.id = ?")
             && query.includes("audio_etag")
           ) {
             return {

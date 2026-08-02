@@ -167,6 +167,7 @@ export async function resolveSubscriptionTaxQuote(
        WHERE
          s.slug = ?
          AND s.status != 'archived'
+         AND s.test_fixture = 0
          AND p.id = ?
          AND p.active = 1`
     )

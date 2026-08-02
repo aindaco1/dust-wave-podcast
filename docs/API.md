@@ -1597,3 +1597,26 @@ and production routes remain unavailable.
 Podcast Checkout remains inert until the explicit global gate,
 accountant-approved manual tax configuration, isolated Stripe bindings, and
 request-time security checks all pass.
+## Staging Launch Lab
+
+`POST /v1/diagnostics/launch-lab` is a staging-only, purpose-signed automation
+boundary. Production and an unconfigured staging environment return `404`
+before D1. Requests use the `dust-wave-launch-lab-request-v1` envelope and the
+`x-podcast-launch-lab-timestamp` / `x-podcast-launch-lab-signature` HMAC
+headers. Supported actions are:
+
+- `reconcile`: create or reconcile the one immutable `test_fixture` show and
+  seed the checked-in provider matrix;
+- `record_observations`: persist only allowlisted provider/scenario outcomes;
+- `run_resend_matrix`: exercise Resend's delivered, bounced, complained, and
+  suppressed test recipients through the production adapter;
+- `run_stripe_readiness`: read and attest the exact inactive test-mode Product
+  and Price objects through the production Stripe adapter;
+- `status`: return the content-free scenario projection for one exact source
+  commit and run.
+
+The route never accepts launch readiness, expected outcomes, provider IDs,
+recipient identity, media, transcripts, or credentials from the caller.
+Expected outcomes come only from `config/launch-lab-matrix.json`; fixture rows
+are excluded from public and billable routes and can never satisfy the launch
+gate.

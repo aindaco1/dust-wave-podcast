@@ -36,15 +36,17 @@ export async function servePublicEpisodeAudio(
   const episode = await env.DB
     .prepare(
       `SELECT
-         id, show_id, duration_seconds, audio_key, audio_bytes,
-         audio_mime_type, audio_filename, audio_etag
-       FROM episodes
-       WHERE id = ?
-         AND status = 'published'
-         AND public_at <= ${SQL_UTC_NOW_RFC3339}
-         AND access IN ('public', 'early_access', 'free_mini')
-         AND media_status = 'ready'
-         AND audio_key IS NOT NULL`
+         e.id, e.show_id, e.duration_seconds, e.audio_key, e.audio_bytes,
+         e.audio_mime_type, e.audio_filename, e.audio_etag
+       FROM episodes e
+       JOIN shows s ON s.id = e.show_id
+       WHERE e.id = ?
+         AND s.test_fixture = 0
+         AND e.status = 'published'
+         AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
+         AND e.access IN ('public', 'early_access', 'free_mini')
+         AND e.media_status = 'ready'
+         AND e.audio_key IS NOT NULL`
     )
     .bind(episodeId)
     .first<MediaEpisode>();
@@ -71,15 +73,17 @@ export async function servePublicEpisodeAudioPreflight(
   const episode = await env.DB
     .prepare(
       `SELECT
-         id, show_id, duration_seconds, audio_key, audio_bytes,
-         audio_mime_type, audio_filename, audio_etag
-       FROM episodes
-       WHERE id = ?
-         AND status = 'published'
-         AND public_at <= ${SQL_UTC_NOW_RFC3339}
-         AND access IN ('public', 'early_access', 'free_mini')
-         AND media_status = 'ready'
-         AND audio_key IS NOT NULL`
+         e.id, e.show_id, e.duration_seconds, e.audio_key, e.audio_bytes,
+         e.audio_mime_type, e.audio_filename, e.audio_etag
+       FROM episodes e
+       JOIN shows s ON s.id = e.show_id
+       WHERE e.id = ?
+         AND s.test_fixture = 0
+         AND e.status = 'published'
+         AND e.public_at <= ${SQL_UTC_NOW_RFC3339}
+         AND e.access IN ('public', 'early_access', 'free_mini')
+         AND e.media_status = 'ready'
+         AND e.audio_key IS NOT NULL`
     )
     .bind(episodeId)
     .first<MediaEpisode>();

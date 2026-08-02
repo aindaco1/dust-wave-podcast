@@ -2018,3 +2018,39 @@ For the full-episode YouTube test, use a separate fixture publication:
 - A Worker-code rollback after migration `0069` must leave the content-free
   admin action ledger in place. Disable `ADMIN_ACTION_NOTIFICATION_MODE` first;
   older code ignores the additive table and cannot issue a link from it.
+## Automated Launch Lab rehearsal
+
+The Launch Lab turns provider-dependent prelaunch blockers into repeatable
+staging rehearsals without requiring a publishable episode or broad provider
+credentials in GitHub Actions.
+
+1. Install the same random `LAUNCH_LAB_CALLBACK_SECRET` in the staging Worker
+   and the `podcast-staging` GitHub environment. Never install it in production.
+2. Deploy migration `0080` and the matching Worker to staging.
+3. Run `Rehearse staging provider contracts`, or locally invoke:
+
+   ```text
+   npm run launch-lab -- reconcile
+   npm run launch-lab -- record /absolute/path/to/observations.json
+   npm run launch-lab -- resend
+   npm run launch-lab -- stripe
+   npm run launch-lab -- status
+   ```
+
+The protected workflow derives one stable run ID from the exact source commit,
+reuses the existing ad selector, Pool bridge, Stripe client, Resend adapter,
+webhook verification, and public routes, and retains only aggregate scenario
+state. It is safe to rerun: passed scenarios are immutable, failed observations
+may recover to the checked-in expectation, Resend uses stable idempotency keys,
+and run/source collisions fail closed.
+
+The initial matrix contains 41 scenarios across Resend, Stripe, YouTube, RSS,
+directories, ads, and Pool. Scenarios needing a real native client, unlisted
+YouTube object, directory ingestion, or Stripe lifecycle remain `pending` until
+their adapters can produce truthful evidence. A pending or passing synthetic
+scenario never counts as launch evidence.
+
+Before accepting a run, confirm the public probe returns `404` for both the
+fixture show API and fixture RSS URL, the private fixture feed emits
+`<itunes:block>yes</itunes:block>`, and the status artifact says
+`launchGateEligible: false`.

@@ -193,6 +193,84 @@ describe("durable announcement delivery", () => {
       source_event_id: eventId
     });
   });
+
+  it("routes signed Launch Lab events without touching real announcement state", async () => {
+    const scenarioId = "lab_launch_lab_run_0001_resend_delivered";
+    sqlite.prepare(
+      "INSERT INTO launch_lab_runs (id, show_id, source_commit) "
+      + "VALUES (?, ?, ?)"
+    ).run(
+      "launch_lab_run_0001",
+      "show_fixture",
+      "a".repeat(40)
+    );
+    sqlite.prepare(
+      "INSERT INTO launch_lab_provider_scenarios "
+      + "(id, run_id, provider, scenario, expected_status, state, "
+      + "observed_status, provider_id) "
+      + "VALUES (?, ?, 'resend', ?, ?, 'running', 'accepted', ?)"
+    ).run(
+      scenarioId,
+      "launch_lab_run_0001",
+      "delivered",
+      "delivered",
+      "email_launch_lab_fixture"
+    );
+    const secretBytes = new TextEncoder().encode(
+      "resend_webhook_test_secret_123456"
+    );
+    const webhookSecret = "whsec_" + bytesToBase64(secretBytes);
+    const timestamp = Math.floor(Date.now() / 1_000).toString();
+    const eventId = "evt_launch_lab_fixture";
+    const body = JSON.stringify({
+      type: "email.delivered",
+      data: {
+        email_id: "email_launch_lab_fixture",
+        tags: [{
+          name: "launch_lab_scenario",
+          value: scenarioId
+        }]
+      }
+    });
+    const signature = await signWebhook(
+      eventId,
+      timestamp,
+      body,
+      secretBytes
+    );
+    const response = await handleResendWebhook(
+      new Request(
+        "https://feeds.dustwave.xyz/v1/webhooks/resend",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "svix-id": eventId,
+            "svix-timestamp": timestamp,
+            "svix-signature": "v1," + signature
+          },
+          body
+        }
+      ),
+      { DB: db, RESEND_WEBHOOK_SECRET: webhookSecret }
+    );
+
+    expect(await response.json()).toEqual({
+      received: true,
+      matched: true,
+      launchLab: true
+    });
+    expect(sqlite.prepare(
+      "SELECT state, observed_status "
+      + "FROM launch_lab_provider_scenarios WHERE id = ?"
+    ).get(scenarioId)).toEqual({
+      state: "passed",
+      observed_status: "delivered"
+    });
+    expect(sqlite.prepare(
+      "SELECT status FROM podcast_announcement_deliveries WHERE id = ?"
+    ).get(deliveryId)).toEqual({ status: "pending" });
+  });
 });
 
 function seedDeliveryFixture(sqlite) {

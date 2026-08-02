@@ -470,6 +470,7 @@ export async function createListenerBillingPortal(
        WHERE
          es.listener_id = ?
          AND sh.slug = ?
+         AND sh.test_fixture = 0
          AND es.provider = 'stripe'
          AND es.provider_customer_id IS NOT NULL
        ORDER BY

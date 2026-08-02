@@ -4,7 +4,7 @@ import type { EpisodeRow, PriceRow, PublicShow, ShowRow } from "./types";
 const SHOW_COLUMNS = `
   id, slug, title, description, description_en, language, status, artwork_url,
   canonical_url, youtube_channel_url, premium_enabled, early_access_days,
-  free_mini_episode_enabled, author_name, category, explicit
+  free_mini_episode_enabled, author_name, category, explicit, test_fixture
 `;
 
 function presentShow(show: ShowRow, prices: PriceRow[], episodes?: EpisodeRow[]): PublicShow {
@@ -15,6 +15,7 @@ function presentShow(show: ShowRow, prices: PriceRow[], episodes?: EpisodeRow[])
     description_en,
     author_name,
     explicit,
+    test_fixture: _testFixture,
     ...rest
   } = show;
   return {
@@ -32,7 +33,12 @@ function presentShow(show: ShowRow, prices: PriceRow[], episodes?: EpisodeRow[])
 
 export async function listPublicShows(db: D1Database): Promise<PublicShow[]> {
   const showResult = await db
-    .prepare(`SELECT ${SHOW_COLUMNS} FROM shows WHERE status != 'archived' ORDER BY title`)
+    .prepare(
+      `SELECT ${SHOW_COLUMNS}
+       FROM shows
+       WHERE status != 'archived' AND test_fixture = 0
+       ORDER BY title`
+    )
     .all<ShowRow>();
 
   const priceResult = await db
@@ -56,7 +62,11 @@ export async function listPublicShows(db: D1Database): Promise<PublicShow[]> {
 
 export async function getPublicShow(db: D1Database, slug: string): Promise<PublicShow | null> {
   const show = await db
-    .prepare(`SELECT ${SHOW_COLUMNS} FROM shows WHERE slug = ? AND status != 'archived'`)
+    .prepare(
+      `SELECT ${SHOW_COLUMNS}
+       FROM shows
+       WHERE slug = ? AND status != 'archived' AND test_fixture = 0`
+    )
     .bind(slug)
     .first<ShowRow>();
 

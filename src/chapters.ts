@@ -89,6 +89,7 @@ export async function servePublicEpisodeChapters(
        JOIN shows s ON s.id = e.show_id
        WHERE s.slug = ?
          AND s.status != 'archived'
+         AND s.test_fixture = 0
          AND e.slug = ?
          AND e.status = 'published'
          AND e.public_at <= ${SQL_UTC_NOW_RFC3339}

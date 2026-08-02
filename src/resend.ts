@@ -24,6 +24,12 @@ export type MagicLinkDelivery = {
     | "provider_unavailable";
 };
 
+export type LaunchLabResendScenario =
+  | "delivered"
+  | "bounced"
+  | "complained"
+  | "suppressed";
+
 export async function sendAdminMagicLink(
   env: PodcastEnv,
   {
@@ -179,6 +185,42 @@ export async function sendAdminActionMagicLink(
       tags: [{ name: "category", value: "admin_action" }]
     },
     `podcast-admin-action/${deliveryKey}`
+  );
+}
+
+export async function sendLaunchLabResendScenario(
+  env: PodcastEnv,
+  {
+    scenario,
+    scenarioId
+  }: {
+    scenario: LaunchLabResendScenario;
+    scenarioId: string;
+  }
+): Promise<MagicLinkDelivery> {
+  const recipient = scenario === "suppressed"
+    ? "suppressed@resend.dev"
+    : scenario + "+" + safeTagValue(scenarioId) + "@resend.dev";
+  return sendResendPayload(
+    env,
+    {
+      from:
+        env.PODCAST_EMAIL_FROM
+        || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+      to: [recipient],
+      subject: "Dust Wave Launch Lab / Laboratorio de lanzamiento",
+      text:
+        "Synthetic delivery rehearsal. No listener message. / "
+        + "Prueba sintética de entrega. No es un mensaje para oyentes.",
+      html:
+        "<p>Synthetic delivery rehearsal. No listener message.</p>"
+        + "<p>Prueba sintética de entrega. No es un mensaje para oyentes.</p>",
+      tags: [
+        { name: "launch_lab_scenario", value: safeTagValue(scenarioId) },
+        { name: "category", value: "launch_lab" }
+      ]
+    },
+    "podcast-launch-lab/" + safeTagValue(scenarioId)
   );
 }
 
