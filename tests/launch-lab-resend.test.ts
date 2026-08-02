@@ -15,6 +15,15 @@ describe("Launch Lab Resend matrix", () => {
     const database = scenarioDatabase();
     const requests: Array<Record<string, unknown>> = [];
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      if (init?.method === "GET") {
+        return new Response(JSON.stringify({
+          id: String(_url).split("/").pop(),
+          last_event: "sent"
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       requests.push({
         body,
@@ -101,6 +110,71 @@ describe("Launch Lab Resend matrix", () => {
     expect(database.rows.get("delivered")?.state).toBe("passed");
     expect(database.rows.get("delivered")?.observed_status).toBe("delivered");
   });
+
+  it("reconciles an already-sent synthetic suppression without resending", async () => {
+    const database = scenarioDatabase({
+      delivered: terminalScenario(
+        "launch_lab_run_0003",
+        "delivered",
+        "delivered"
+      ),
+      bounced: terminalScenario(
+        "launch_lab_run_0003",
+        "bounced",
+        "suppressed"
+      ),
+      complained: terminalScenario(
+        "launch_lab_run_0003",
+        "complained",
+        "suppressed"
+      ),
+      suppressed: {
+        id: "lab_launch_lab_run_0003_resend_suppressed",
+        scenario: "suppressed",
+        expected_status: "suppressed",
+        state: "running",
+        observed_status: "accepted",
+        provider_id: "email_suppressed_fixture",
+        failure_code: null
+      }
+    });
+    const requests: Array<{ url: string; method: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      requests.push({ url: String(url), method: String(init?.method) });
+      return new Response(JSON.stringify({
+        id: "email_suppressed_fixture",
+        last_event: "suppressed"
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }));
+    const env = {
+      DB: database.db,
+      RESEND_API_KEY: "re_test_fixture",
+      PODCAST_EMAIL_FROM: "Dust Wave Podcasts <podcasts@dustwave.xyz>"
+    } as unknown as PodcastEnv;
+
+    const result = await runLaunchLabResendMatrix(
+      env,
+      "launch_lab_run_0003"
+    );
+
+    expect(requests).toEqual([{
+      url: "https://api.resend.com/emails/email_suppressed_fixture",
+      method: "GET"
+    }]);
+    expect(database.rows.get("suppressed")).toMatchObject({
+      state: "passed",
+      observed_status: "suppressed",
+      provider_id: "email_suppressed_fixture"
+    });
+    expect(result).toMatchObject({
+      passed: true,
+      launchGateEligible: false,
+      recipientIdentityRetained: false
+    });
+  });
 });
 
 type Scenario = {
@@ -112,6 +186,22 @@ type Scenario = {
   provider_id: string | null;
   failure_code: string | null;
 };
+
+function terminalScenario(
+  runId: string,
+  scenario: Exclude<Scenario["scenario"], "suppressed">,
+  observedStatus: string
+): Scenario {
+  return {
+    id: `lab_${runId}_resend_${scenario}`,
+    scenario,
+    expected_status: observedStatus,
+    state: "passed",
+    observed_status: observedStatus,
+    provider_id: `email_${scenario}_fixture`,
+    failure_code: null
+  };
+}
 
 function scenarioDatabase(
   initial: Partial<Record<Scenario["scenario"], Scenario>> = {}

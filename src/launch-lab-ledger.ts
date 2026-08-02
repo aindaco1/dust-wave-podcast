@@ -199,7 +199,6 @@ export async function presentLaunchLabRun(
   db: D1Database,
   runId: string
 ): Promise<Record<string, unknown> | null> {
-  await refreshLaunchLabRunStatus(db, runId);
   const run = await loadLaunchLabRun(db, runId);
   if (!run) return null;
   const scenarios = (await loadScenarioRows(db, runId)).map((row) => ({

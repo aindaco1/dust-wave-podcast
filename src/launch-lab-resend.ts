@@ -4,6 +4,7 @@ import {
   refreshLaunchLabRunStatus
 } from "./launch-lab-ledger";
 import {
+  getLaunchLabResendDeliveryStatus,
   sendLaunchLabResendScenario,
   type LaunchLabResendScenario
 } from "./resend";
@@ -124,6 +125,20 @@ export async function runLaunchLabResendMatrix(
       state,
       row.id
     ).run();
+  }));
+  const afterSend = await loadRows(env.DB, runId);
+  await Promise.all(afterSend.map(async (row) => {
+    if (row.state !== "running" || !row.provider_id) return;
+    const status = await getLaunchLabResendDeliveryStatus(
+      env,
+      row.provider_id
+    );
+    if (!status) return;
+    await recordLaunchLabResendWebhook(env.DB, {
+      providerId: row.provider_id,
+      scenarioId: row.id,
+      status
+    });
   }));
   await refreshLaunchLabRunStatus(env.DB, runId);
   return presentMatrix(await loadRows(env.DB, runId), runId);

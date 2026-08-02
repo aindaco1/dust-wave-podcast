@@ -2044,6 +2044,15 @@ state. It is safe to rerun: passed scenarios are immutable, failed observations
 may recover to the checked-in expectation, Resend uses stable idempotency keys,
 and run/source collisions fail closed.
 
+Resend terminal evidence normally arrives through the signed webhook adapter.
+When a synthetic message remains accepted, a rerun may retrieve that exact
+already-sent provider object through the bounded read-only adapter. This
+fallback does not resend, follow redirects, or retain recipient identity.
+
+Super-admins can inspect the same content-free evidence through
+`GET /v1/admin/launch-lab`. Loading this view does not refresh or otherwise
+mutate the ledger, and the fixture stays absent from normal show selectors.
+
 The initial matrix contains 41 scenarios across Resend, Stripe, YouTube, RSS,
 directories, ads, and Pool. Scenarios needing a real native client, unlisted
 YouTube object, directory ingestion, or Stripe lifecycle remain `pending` until

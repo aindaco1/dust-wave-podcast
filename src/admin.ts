@@ -82,6 +82,7 @@ export async function listAdminShows(
          COUNT(e.id) AS episode_count
        FROM shows s
        LEFT JOIN episodes e ON e.show_id = s.id
+       WHERE s.test_fixture = 0
        GROUP BY s.id
        ORDER BY s.title`
     )
