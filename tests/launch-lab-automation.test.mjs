@@ -39,6 +39,13 @@ describe("Launch Lab automation", () => {
     expect(workflow).not.toContain("CLOUDFLARE_API_TOKEN");
     expect(workflow).not.toContain("CLOUDFLARE_ACCOUNT_ID");
     expect(workflow).not.toContain("pull_request:");
+    expect(workflow).not.toMatch(/npm run launch-lab(?::contracts|:probe| -- status)\s*>/);
+    expect(workflow).toContain(
+      "node scripts/build-launch-lab-contract-observations.mjs >"
+    );
+    expect(workflow).toContain(
+      "node scripts/launch-lab-client.mjs status >"
+    );
     expect(workflow).toMatch(/actions\/checkout@[a-f0-9]{40}/);
     expect(workflow).toMatch(/actions\/upload-artifact@[a-f0-9]{40}/);
   });
