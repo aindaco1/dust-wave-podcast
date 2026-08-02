@@ -218,8 +218,12 @@
   prevents parallel plan sessions.
 - Stripe webhook projections store independent Stripe, Pool, and manual
   entitlement sources and recompute one show-access projection. Canceling one
-  source cannot revoke another active source. D1 never stores a full Stripe
-  event payload.
+  source cannot revoke another active source. Each Stripe source also stores
+  only the latest provider event ID and creation second; atomic conflict/update
+  guards prevent delayed or same-second later deliveries from replacing newer
+  state. Signed refund events remain ignored until an explicit refund-access
+  policy is approved, so a refund cannot silently invent cancellation or
+  entitlement behavior. D1 never stores a full Stripe event payload.
 - Pool benefit grants use a dedicated timestamped HMAC back channel. Raw
   recipient email and redemption code are accepted only in that authenticated
   request and are reduced to independent HMACs before D1. Redemption requires

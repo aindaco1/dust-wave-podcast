@@ -20,6 +20,7 @@ export function buildLaunchLabContractObservations() {
       { provider: "pool", scenario: "redeem", observedStatus: "active" },
       { provider: "pool", scenario: "duplicate", observedStatus: "idempotent" },
       { provider: "pool", scenario: "revoke", observedStatus: "revoked" },
+      { provider: "stripe", scenario: "webhook_contract", observedStatus: "verified" },
       { provider: "rss", scenario: "private_directory_block", observedStatus: "blocked" }
     ]
   };

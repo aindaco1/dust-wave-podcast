@@ -2020,6 +2020,15 @@ For the full-episode YouTube test, use a separate fixture publication:
   older code ignores the additive table and cannot issue a link from it.
 ## Automated Launch Lab rehearsal
 
+Migration `0081` adds content-minimal provider-event ordering to each Stripe
+entitlement source. Replay all migrations from zero, run the signed webhook
+lifecycle test, and confirm checkout, monthly renewal, payment failure and
+recovery, cancellation, Pool overlap, duplicate delivery, delayed delivery,
+and same-second delivery leave the newest Stripe state authoritative with
+clean foreign keys. A signed `charge.refunded` fixture is intentionally
+journaled as ignored until a refund-access policy is approved; it must not
+revoke or extend access implicitly.
+
 The Launch Lab turns provider-dependent prelaunch blockers into repeatable
 staging rehearsals without requiring a publishable episode or broad provider
 credentials in GitHub Actions.
@@ -2054,10 +2063,12 @@ Super-admins can inspect the same content-free evidence through
 mutate the ledger, and the fixture stays absent from normal show selectors.
 
 The initial matrix contains 41 scenarios across Resend, Stripe, YouTube, RSS,
-directories, ads, and Pool. Scenarios needing a real native client, unlisted
-YouTube object, directory ingestion, or Stripe lifecycle remain `pending` until
-their adapters can produce truthful evidence. A pending or passing synthetic
-scenario never counts as launch evidence.
+directories, ads, and Pool. The scheduled real-schema lifecycle replay may
+mark only Stripe's synthetic `webhook_contract` as verified. Scenarios needing
+a real Checkout, test-clock renewal/refund, native client, unlisted YouTube
+object, or directory ingestion remain `pending` until their adapters produce
+truthful evidence. A pending or passing synthetic scenario never counts as
+launch evidence.
 
 Before accepting a run, confirm the public probe returns `404` for both the
 fixture show API and fixture RSS URL, the private fixture feed emits

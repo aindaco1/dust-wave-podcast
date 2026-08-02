@@ -26,6 +26,14 @@ type StripeEvent = {
   data?: { object?: Record<string, unknown> };
 };
 
+const STRIPE_SUBSCRIPTION_EVENT_TYPES = new Set([
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "customer.subscription.paused",
+  "customer.subscription.resumed"
+]);
+
 export async function handleStripeWebhook(
   request: Request,
   env: PodcastEnv
@@ -59,11 +67,13 @@ export async function handleStripeWebhook(
   } catch {
     return webhookResponse({ error: "invalid_event" }, 400);
   }
+  const eventCreated = event.created;
   if (
     !event.id
     || !event.type
     || typeof event.livemode !== "boolean"
-    || !Number.isSafeInteger(event.created)
+    || typeof eventCreated !== "number"
+    || !Number.isSafeInteger(eventCreated)
     || !event.data?.object
   ) {
     return webhookResponse({ error: "invalid_event" }, 400);
@@ -85,10 +95,10 @@ export async function handleStripeWebhook(
       event.id,
       event.type,
       event.livemode ? 1 : 0,
-      event.created,
+      eventCreated,
       stringOrNull(object.id),
       stringOrNull(object.customer),
-      stringOrNull(object.subscription)
+      stripeEventSubscriptionId(event.type, object)
     )
     .run();
   if ((inserted.meta?.changes ?? 0) === 0) {
@@ -110,6 +120,7 @@ export async function handleStripeWebhook(
       env,
       event.id,
       event.type,
+      eventCreated,
       object
     );
     await env.DB
@@ -246,6 +257,7 @@ async function projectStripeEvent(
   env: PodcastEnv,
   eventId: string,
   type: string,
+  eventCreated: number,
   object: Record<string, unknown>
 ): Promise<boolean> {
   const db = env.DB;
@@ -271,7 +283,9 @@ async function projectStripeEvent(
         status: ["paid", "no_payment_required"].includes(
           String(object.payment_status ?? "")
         ) ? "active" : "pending",
-        currentPeriodEnd: null
+        currentPeriodEnd: null,
+        providerEventId: eventId,
+        providerEventCreatedAt: eventCreated
       });
     }
     await db
@@ -301,13 +315,7 @@ async function projectStripeEvent(
       .run();
     return true;
   }
-  if ([
-    "customer.subscription.created",
-    "customer.subscription.updated",
-    "customer.subscription.deleted",
-    "customer.subscription.paused",
-    "customer.subscription.resumed"
-  ].includes(type)) {
+  if (STRIPE_SUBSCRIPTION_EVENT_TYPES.has(type)) {
     const subscriptionId = stringOrNull(object.id);
     if (!subscriptionId) return false;
     const status = type === "customer.subscription.deleted"
@@ -333,7 +341,9 @@ async function projectStripeEvent(
         providerCustomerId: requiredString(object.customer, "customer"),
         providerSubscriptionId: subscriptionId,
         status,
-        currentPeriodEnd
+        currentPeriodEnd,
+        providerEventId: eventId,
+        providerEventCreatedAt: eventCreated
       });
       await db
         .prepare(
@@ -362,6 +372,8 @@ async function projectStripeEvent(
          SET
            status = ?,
            current_period_end = ?,
+           provider_event_id = ?,
+           provider_event_created_at = ?,
            canceled_at = CASE
              WHEN ? = 'canceled' THEN datetime('now')
              ELSE canceled_at
@@ -369,9 +381,21 @@ async function projectStripeEvent(
            updated_at = datetime('now')
          WHERE
            provider = 'stripe'
-           AND provider_subscription_id = ?`
+           AND provider_subscription_id = ?
+           AND (
+             provider_event_created_at IS NULL
+             OR provider_event_created_at < ?
+           )`
       )
-      .bind(status, currentPeriodEnd, status, subscriptionId)
+      .bind(
+        status,
+        currentPeriodEnd,
+        eventId,
+        eventCreated,
+        status,
+        subscriptionId,
+        eventCreated
+      )
       .run();
     await recomputeSubscriptionProjection(
       db,
@@ -479,6 +503,8 @@ async function upsertStripeSource(
     providerSubscriptionId: string;
     status: EntitlementStatus;
     currentPeriodEnd: string | null;
+    providerEventId: string;
+    providerEventCreatedAt: number;
   }
 ): Promise<void> {
   if (!/^cus_[A-Za-z0-9_]{6,128}$/.test(input.providerCustomerId)) {
@@ -492,9 +518,11 @@ async function upsertStripeSource(
       `INSERT INTO subscription_entitlement_sources (
          id, listener_id, show_id, price_id, provider,
          provider_customer_id, provider_subscription_id, status,
-         current_period_end, canceled_at
+         current_period_end, provider_event_id, provider_event_created_at,
+         canceled_at
        ) VALUES (
          ?, ?, ?, ?, 'stripe', ?, ?, ?, ?,
+         ?, ?,
          CASE WHEN ? = 'canceled' THEN datetime('now') ELSE NULL END
        )
        ON CONFLICT (listener_id, show_id, provider)
@@ -504,11 +532,17 @@ async function upsertStripeSource(
          provider_subscription_id = excluded.provider_subscription_id,
          status = excluded.status,
          current_period_end = excluded.current_period_end,
+         provider_event_id = excluded.provider_event_id,
+         provider_event_created_at = excluded.provider_event_created_at,
          canceled_at = CASE
            WHEN excluded.status = 'canceled' THEN datetime('now')
            ELSE NULL
          END,
-         updated_at = datetime('now')`
+         updated_at = datetime('now')
+       WHERE
+         subscription_entitlement_sources.provider_event_created_at IS NULL
+         OR subscription_entitlement_sources.provider_event_created_at
+           < excluded.provider_event_created_at`
     )
     .bind(
       `source_${randomToken(16)}`,
@@ -519,6 +553,8 @@ async function upsertStripeSource(
       input.providerSubscriptionId,
       input.status,
       input.currentPeriodEnd,
+      input.providerEventId,
+      input.providerEventCreatedAt,
       input.status
     )
     .run();
@@ -636,6 +672,15 @@ function sourceRank(
 function checkoutAttemptId(object: Record<string, unknown>): string | null {
   return metadataString(object, "dustwave_checkout_attempt_id")
     || stringOrNull(object.client_reference_id);
+}
+
+function stripeEventSubscriptionId(
+  type: string,
+  object: Record<string, unknown>
+): string | null {
+  return STRIPE_SUBSCRIPTION_EVENT_TYPES.has(type)
+    ? stringOrNull(object.id)
+    : stringOrNull(object.subscription);
 }
 
 function metadataString(

@@ -38,6 +38,25 @@ describe("Stripe webhook boundary", () => {
     expect(await response.json()).toEqual({ error: "invalid_signature" });
   });
 
+  it("rejects a string provider timestamp before touching D1", async () => {
+    const response = await handleStripeWebhook(
+      await signedWebhookRequest({
+        id: "evt_string_timestamp",
+        type: "customer.subscription.updated",
+        livemode: false,
+        created: "1785024000",
+        data: { object: { id: "sub_string_timestamp" } }
+      }, "whsec_fixture"),
+      {
+        STRIPE_WEBHOOK_SECRET: "whsec_fixture",
+        STRIPE_MODE: "test"
+      } as PodcastEnv
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_event" });
+  });
+
   it("projects a paid Checkout into a source plus aggregate without binding raw email", async () => {
     const fixture = webhookFixture();
     const event = {

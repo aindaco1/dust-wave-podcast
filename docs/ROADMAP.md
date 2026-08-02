@@ -478,6 +478,12 @@ them as launch blockers.
 - Preserve independent Stripe, Pool, and manual entitlement sources beneath
   one access projection so cancellation/revocation of one source cannot remove
   access granted by another.
+- Bind every Stripe source transition to the provider event ID and creation
+  second. The scheduled Launch Lab replays signed checkout, monthly renewal,
+  payment-failure/recovery, cancellation, Pool-overlap, duplicate, delayed, and
+  same-second events against the real migration schema, while recording only
+  the synthetic `webhook_contract` as passed. Real Checkout, renewal, refund,
+  and test-clock scenarios remain separate provider evidence.
 - The first Subscribers workbench boundary now exposes only Super-admin,
   private/no-store, keyset-paginated aggregate/source state, feed and consent
   booleans, and bounded formula-safe CSV. It intentionally excludes every
