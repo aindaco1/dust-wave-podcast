@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "dust-wave-launch-lab-matrix-v1",
+  "providers": {
+    "resend": {
+      "delivered": "delivered",
+      "bounced": "suppressed",
+      "complained": "suppressed",
+      "suppressed": "suppressed"
+    },
+    "stripe": {
+      "api_test_mode": "verified",
+      "product_price_contract": "verified",
+      "webhook_contract": "verified",
+      "checkout_success": "active",
+      "renewal": "active",
+      "payment_failure": "past_due",
+      "payment_recovery": "active",
+      "cancellation": "canceled",
+      "refund": "refunded",
+      "duplicate_webhook": "idempotent",
+      "out_of_order_webhook": "reconciled"
+    },
+    "youtube": {
+      "channel_identity": "verified",
+      "unlisted_audio_only": "processed",
+      "unlisted_native_video": "processed",
+      "early_access_hold": "held",
+      "premium_bonus_exclusion": "excluded"
+    },
+    "rss": {
+      "public_fixture_hidden": "hidden",
+      "private_directory_block": "blocked",
+      "enclosure_head_range": "verified",
+      "transcript_chapter_contract": "verified"
+    },
+    "directory": {
+      "packet_generation": "verified",
+      "owner_verification": "verified",
+      "canonical_feed_validation": "verified",
+      "ingestion_observed": "observed",
+      "failure_recovery": "recovered"
+    },
+    "ads": {
+      "targeting_matrix": "verified",
+      "house_fallback": "verified",
+      "equal_byte_length": "verified",
+      "partial_not_qualified": "verified",
+      "native_client_qualified": "qualified"
+    },
+    "pool": {
+      "grant": "active",
+      "redeem": "active",
+      "duplicate": "idempotent",
+      "revoke": "revoked",
+      "expiry": "expired",
+      "overlap": "reconciled",
+      "feed_rotation": "rotated"
+    }
+  }
+}

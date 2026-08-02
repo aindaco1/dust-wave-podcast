@@ -81,6 +81,7 @@ type RuntimeEpisodeRow = {
   audio_etag: string | null;
   episode_dynamic_ads_enabled: number;
   show_dynamic_ads_enabled: number;
+  test_fixture: number;
 };
 
 type ReadyRuntimeEpisodeRow = RuntimeEpisodeRow & {
@@ -986,7 +987,8 @@ async function loadRuntimeEpisode(
        e.public_at, e.media_status, e.audio_key, e.audio_bytes,
        e.audio_mime_type, e.audio_etag,
        e.dynamic_ads_enabled AS episode_dynamic_ads_enabled,
-       s.dynamic_ads_enabled AS show_dynamic_ads_enabled
+       s.dynamic_ads_enabled AS show_dynamic_ads_enabled,
+       s.test_fixture
      FROM episodes e
      JOIN shows s ON s.id = e.show_id
      WHERE e.id = ?`
@@ -1596,7 +1598,8 @@ function isAdDeviceType(value: string): value is AdDeviceType {
 
 function publicRuntimeEpisodeReady(episode: RuntimeEpisodeRow): boolean {
   const publicAt = episode.public_at;
-  return ["public", "early_access", "free_mini"].includes(episode.access)
+  return episode.test_fixture === 0
+    && ["public", "early_access", "free_mini"].includes(episode.access)
     && publicAt !== null
     && Number.isFinite(Date.parse(publicAt))
     && Date.parse(publicAt) <= Date.now();

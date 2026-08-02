@@ -60,6 +60,7 @@ type ShowAdminRow = {
   author_name: string;
   category: string;
   explicit: number;
+  test_fixture: number;
   episode_count: number;
 };
 
@@ -77,6 +78,7 @@ export async function listAdminShows(
          s.podcast_guid, s.youtube_channel_url, s.premium_enabled,
          s.early_access_days,
          s.free_mini_episode_enabled, s.author_name, s.category, s.explicit,
+         s.test_fixture,
          COUNT(e.id) AS episode_count
        FROM shows s
        LEFT JOIN episodes e ON e.show_id = s.id
@@ -1172,6 +1174,7 @@ function presentAdminShow(show: ShowAdminRow): Record<string, unknown> {
     authorName: show.author_name,
     category: show.category,
     explicit: show.explicit === 1,
+    testFixture: show.test_fixture === 1,
     episodeCount: show.episode_count
   };
 }

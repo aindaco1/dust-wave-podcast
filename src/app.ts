@@ -177,6 +177,7 @@ import {
   retryAdminPublicFeedValidation
 } from "./feed-validation";
 import { json, options, privateJson } from "./http";
+import { manageLaunchLab } from "./launch-lab";
 import {
   exchangeListenerLogin,
   getListenerSession,
@@ -867,6 +868,12 @@ async function routeRequest(
     && method === "POST"
   ) {
     return manageStagingVirtualAudioGate(request, env);
+  }
+  if (
+    url.pathname === "/v1/diagnostics/launch-lab"
+    && method === "POST"
+  ) {
+    return manageLaunchLab(request, env);
   }
   const virtualAudioFixtureObjectMatch = url.pathname.match(
     VIRTUAL_AUDIO_FIXTURE_OBJECT_PATH

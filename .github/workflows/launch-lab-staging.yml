@@ -1,0 +1,88 @@
+name: Rehearse staging provider contracts
+
+on:
+  schedule:
+    - cron: "29 14 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-launch-lab
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: podcast-staging
+    steps:
+      - name: Check out exact rehearsal source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up locked Podcast runtime
+        uses: ./.github/actions/setup-processor-node
+
+      - name: Reconcile the immutable staging fixture
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab -- reconcile
+
+      - name: Rehearse DRY contract adapters
+        run: >-
+          npm test -- --run
+          tests/ad-runtime.test.ts
+          tests/pool-redemptions.test.ts
+          tests/launch-lab-public-boundary.test.mjs
+          tests/launch-lab-ledger.test.mjs
+
+      - name: Record contract observations
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+          OBSERVATIONS: ${{ runner.temp }}/launch-lab-contracts.json
+        run: |
+          npm run launch-lab:contracts > "$OBSERVATIONS"
+          npm run launch-lab -- record "$OBSERVATIONS"
+
+      - name: Probe deployed public fixture isolation
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+          OBSERVATIONS: ${{ runner.temp }}/launch-lab-runtime.json
+        run: |
+          npm run launch-lab:probe > "$OBSERVATIONS"
+          npm run launch-lab -- record "$OBSERVATIONS"
+
+      - name: Rehearse Resend outcomes
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab -- resend
+
+      - name: Verify Stripe test-mode contracts
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab -- stripe
+
+      - name: Read content-free rehearsal status
+        if: ${{ always() }}
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+          LAUNCH_LAB_REPORT: ${{ runner.temp }}/launch-lab-status.json
+        run: npm run launch-lab -- status > "$LAUNCH_LAB_REPORT"
+
+      - name: Add bounded rehearsal summary
+        if: ${{ always() }}
+        env:
+          LAUNCH_LAB_REPORT: ${{ runner.temp }}/launch-lab-status.json
+        run: node scripts/write-launch-lab-summary.mjs
+
+      - name: Retain content-free rehearsal evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: launch-lab-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/launch-lab-status.json
+          if-no-files-found: error
+          retention-days: 30

@@ -781,7 +781,8 @@ async function runtimeEnvironment({
             audio_mime_type: "audio/mpeg",
             audio_etag: sourceEtag,
             episode_dynamic_ads_enabled: dynamicEnabled ? 1 : 0,
-            show_dynamic_ads_enabled: dynamicEnabled ? 1 : 0
+            show_dynamic_ads_enabled: dynamicEnabled ? 1 : 0,
+            test_fixture: 0
           };
         }
         if (query.includes("FROM ad_decision_slots")) {

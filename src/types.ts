@@ -19,6 +19,7 @@ export interface ShowRow {
   author_name: string;
   category: string;
   explicit: number;
+  test_fixture: number;
 }
 
 export interface PriceRow {
@@ -50,6 +51,7 @@ export interface PublicShow extends Omit<
   | "description_en"
   | "author_name"
   | "explicit"
+  | "test_fixture"
 > {
   descriptionEn: string;
   authorName: string;

@@ -203,6 +203,7 @@ export async function redeemPoolCode(
        WHERE
          c.code_hash = ?
          AND c.source = 'pool'
+         AND sh.test_fixture = 0
        LIMIT 1`
     )
     .bind(auth.authorization.identity.id, codeHash)
@@ -361,7 +362,10 @@ async function applyPoolGrant(
     .prepare(
       `SELECT id
        FROM shows
-       WHERE slug = ? AND status != 'archived' AND premium_enabled = 1`
+       WHERE slug = ?
+         AND status != 'archived'
+         AND premium_enabled = 1
+         AND test_fixture = 0`
     )
     .bind(showSlug)
     .first<{ id: string }>();

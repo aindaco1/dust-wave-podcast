@@ -450,6 +450,7 @@ export async function listPublicEpisodeClips(
        AND episode.slug = ?
        AND publication.status = 'approved'
        AND show_record.status != 'archived'
+       AND show_record.test_fixture = 0
        AND episode.status = 'published'
        AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
        AND episode.access IN ('public', 'early_access', 'free_mini')
@@ -510,6 +511,7 @@ export async function servePublicClipMedia(
        AND publication.public_slug = ?
        AND publication.status = 'approved'
        AND show_record.status != 'archived'
+       AND show_record.test_fixture = 0
        AND episode.status = 'published'
        AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}
        AND episode.access IN ('public', 'early_access', 'free_mini')
@@ -603,6 +605,7 @@ async function loadPublicEpisode(
      JOIN shows show_record ON show_record.id = episode.show_id
      WHERE show_record.slug = ?
        AND show_record.status != 'archived'
+       AND show_record.test_fixture = 0
        AND episode.slug = ?
        AND episode.status = 'published'
        AND episode.public_at <= ${SQL_UTC_NOW_RFC3339}

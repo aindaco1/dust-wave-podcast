@@ -27,6 +27,7 @@ import {
 import { isValidEmailAddress } from "./passwordless-security";
 import { sendPodcastAnnouncementEmail } from "./resend";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
+import { recordLaunchLabResendWebhook } from "./launch-lab-resend";
 import type { PodcastJob } from "./types";
 import {
   boundedPageSize,
@@ -766,6 +767,22 @@ export async function handleResendWebhook(
   ).bind(verified.id, eventType || "unknown", providerId || null).run();
   if (Number(marker.meta.changes ?? 0) !== 1) {
     return webhookJson({ received: true, duplicate: true });
+  }
+  const launchLabScenarioId = String(tags.launch_lab_scenario ?? "");
+  if (launchLabScenarioId) {
+    const launchLabStatus = webhookDeliveryStatus(eventType, data);
+    const matched = launchLabStatus
+      ? await recordLaunchLabResendWebhook(env.DB, {
+          providerId,
+          scenarioId: launchLabScenarioId,
+          status: launchLabStatus
+        })
+      : false;
+    return webhookJson({
+      received: true,
+      matched,
+      launchLab: true
+    });
   }
   if (!/^delivery_[a-f0-9]{32}$/.test(deliveryId)) {
     return webhookJson({ received: true, matched: false });
