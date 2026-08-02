@@ -294,6 +294,13 @@ writes an independent `pool` entitlement source and recomputes aggregate show
 access. Revocation cancels only the matching current Pool source, so it cannot
 cancel an unrelated Stripe or manual entitlement.
 
+Pool benefits with a fixed duration are reconciled by the existing five-minute
+scheduled handler. It marks due sources `expired`, recomputes the aggregate
+subscription, and retries a stale aggregate after an interrupted pass. Private
+feed creation/rotation and bearer-feed reads all require the recomputed active
+entitlement; rotating a feed revokes the prior token atomically and returns the
+new raw token only once.
+
 ## Passwordless admin authentication
 
 1. `POST /v1/admin/auth/start` with `email`, `preferredLanguage`, and a

@@ -1,15 +1,8 @@
 import { createHmac } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { handleStripeWebhook } from "../src/billing";
-
-const migrationsDirectory = fileURLToPath(
-  new URL("../migrations/", import.meta.url)
-);
+import { migratedSqlite, sqliteD1 } from "./sqlite-d1-fixture.mjs";
 const webhookSecret = "whsec_launch_lab_lifecycle_fixture";
 const emailPepper = "launch_lab_listener_email_fixture";
 const listenerEmail = "listener@example.com";
@@ -156,12 +149,7 @@ describe("Stripe webhook lifecycle contract", () => {
 });
 
 async function lifecycleFixture() {
-  const sqlite = new DatabaseSync(":memory:");
-  for (const filename of readdirSync(migrationsDirectory)
-    .filter((candidate) => candidate.endsWith(".sql"))
-    .sort()) {
-    sqlite.exec(readFileSync(join(migrationsDirectory, filename), "utf8"));
-  }
+  const sqlite = migratedSqlite();
   sqlite.prepare(
     `INSERT INTO shows (
        id, slug, title, canonical_url, rss_slug, premium_enabled, billing_mode
@@ -313,36 +301,4 @@ function journalCount(sqlite, eventId) {
   return sqlite.prepare(
     "SELECT COUNT(*) AS count FROM stripe_event_journal WHERE event_id = ?"
   ).get(eventId).count;
-}
-
-function sqliteD1(sqlite) {
-  return {
-    prepare(query) {
-      let values = [];
-      return {
-        bind(...bound) {
-          values = bound;
-          return this;
-        },
-        async run() {
-          const result = sqlite.prepare(query).run(...values);
-          return {
-            success: true,
-            meta: { changes: Number(result.changes) }
-          };
-        },
-        async first() {
-          return sqlite.prepare(query).get(...values) ?? null;
-        },
-        async all() {
-          return { results: sqlite.prepare(query).all(...values) };
-        }
-      };
-    },
-    async batch(statements) {
-      const results = [];
-      for (const statement of statements) results.push(await statement.run());
-      return results;
-    }
-  };
 }

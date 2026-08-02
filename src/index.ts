@@ -43,6 +43,7 @@ import {
 import {
   scheduleYouTubeProviderAccessCheck
 } from "./provider-access-health";
+import { reconcileExpiredSubscriptionProjections } from "./billing";
 
 export default {
   async fetch(
@@ -140,6 +141,7 @@ export default {
       cleanupPodcastAnalytics(env.DB),
       cleanupVirtualAudioDiagnosticLeases(env.DB),
       schedulePendingAnnouncementDeliveries(env),
+      reconcileExpiredSubscriptionProjections(env.DB),
       schedulePendingTranscriptions(env),
       syncProcessorDispatches(env),
       scheduleAdminActionNotifications(env),
