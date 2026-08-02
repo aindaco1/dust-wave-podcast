@@ -156,6 +156,13 @@
 
 ## Provider boundaries
 
+- The scheduled YouTube access check acquires one expiring D1 lease, refreshes
+  OAuth, and verifies that `mine=true` still contains the exact configured
+  channel. It stores only the public channel ID, bounded status/failure code,
+  timestamps, and a consecutive-failure count. Access tokens, refresh tokens,
+  client credentials, provider bodies, and account profile data never enter
+  D1 or logs. Success remains separate from controlled unlisted-upload
+  evidence and cannot authorize or enqueue an upload.
 - Announcement review is structurally side-effect free. Approval writes a
   durable, audited, idempotent outbox. Staging is explicitly `dry_run`,
   production is explicitly `disabled`, and the live sender fails closed unless

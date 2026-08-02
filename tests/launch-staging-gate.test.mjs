@@ -79,6 +79,7 @@ function readySnapshot() {
       certified: 10
     },
     youtube: {
+      channelAccessReady: true,
       uploadedUnlisted: 1,
       unresolved: 0
     },
@@ -104,7 +105,7 @@ describe("launch staging gate", () => {
     const report = evaluateLaunchStagingReadiness(readySnapshot());
 
     expect(report.summary).toEqual({
-      passCount: 12,
+      passCount: 13,
       failCount: 0,
       blockCount: 0,
       waitCount: 0,
@@ -151,7 +152,11 @@ describe("launch staging gate", () => {
       detail: "approval remains required"
     }];
     snapshot.distribution = { feedCurrent: false, certified: 9 };
-    snapshot.youtube = { uploadedUnlisted: 0, unresolved: 1 };
+    snapshot.youtube = {
+      channelAccessReady: false,
+      uploadedUnlisted: 0,
+      unresolved: 1
+    };
     snapshot.resend = { delivered: 0, suppressed: 0, failed: 0 };
     snapshot.dynamicAds = {
       approvedPlans: 1,
@@ -163,7 +168,7 @@ describe("launch staging gate", () => {
 
     expect(report.summary.safe).toBe(true);
     expect(report.summary.launchReady).toBe(false);
-    expect(report.summary.blockCount).toBe(6);
+    expect(report.summary.blockCount).toBe(7);
     expect(report.nextAction?.id).toBe("episode");
     expect(report.nextAction?.detail).toContain(
       "Enhancement decision - listen and promote or reject"
@@ -173,6 +178,21 @@ describe("launch staging gate", () => {
         "missing durable evidence: selected ad decision, "
         + "qualified direct-sponsor download"
       );
+  });
+
+  it("keeps channel access and controlled upload as separate evidence", () => {
+    const snapshot = readySnapshot();
+    snapshot.youtube.channelAccessReady = false;
+
+    const report = evaluateLaunchStagingReadiness(snapshot);
+
+    expect(report.nodes.find(({ id }) => id === "youtube_access"))
+      .toMatchObject({
+        status: "BLOCK",
+        label: "YouTube channel access"
+      });
+    expect(report.nodes.find(({ id }) => id === "youtube"))
+      .toMatchObject({ status: "PASS" });
   });
 
   it("names both synthetic and durable dynamic-ad evidence when absent", () => {

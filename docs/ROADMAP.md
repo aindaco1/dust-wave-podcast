@@ -327,11 +327,14 @@ them as launch blockers.
   staging and production kill switches, required installed secret names,
   current 10-directory certification, controlled YouTube and Resend records,
   durable dynamic-ad pilot state, and referential integrity without returning
-  content, URLs, object/provider identity, recipient identity, hashes, or
-  secret values. Its dynamic-ad node accepts synthetic performance evidence
-  only when the signed 5,000-pair/10,000-request gate is fresh, fully cleaned
-  up, and unchanged across runtime-sensitive source; that evidence still
-  cannot substitute for the real isolated client pilot.
+  content, URLs, recipient identity, hashes, or secret values. YouTube access
+  is now refreshed on a leased 12-hour success / one-hour failure cadence and
+  recorded as content-free exact-channel health; the report keeps that node
+  separate from the inspected unlisted-upload requirement. Its dynamic-ad node
+  accepts synthetic performance evidence only when the signed
+  5,000-pair/10,000-request gate is fresh, fully cleaned up, and unchanged
+  across runtime-sensitive source; that evidence still cannot substitute for
+  the real isolated client pilot.
 - Transcribe Spanish and English and expose bounded confidence/provenance.
   Staging now creates a missing source-language job after the shared final
   working-master decision, using the same fingerprint, current-policy QC,
