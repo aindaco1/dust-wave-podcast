@@ -448,6 +448,11 @@ them as launch blockers.
   benefit periods.
 - Reuse the versioned Store tax calculator and manual Stripe Tax Rates only
   after accountant approval; Stripe Tax automatic calculation remains off.
+- The first staging policy candidate now imports the Store's exact
+  `US-NM-87120` fallback evidence through one recent-auth Super-admin action.
+  Provider creation/attestation and immutable D1 approval/assignment are
+  idempotent and automated; the candidate remains unapproved and Checkout
+  remains disabled until that explicit review.
 - Keep Checkout behind an explicit kill switch. Use idempotent Stripe
   Customer/Checkout calls, webhook-projected source entitlements, and a scoped
   Customer Portal; retain only email/destination HMACs and immutable tax

@@ -202,6 +202,15 @@
   country/state-only dynamic rate matching stay off so they cannot override a
   ZIP/location-specific Store result. Provider mappings are mode-bound so test
   data cannot satisfy live billing readiness.
+- The show-scoped tax-policy importer is restricted to a recently
+  authenticated Super-admin, same-origin CSRF, the active show billing mode,
+  and an exact typed policy confirmation. Its checked-in Store-derived
+  candidate is explicitly unapproved until that action. Provider creation uses
+  a content-derived idempotency key; the returned Tax Rate must attest the
+  exact mode, active state, percentage, inclusive behavior, country/state, and
+  show/policy metadata before one D1 batch records approval, audit evidence,
+  retirement, and assignment. Logs contain only fixed Stripe request metadata,
+  and the API never returns the Stripe Tax Rate ID or enables Checkout.
 - Checkout customer/session calls use deterministic provider idempotency keys.
   Unknown/network outcomes preserve the attempt and reuse the same key; safe
   provider errors are reduced to codes and no provider body, email, address, or

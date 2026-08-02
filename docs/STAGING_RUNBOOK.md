@@ -1272,9 +1272,15 @@ Before the first controlled Checkout:
 
 1. Back up D1 and apply every pending migration.
 2. Confirm the test Product/Prices are active and mode-matched.
-3. Enter an accountant-approved, effective test tax version and assign it to
-   the show; confirm its Stripe manual Tax Rate has the identical
-   percentage/inclusive/country/state evidence.
+3. Review `GET /v1/admin/shows/{id}/tax-policy`. If its checked-in candidate
+   exactly matches the approved jurisdiction, rate, inclusive behavior,
+   effective period, and source revision, submit that unchanged candidate and
+   the displayed exact confirmation to `PUT` on the same path from a session
+   authenticated within 15 minutes. Confirm the response reports an assigned,
+   provider-ready test policy. The route creates and re-reads the manual Stripe
+   Tax Rate idempotently, verifies its complete safe evidence, and commits the
+   D1 policy/audit/assignment atomically; it does not enable Checkout. Stop if
+   the candidate is stale or broader than the underlying Store evidence.
 4. Confirm the signed webhook subscribes to `checkout.session.completed`,
    `checkout.session.expired`, and `customer.subscription.*`.
 5. Verify `GET /v1/admin/billing/readiness` shows every dependency and zero
