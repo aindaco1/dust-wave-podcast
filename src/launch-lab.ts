@@ -10,6 +10,8 @@ import {
 } from "./launch-lab-ledger";
 import { runLaunchLabResendMatrix } from "./launch-lab-resend";
 import { runLaunchLabStripeReadiness } from "./launch-lab-stripe";
+import { advanceLaunchLabStripeLifecycle } from
+  "./launch-lab-stripe-lifecycle";
 import { reconcileLaunchLabYouTubeChannelIdentity } from
   "./launch-lab-youtube";
 import { readSignedJsonBody } from "./signed-callback";
@@ -128,6 +130,23 @@ export async function manageLaunchLab(
     const run = await presentLaunchLabRun(env.DB, runId);
     if (!run) return launchLabJson({ error: "launch_lab_run_not_found" }, 404);
     return launchLabJson(run);
+  }
+  if (action === "run_stripe_lifecycle") {
+    const fixtureReady = await loadExactFixture(env.DB);
+    if (!fixtureReady) {
+      return launchLabJson({ error: "launch_lab_fixture_missing" }, 409);
+    }
+    if (!await ensureLaunchLabRun(env.DB, {
+      runId,
+      showId: launchLabFixture.show.id,
+      sourceCommit
+    })) {
+      return launchLabJson({ error: "launch_lab_run_collision" }, 409);
+    }
+    await seedLaunchLabScenarios(env.DB, runId);
+    return launchLabJson(
+      await advanceLaunchLabStripeLifecycle(env, runId)
+    );
   }
   if (action === "record_observations") {
     const fixtureReady = await loadExactFixture(env.DB);

@@ -82,11 +82,12 @@ async function main() {
     record: "record_observations",
     resend: "run_resend_matrix",
     stripe: "run_stripe_readiness",
+    "stripe-lifecycle": "run_stripe_lifecycle",
     status: "status"
   })[command];
   if (!action) {
     throw new Error(
-      "Usage: launch-lab-client.mjs <reconcile|record|resend|stripe|status> "
+      "Usage: launch-lab-client.mjs <reconcile|record|resend|stripe|stripe-lifecycle|status> "
       + "[observations.json]"
     );
   }
