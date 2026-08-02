@@ -195,8 +195,8 @@ async function advanceOnePhase(
         ...PROVIDER_METADATA,
         launch_lab_run_id: lifecycle.run_id
       },
-      success_url: `${env.SITE_ORIGIN.replace(/\/$/, "")}/admin/?checkout=launch-lab-success`,
-      cancel_url: `${env.SITE_ORIGIN.replace(/\/$/, "")}/admin/?checkout=launch-lab-canceled`,
+      success_url: `${env.SITE_ORIGIN.replace(/\/$/, "")}/admin/podcasts/?checkout=launch-lab-success`,
+      cancel_url: `${env.SITE_ORIGIN.replace(/\/$/, "")}/admin/podcasts/?checkout=launch-lab-canceled`,
       expires_at: Math.floor(Date.now() / 1_000) + SESSION_TTL_SECONDS
     }, { idempotencyKey: `${lifecycle.run_id}:hosted-session` }) as StripeObject;
     assertCheckoutSession(session, lifecycle, "open", customerId);
