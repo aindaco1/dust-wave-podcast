@@ -259,6 +259,11 @@ async function advanceOnePhase(
     if (subscription.status !== "canceled" || source?.status !== "canceled") {
       return lifecycle;
     }
+    await recordLaunchLabObservations(env.DB, lifecycle.run_id, [{
+      provider: "stripe",
+      scenario: "cancellation",
+      observedStatus: "canceled"
+    }]);
     return transition(env.DB, lifecycle, "canceled");
   }
 
