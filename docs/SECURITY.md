@@ -251,9 +251,12 @@
   A persisted phase machine creates one mutation at a time with stable
   idempotency keys, waits for the production signed-webhook projection, and
   exposes only the current phase. It uses Stripe's test PaymentMethod aliases,
-  retains no email/address/card value, deletes its test clock and associated
-  provider objects, then removes its exact D1 listener, attempt, source, and
-  aggregate fixtures. Production, live mode, and public Checkout remain inert.
+  resolves the paid recovery PaymentIntent through the exact Invoice Payments
+  response, and verifies an idempotent full refund without granting or revoking
+  access from that refund. It retains no email/address/card value, deletes its
+  test clock and associated provider objects, then removes its exact D1
+  listener, attempt, source, and aggregate fixtures. Production, live mode,
+  and public Checkout remain inert.
 - Customer Portal requires an authenticated listener, same-origin CSRF,
   show-scoped Stripe customer, rate limit, and explicit
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must

@@ -2055,6 +2055,14 @@ listener, source, and aggregate rows; and leaves foreign keys clean. The
 provider catalog fixture remains active only in Stripe test mode so later
 rehearsals can reuse it without unbounded Product/Price creation.
 
+Migration `0085` adds only the test-mode refund identifier required to resume
+refund verification. Replay every migration and confirm the lifecycle resolves
+one exact paid recovery Invoice Payment, creates one idempotent full refund,
+waits while the refund is pending, records `refund` only after a terminal
+`succeeded` response, and still leaves refund webhooks unable to alter access.
+The test asserts that no PaymentIntent, email, address, or card value is stored
+in D1 or returned through the Launch Lab response.
+
 The Launch Lab turns provider-dependent prelaunch blockers into repeatable
 staging rehearsals without requiring a publishable episode or broad provider
 credentials in GitHub Actions.
@@ -2116,11 +2124,12 @@ is less than 24 hours old, and has no active lease; it performs no provider
 call and returns no account reference.
 Real test-clock renewal, payment failure, recovery, and cancellation now pass
 only after their provider subscription state and the production signed-webhook
-projection agree. Scenarios needing hosted Checkout, a real refund,
-provider-originated duplicate/out-of-order delivery, a native client, an
-unlisted YouTube object, or directory ingestion remain `pending` until their
-adapters produce truthful evidence. A pending or passing synthetic scenario
-never counts as launch evidence.
+projection agree. The full recovery-payment refund additionally requires an
+exact paid Invoice Payment and terminal successful provider refund. Scenarios
+needing hosted Checkout, provider-originated duplicate/out-of-order delivery,
+a native client, an unlisted YouTube object, or directory ingestion remain
+`pending` until their adapters produce truthful evidence. A pending or passing
+synthetic scenario never counts as launch evidence.
 
 Before accepting a run, confirm the public probe returns `404` for both the
 fixture show API and fixture RSS URL, the private fixture feed emits

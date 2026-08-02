@@ -1622,10 +1622,12 @@ headers. Supported actions are:
 - `run_stripe_readiness`: read and attest the exact inactive test-mode Product
   and Price objects through the production Stripe adapter;
 - `run_stripe_lifecycle`: advance one resumable step of an isolated test-clock
-  subscription through real renewal, failed-payment, recovery, and immediate
-  cancellation outcomes. Each outcome waits for the production signed-webhook
-  projection before it can pass; the response contains only phase booleans and
-  never provider IDs or customer data;
+  subscription through real renewal, failed-payment, recovery, full refund,
+  and immediate cancellation outcomes. Subscription outcomes wait for the
+  production signed-webhook projection, while refund passes only after the
+  exact paid Invoice Payment resolves to a terminal successful Stripe refund.
+  The response contains only phase booleans and never provider IDs or customer
+  data;
 - `status`: return the content-free scenario projection for one exact source
   commit and run.
 
