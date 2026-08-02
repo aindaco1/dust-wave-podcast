@@ -1616,7 +1616,9 @@ headers. Supported actions are:
   seed the checked-in provider matrix;
 - `record_observations`: persist only allowlisted provider/scenario outcomes;
 - `run_resend_matrix`: exercise Resend's delivered, bounced, complained, and
-  suppressed test recipients through the production adapter;
+  suppressed test recipients through the production adapter, reconciling an
+  already-signed content-free webhook journal by exact provider ID before any
+  bounded read-only provider retrieval;
 - `run_stripe_readiness`: read and attest the exact inactive test-mode Product
   and Price objects through the production Stripe adapter;
 - `status`: return the content-free scenario projection for one exact source

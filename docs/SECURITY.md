@@ -238,9 +238,11 @@
   previous run stopped after updating its source. Expired subscriptions fail
   both member feed issuance and bearer-feed lookup, while rotated raw bearer
   tokens are never persisted.
-- Launch Lab Resend recovery retrieves only the exact stored provider ID and
-  normalizes its bounded `last_event`; it never retrieves or stores recipient,
-  subject, body, or provider payload evidence. Intermediate delivery before a
+- Launch Lab Resend recovery first checks only event type by exact provider ID
+  in the signed webhook replay journal, then may retrieve that exact provider
+  ID and normalize its bounded `last_event`. It never retrieves or stores
+  recipient, subject, body, or provider payload evidence. Terminal suppression
+  outranks delivery regardless of event order, intermediate delivery before a
   complaint remains non-passing, and recovery reuses the original idempotency
   key without resending.
 - Customer Portal requires an authenticated listener, same-origin CSRF,
