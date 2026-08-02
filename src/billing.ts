@@ -10,6 +10,8 @@ import { requireAdmin } from "./admin-auth";
 import { projectStripeTaxEvent } from "./billing-tax-evidence";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
+import { observeLaunchLabStripeReplay } from
+  "./launch-lab-stripe-delivery";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import { subscriptionCheckoutConfigured } from "./tax-quotes";
 import {
@@ -110,7 +112,21 @@ export async function handleStripeWebhook(
       )
       .bind(event.id)
       .first<{ status: string }>();
-    if (journal?.status === "processed" || journal?.status === "ignored") {
+    if (journal?.status === "processed") {
+      try {
+        await observeLaunchLabStripeReplay(env, event);
+      } catch {
+        console.warn(JSON.stringify({
+          level: "warn",
+          event: "launch_lab_stripe_replay_observation_failed"
+        }));
+        return webhookResponse({
+          error: "launch_lab_replay_observation_failed"
+        }, 500);
+      }
+      return webhookResponse({ received: true, duplicate: true });
+    }
+    if (journal?.status === "ignored") {
       return webhookResponse({ received: true, duplicate: true });
     }
   }

@@ -113,6 +113,10 @@ describe("deployment configuration", () => {
       "RESEND_API_KEY"
     ]));
     expect(config.env.staging.vars.STRIPE_MODE).toBe("test");
+    expect(config.env.staging.vars.STRIPE_WEBHOOK_ENDPOINT_ID)
+      .toMatch(/^we_[A-Za-z0-9_]{6,128}$/);
+    expect(config.env.production.vars.STRIPE_WEBHOOK_ENDPOINT_ID)
+      .toBeUndefined();
     expect(config.env.staging.vars.SUBSCRIPTION_CHECKOUT_ENABLED).toBe(
       "false"
     );

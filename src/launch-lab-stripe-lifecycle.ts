@@ -2,6 +2,8 @@ import launchLabFixture from "../config/launch-lab-fixture.json";
 
 import type { PodcastEnv } from "./env";
 import { recordLaunchLabObservations } from "./launch-lab-ledger";
+import { reconcileLaunchLabStripeDeliveryOrder } from
+  "./launch-lab-stripe-delivery";
 import { createPodcastStripeClient } from "./stripe-client";
 import {
   cleanupLaunchLabStripeFixture,
@@ -430,6 +432,10 @@ async function advanceOnePhase(
   }
 
   if (lifecycle.phase === "recovered") {
+    if (!await reconcileLaunchLabStripeDeliveryOrder(
+      env,
+      lifecycle.run_id
+    )) return lifecycle;
     const invoiceId = providerId(
       lifecycle.provider_recovery_invoice_id,
       "in"

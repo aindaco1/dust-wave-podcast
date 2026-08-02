@@ -2079,6 +2079,17 @@ the Customer, removes local fixtures, and retains only content-free status. Its
 unconditional cleanup expires the Session and deletes the Customer if the
 browser window is missed or any step fails.
 
+Migration `0087` adds the exact subscription/event-order index used by the
+test-clock lifecycle. After recovery and before refund, the adapter retrieves
+the bounded journal candidates through the shared Stripe client, verifies the
+current `active` and older `past_due` events against the exact fixture attempt,
+and requests test-mode redelivery to the checked-in staging endpoint. The
+signed duplicate callbacks record `duplicate_webhook=idempotent` only when the
+current source remains unchanged and `out_of_order_webhook=reconciled` only
+when the older provider second is below the still-active source second. Stable
+idempotency keys make reruns safe; production has no endpoint identifier or
+execution path.
+
 The Launch Lab turns provider-dependent prelaunch blockers into repeatable
 staging rehearsals without requiring a publishable episode or broad provider
 credentials in GitHub Actions.
@@ -2142,10 +2153,9 @@ Real test-clock renewal, payment failure, recovery, and cancellation now pass
 only after their provider subscription state and the production signed-webhook
 projection agree. The full recovery-payment refund additionally requires an
 exact paid Invoice Payment and terminal successful provider refund. Scenarios
-needing hosted Checkout, provider-originated duplicate/out-of-order delivery,
-a native client, an unlisted YouTube object, or directory ingestion remain
-`pending` until their adapters produce truthful evidence. A pending or passing
-synthetic scenario never counts as launch evidence.
+needing a native client, an unlisted YouTube object, or directory ingestion
+remain `pending` until their adapters produce truthful evidence. A pending or
+passing synthetic scenario never counts as launch evidence.
 
 Before accepting a run, confirm the public probe returns `404` for both the
 fixture show API and fixture RSS URL, the private fixture feed emits

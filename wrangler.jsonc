@@ -61,6 +61,7 @@
         "PODCAST_OWNER_EMAIL": "podcasts@dustwave.xyz",
         "STRIPE_MODE": "test",
         "STRIPE_PORTAL_CONFIGURATION_ID": "bpc_1Twv1rK9nUOzi4tv12xo2NiD",
+        "STRIPE_WEBHOOK_ENDPOINT_ID": "we_1Twv0gK9nUOzi4tv8RPOdPd8",
         "SUBSCRIPTION_CHECKOUT_ENABLED": "false",
         "POOL_REDEMPTION_ENABLED": "false",
         "PROCESSOR_DISPATCH_MODE": "github_actions_pull",

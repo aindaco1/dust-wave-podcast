@@ -8,6 +8,8 @@ import {
 } from "../src/launch-lab-ledger";
 import { advanceLaunchLabStripeLifecycle } from
   "../src/launch-lab-stripe-lifecycle";
+import { reconcileLaunchLabStripeDeliveryOrder } from
+  "../src/launch-lab-stripe-delivery";
 import { migratedSqlite, sqliteD1 } from "./sqlite-d1-fixture.mjs";
 
 const runId = "launch_stripe_lifecycle_0001";
@@ -26,15 +28,16 @@ const periodThree = 1_796_227_200;
 
 describe("Launch Lab Stripe test-clock lifecycle", () => {
   let fixture;
+  let provider;
 
   afterEach(() => {
     vi.unstubAllGlobals();
     fixture?.sqlite.close();
   });
 
-  it("waits for signed projections, records five outcomes, and cleans up", async () => {
+  it("waits for signed projections, records seven outcomes, and cleans up", async () => {
     fixture = await lifecycleFixture();
-    const provider = providerFixture();
+    provider = providerFixture();
     vi.stubGlobal("fetch", provider.fetch);
 
     expect((await advance()).phase).toBe("product_ready");
@@ -85,6 +88,37 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
     );
     expect((await advance()).phase).toBe("recovered");
 
+    const providerCallsBeforeRejectedBoundary = provider.paths.length;
+    await expect(reconcileLaunchLabStripeDeliveryOrder({
+      ...fixture.env,
+      STRIPE_WEBHOOK_ENDPOINT_ID: undefined
+    }, runId)).rejects.toThrow("not_available");
+    expect(provider.paths).toHaveLength(providerCallsBeforeRejectedBoundary);
+
+    expect((await advance()).phase).toBe("recovered");
+    expect(provider.paths.filter((path) => path.endsWith("/retry")))
+      .toHaveLength(2);
+    expect(await sendSubscriptionEvent(
+      "evt_launch_recovered",
+      "active",
+      periodThree
+    )).toEqual({ received: true, duplicate: true });
+    expect(await sendSubscriptionEvent(
+      "evt_launch_failed",
+      "past_due",
+      periodThree
+    )).toEqual({ received: true, duplicate: true });
+    expect(fixture.sqlite.prepare(
+      `SELECT status, provider_event_id, provider_event_created_at
+       FROM subscription_entitlement_sources
+       WHERE provider_subscription_id = ?`
+    ).get(subscriptionId)).toEqual({
+      status: "active",
+      provider_event_id: "evt_launch_recovered",
+      provider_event_created_at:
+        1_787_990_400 + providerEventOffset("evt_launch_recovered")
+    });
+
     expect((await advance()).phase).toBe("recovered");
     expect((await advance()).phase).toBe("recovered");
     provider.refundStatus = "succeeded";
@@ -111,11 +145,13 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
        WHERE run_id = ? AND provider = 'stripe'
          AND scenario IN (
            'renewal', 'payment_failure', 'payment_recovery', 'refund',
-           'cancellation'
+           'cancellation', 'duplicate_webhook', 'out_of_order_webhook'
          )
        ORDER BY scenario`
     ).all(runId)).toEqual([
       { scenario: "cancellation", state: "passed", observed_status: "canceled" },
+      { scenario: "duplicate_webhook", state: "passed", observed_status: "idempotent" },
+      { scenario: "out_of_order_webhook", state: "passed", observed_status: "reconciled" },
       { scenario: "payment_failure", state: "passed", observed_status: "past_due" },
       { scenario: "payment_recovery", state: "passed", observed_status: "active" },
       { scenario: "refund", state: "passed", observed_status: "refunded" },
@@ -133,6 +169,17 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
     }
     expect(fixture.sqlite.prepare("PRAGMA foreign_key_check").all())
       .toEqual([]);
+    expect(fixture.sqlite.prepare(
+      `EXPLAIN QUERY PLAN
+       SELECT event_id, event_type, provider_created_at
+       FROM stripe_event_journal
+       WHERE subscription_id = ?
+         AND event_type = 'customer.subscription.updated'
+         AND status = 'processed'
+       ORDER BY provider_created_at DESC, event_id DESC
+       LIMIT 12`
+    ).all(subscriptionId).map((row) => row.detail).join(" "))
+      .toContain("stripe_event_journal_subscription_order");
     expect(provider.paths).toContain(
       `/v1/test_helpers/test_clocks/${clockId}`
     );
@@ -202,6 +249,8 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
       }
     ), fixture.env);
     expect(response.status).toBe(200);
+    provider.events.set(eventId, event);
+    return response.json();
   }
 });
 
@@ -233,6 +282,7 @@ async function lifecycleFixture() {
       ENVIRONMENT: "staging",
       STRIPE_MODE: "test",
       STRIPE_SECRET_KEY: "sk_test_launch_lab_lifecycle",
+      STRIPE_WEBHOOK_ENDPOINT_ID: "we_launch_lab_provider",
       STRIPE_WEBHOOK_SECRET: webhookSecret,
       LISTENER_EMAIL_LOOKUP_PEPPER: "launch_lab_listener_pepper"
     }
@@ -243,6 +293,7 @@ function providerFixture() {
   const provider = {
     paths: [],
     bodies: [],
+    events: new Map(),
     clockStatus: "ready",
     subscriptionStatus: "active",
     periodEnd: periodOne,
@@ -345,6 +396,9 @@ function providerFixture() {
       object = refundObject(provider);
     } else if (url.pathname === `/v1/refunds/${refundId}`) {
       object = refundObject(provider);
+    } else if (url.pathname.startsWith("/v1/events/")) {
+      const segments = url.pathname.split("/").filter(Boolean);
+      object = provider.events.get(segments[2]);
     }
     return new Response(JSON.stringify(object ?? { error: { code: "missing" } }), {
       status: object ? 200 : 404,

@@ -49,6 +49,7 @@ export type PodcastEnv = Env & {
   STRIPE_SECRET_KEY?: string;
   STRIPE_MODE?: string;
   STRIPE_PORTAL_CONFIGURATION_ID?: string;
+  STRIPE_WEBHOOK_ENDPOINT_ID?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   SUBSCRIPTION_CHECKOUT_ENABLED?: string;
   TAX_QUOTE_HASH_SECRET?: string;
