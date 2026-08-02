@@ -172,3 +172,21 @@ Live request-time ads require all of:
 
 Until those pass, `dynamic_ads_enabled` stays false and existing public media
 routes continue serving the validated full episode file.
+
+## Dust Wave direct-sponsor rehearsal
+
+`npm run gate:sponsor-demo` is a deterministic, network-free rehearsal for the
+approved first-sponsor choice. It reconstructs the checked-in synthetic MP3
+frames, verifies their exact SHA-256 and production insertion profile, runs the
+real selector against show, episode, position, date, device, and app targets,
+selects a Dust Wave direct spot, and then selects a distinct Dust Wave house
+creative with byte-identical media evidence. It compiles both virtual manifests
+through the production byte-layout primitive and requires the
+`equal-byte-length-v1` contract to pass.
+
+The command performs no D1, R2, Analytics Engine, email, or provider mutation.
+Its output always records zero qualified impressions and explicitly marks the
+result ineligible for billing, native-client validation, and the launch gate.
+This closes the repeatable synthetic campaign/fallback rehearsal only; one
+reviewed staging campaign and one real native-client qualified download remain
+separate evidence.
