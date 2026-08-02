@@ -417,7 +417,6 @@ function refundObject(provider) {
     object: "refund",
     amount: 100,
     currency: "usd",
-    livemode: false,
     metadata: {
       platform: "dust_wave_podcast",
       launch_lab_fixture: "subscription_monthly_v1",
