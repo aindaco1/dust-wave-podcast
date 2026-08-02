@@ -2090,6 +2090,16 @@ when the older provider second is below the still-active source second. Stable
 idempotency keys make reruns safe; production has no endpoint identifier or
 execution path.
 
+Migration `0088` adds a separate content-free Customer Portal rehearsal. The
+scheduled provider-contract workflow creates one isolated test Customer with a
+stable idempotency key, retrieves it to re-attest the exact Launch Lab
+metadata, and creates a session through the configured Podcast-only Portal
+profile. It verifies Stripe's echoed Customer, configuration, staging account
+return URL, test-mode flag, and hosted origin without persisting or returning
+the Portal URL. The next phase deletes the Customer and records only bounded
+state; an `always()` cleanup deletes the same exact Customer and marks an
+interrupted run aborted. Production and live mode reject before D1 or Stripe.
+
 The Launch Lab turns provider-dependent prelaunch blockers into repeatable
 staging rehearsals without requiring a publishable episode or broad provider
 credentials in GitHub Actions.

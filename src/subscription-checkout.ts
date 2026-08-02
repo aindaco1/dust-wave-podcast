@@ -25,6 +25,7 @@ import {
   createPodcastStripeClient,
   logStripeBoundaryError,
   stripeErrorStatus,
+  validStripeHostedUrl,
   validStripeId
 } from "./stripe-client";
 import {
@@ -610,18 +611,6 @@ function safeStripeFailureCode(error: unknown): string {
   return String(
     error.code || error.type || "stripe_api_error"
   ).replace(/[^a-z0-9_]/gi, "_").slice(0, 80);
-}
-
-function validStripeHostedUrl(value: unknown, hostname: string): string {
-  try {
-    const url = new URL(String(value ?? ""));
-    if (url.protocol !== "https:" || url.hostname !== hostname) {
-      throw new Error("Unexpected Stripe URL");
-    }
-    return url.toString();
-  } catch {
-    throw new Error("Invalid Stripe hosted URL");
-  }
 }
 
 function expectedStripeMode(env: PodcastEnv): "test" | "live" {

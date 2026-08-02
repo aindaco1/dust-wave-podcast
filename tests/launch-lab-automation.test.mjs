@@ -69,4 +69,15 @@ describe("Launch Lab automation", () => {
     expect(workflow).toMatch(/actions\/checkout@[a-f0-9]{40}/);
     expect(workflow).toMatch(/actions\/upload-artifact@[a-f0-9]{40}/);
   });
+
+  it("rehearses and always cleans the isolated Stripe Portal fixture", () => {
+    expect(workflow).toContain("tests/launch-lab-stripe-portal.test.mjs");
+    expect(workflow).toContain("npm run launch-lab:stripe-portal");
+    expect(workflow).toContain("npm run launch-lab:stripe-portal-cleanup");
+    expect(workflow.indexOf("npm run launch-lab:stripe-portal"))
+      .toBeLessThan(workflow.indexOf("npm run launch-lab:stripe-portal-cleanup"));
+    expect(workflow).toMatch(
+      /Clean up exact Stripe Portal fixture[\s\S]+if: \$\{\{ always\(\) \}\}/
+    );
+  });
 });

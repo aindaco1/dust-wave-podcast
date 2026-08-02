@@ -272,6 +272,13 @@
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must
   keep address/rate-changing controls disabled until renewal-time manual-tax
   re-evaluation is implemented and approved.
+- The automated Portal configuration rehearsal is a separate staging/test-only
+  phase machine. It uses a synthetic Customer with no email or payment method,
+  verifies Stripe's exact Customer, Podcast configuration, return URL, mode,
+  and hosted origin, and then deletes that Customer. It never stores or returns
+  the hosted URL or enables listener Checkout. Its unconditional cleanup is
+  exact-run scoped; production and live mode fail before durable or provider
+  I/O.
 - Migration `0042` implements the first renewal boundary without enabling
   provider writes. Invoice webhooks reconcile observed Tax Rate IDs and
   integer-cent totals to the immutable Checkout snapshot; customer updates

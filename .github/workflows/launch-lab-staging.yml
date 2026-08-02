@@ -34,6 +34,7 @@ jobs:
           tests/pool-lifecycle.test.mjs
           tests/launch-lab-resend-ordering.test.mjs
           tests/launch-lab-stripe-lifecycle.test.mjs
+          tests/launch-lab-stripe-portal.test.mjs
           tests/stripe-webhook-lifecycle.test.mjs
           tests/feed-media.test.ts
           tests/distribution.test.ts
@@ -73,6 +74,17 @@ jobs:
         env:
           LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
         run: npm run launch-lab -- stripe
+
+      - name: Rehearse Stripe Customer Portal configuration
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab:stripe-portal
+
+      - name: Clean up exact Stripe Portal fixture
+        if: ${{ always() }}
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab:stripe-portal-cleanup
 
       - name: Rehearse Stripe test-clock lifecycle
         env:

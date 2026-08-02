@@ -1,6 +1,6 @@
 {
   "name": "@dustwave/podcast",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "private": true,
   "description": "Dust Wave podcast API, media orchestration, premium feeds, and publishing jobs",
   "type": "module",
@@ -24,6 +24,8 @@
     "launch-lab:stripe-lifecycle": "node scripts/run-launch-lab-stripe-lifecycle.mjs",
     "launch-lab:stripe-checkout": "node scripts/run-launch-lab-stripe-checkout.mjs",
     "launch-lab:stripe-checkout-cleanup": "node scripts/run-launch-lab-stripe-checkout-cleanup.mjs",
+    "launch-lab:stripe-portal": "node scripts/run-launch-lab-stripe-portal.mjs",
+    "launch-lab:stripe-portal-cleanup": "node scripts/launch-lab-client.mjs stripe-portal-cleanup",
     "launch-lab:contracts": "node scripts/build-launch-lab-contract-observations.mjs",
     "launch-lab:probe": "node scripts/probe-launch-lab-public-boundary.mjs",
     "prepare:alignment-benchmark-source": "node scripts/prepare-alignment-benchmark-source.mjs",
