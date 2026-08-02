@@ -223,6 +223,61 @@ describe("public feed and media delivery", () => {
     expect(await response.text()).toBe("2345");
   });
 
+  it("serves body-free enclosure HEAD metadata without reading the object", async () => {
+    let bodyReads = 0;
+    const db = {
+      prepare() {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            return {
+              audio_key: "podcasts/show/episode/delivery.mp3",
+              audio_bytes: 10,
+              audio_mime_type: "audio/mpeg",
+              audio_filename: "episode.mp3",
+              audio_etag: '"etag"'
+            };
+          }
+        };
+      }
+    } as unknown as D1Database;
+    const bucket = {
+      async head(key: string) {
+        expect(key).toBe("podcasts/show/episode/delivery.mp3");
+        return {
+          size: 10,
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "audio/mpeg");
+          }
+        };
+      },
+      async get() {
+        bodyReads += 1;
+        return null;
+      }
+    } as unknown as R2Bucket;
+    const response = await servePublicEpisodeAudio(
+      new Request(
+        "https://media.dustwave.xyz/episodes/episode_fixture/audio",
+        { method: "HEAD" }
+      ),
+      baseEnv({ DB: db, MEDIA_BUCKET: bucket }),
+      "episode_fixture"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBeNull();
+    expect(response.headers.get("content-length")).toBe("10");
+    expect(response.headers.get("content-type")).toBe("audio/mpeg");
+    expect(response.headers.get("etag")).toBe('"etag"');
+    expect(response.headers.get("accept-ranges")).toBe("bytes");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(bodyReads).toBe(0);
+  });
+
   it("serves entitled private RSS without exposing its bearer token to D1", async () => {
     const rawToken = "a".repeat(43);
     const boundValues: unknown[][] = [];
