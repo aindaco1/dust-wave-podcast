@@ -7,7 +7,7 @@ import type { PodcastEnv } from "./env";
 
 export function createPodcastStripeClient(env: PodcastEnv) {
   return createStripeClient(env.STRIPE_SECRET_KEY || "", {
-    userAgent: "dust-wave-podcast/0.2.5",
+    userAgent: "dust-wave-podcast/0.2.6",
     onRequest(event) {
       console.log(JSON.stringify({
         level: event.success ? "info" : "warn",

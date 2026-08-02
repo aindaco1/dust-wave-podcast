@@ -24,7 +24,9 @@ export function buildLaunchLabContractObservations() {
       { provider: "pool", scenario: "overlap", observedStatus: "reconciled" },
       { provider: "pool", scenario: "feed_rotation", observedStatus: "rotated" },
       { provider: "stripe", scenario: "webhook_contract", observedStatus: "verified" },
-      { provider: "rss", scenario: "private_directory_block", observedStatus: "blocked" }
+      { provider: "rss", scenario: "private_directory_block", observedStatus: "blocked" },
+      { provider: "rss", scenario: "enclosure_head_range", observedStatus: "verified" },
+      { provider: "rss", scenario: "transcript_chapter_contract", observedStatus: "verified" }
     ]
   };
 }

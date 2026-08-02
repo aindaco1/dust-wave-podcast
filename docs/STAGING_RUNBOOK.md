@@ -2082,7 +2082,9 @@ mutate the ledger, and the fixture stays absent from normal show selectors.
 The initial matrix contains 41 scenarios across Resend, Stripe, YouTube, RSS,
 directories, ads, and Pool. The scheduled real-schema lifecycle replay may
 mark Stripe's synthetic `webhook_contract` and Pool's seven synthetic
-grant/redeem/duplicate/revoke/expiry/overlap/feed-rotation scenarios only.
+grant/redeem/duplicate/revoke/expiry/overlap/feed-rotation scenarios, plus the
+RSS enclosure HEAD/range and approved transcript/chapter contracts, only after
+their exact production route tests pass in the same workflow.
 Scenarios needing a real Checkout, test-clock renewal/refund, native client,
 unlisted YouTube object, or directory ingestion remain `pending` until their
 adapters produce truthful evidence. A pending or passing synthetic scenario

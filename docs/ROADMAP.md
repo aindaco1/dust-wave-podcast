@@ -496,6 +496,10 @@ them as launch blockers.
   retrieval may recover an older premature mismatch without sending again;
   passed evidence remains immutable and provider failures remain terminal
   unless the exact expected later event is observed.
+- The scheduled RSS rehearsal now runs the production feed/media contract: a
+  body-free enclosure `HEAD`, one streamed byte range, and approved-only
+  Podcasting 2.0 transcript/chapter declarations. Tampered transcript evidence
+  remains absent, and synthetic success remains non-launch evidence.
 - The first Subscribers workbench boundary now exposes only Super-admin,
   private/no-store, keyset-paginated aggregate/source state, feed and consent
   booleans, and bounded formula-safe CSV. It intentionally excludes every
