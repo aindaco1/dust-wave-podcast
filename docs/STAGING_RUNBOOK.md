@@ -2063,6 +2063,20 @@ waits while the refund is pending, records `refund` only after a terminal
 The test asserts that no PaymentIntent, email, address, or card value is stored
 in D1 or returned through the Launch Lab response.
 
+Migration `0086` adds the isolated hosted Checkout phase machine. Run the
+on-demand `Rehearse staging hosted Checkout` workflow only while an authorized
+operator or browser controller is ready to complete the test Session. The
+workflow reconciles the hidden fixture, verifies Stripe readiness, creates the
+Session without changing `SUBSCRIPTION_CHECKOUT_ENABLED=false`, and waits at
+`session_open`. From a current staging Super-admin session, request the private
+CSRF-protected handoff and complete the $1 test-card checkout. Confirm the
+provider-signed `checkout.session.completed` projection activates the exact
+fixture source before the workflow records `checkout_success`. The workflow
+then cancels the subscription, waits for the signed cancellation projection,
+deletes the Customer, removes local fixtures, and retains only content-free
+status. Its unconditional cleanup expires the Session and deletes the Customer
+if the browser window is missed or any step fails.
+
 The Launch Lab turns provider-dependent prelaunch blockers into repeatable
 staging rehearsals without requiring a publishable episode or broad provider
 credentials in GitHub Actions.

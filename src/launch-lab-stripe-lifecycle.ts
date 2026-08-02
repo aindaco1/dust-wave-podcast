@@ -3,6 +3,10 @@ import launchLabFixture from "../config/launch-lab-fixture.json";
 import type { PodcastEnv } from "./env";
 import { recordLaunchLabObservations } from "./launch-lab-ledger";
 import { createPodcastStripeClient } from "./stripe-client";
+import {
+  cleanupLaunchLabStripeFixture,
+  loadLaunchLabStripeSource
+} from "./launch-lab-stripe-fixtures";
 
 const FIXTURE_CONFIG_ID = "subscription_monthly_v1";
 const FIXTURE_PRICE_ID = "price_dust_wave_launch_lab_monthly_v1";
@@ -58,11 +62,9 @@ type FixtureConfigRow = {
   provider_price_id: string | null;
 };
 
-type SourceRow = {
-  listener_id: string;
-  status: string;
-  current_period_end: string | null;
-};
+type SourceRow = NonNullable<Awaited<ReturnType<
+  typeof loadLaunchLabStripeSource
+>>>;
 
 type StripeObject = Record<string, unknown> & {
   id?: string;
@@ -502,7 +504,13 @@ async function advanceOnePhase(
   }
 
   if (lifecycle.phase === "clock_deleted") {
-    await cleanupLocalLifecycle(env.DB, lifecycle);
+    await cleanupLaunchLabStripeFixture(env.DB, {
+      attemptId: lifecycle.checkout_attempt_id,
+      subscriptionId: providerId(
+        lifecycle.provider_subscription_id,
+        "sub"
+      )
+    });
     return transition(env.DB, lifecycle, "complete", {
       completed_at: new Date().toISOString()
     });
@@ -596,57 +604,6 @@ async function ensureCheckoutAttempt(
   ) throw new Error("launch_lab_checkout_attempt_mismatch");
 }
 
-async function cleanupLocalLifecycle(
-  db: D1Database,
-  lifecycle: LifecycleRow
-): Promise<void> {
-  const source = await loadSource(
-    db,
-    providerId(lifecycle.provider_subscription_id, "sub")
-  );
-  if (source) {
-    await db.batch([
-      db.prepare(
-        `DELETE FROM subscriptions WHERE listener_id = ? AND show_id = ?`
-      ).bind(source.listener_id, launchLabFixture.show.id),
-      db.prepare(
-        `DELETE FROM subscription_entitlement_sources
-         WHERE listener_id = ? AND show_id = ? AND provider = 'stripe'
-           AND provider_subscription_id = ?`
-      ).bind(
-        source.listener_id,
-        launchLabFixture.show.id,
-        lifecycle.provider_subscription_id
-      ),
-      db.prepare(
-        `DELETE FROM subscription_checkout_attempts WHERE id = ?`
-      ).bind(lifecycle.checkout_attempt_id),
-      db.prepare(
-        `DELETE FROM listener_accounts
-         WHERE id = ? AND email_ciphertext = 'not_retained:stripe:v1'
-           AND NOT EXISTS (
-             SELECT 1 FROM subscription_entitlement_sources WHERE listener_id = ?
-           )
-           AND NOT EXISTS (
-             SELECT 1 FROM subscriptions WHERE listener_id = ?
-           )
-           AND NOT EXISTS (
-             SELECT 1 FROM subscription_checkout_attempts WHERE listener_id = ?
-           )`
-      ).bind(
-        source.listener_id,
-        source.listener_id,
-        source.listener_id,
-        source.listener_id
-      )
-    ]);
-  } else {
-    await db.prepare(
-      `DELETE FROM subscription_checkout_attempts WHERE id = ?`
-    ).bind(lifecycle.checkout_attempt_id).run();
-  }
-}
-
 async function loadLifecycle(
   db: D1Database,
   runId: string
@@ -679,11 +636,7 @@ async function loadSource(
   db: D1Database,
   subscriptionId: string
 ): Promise<SourceRow | null> {
-  return db.prepare(
-    `SELECT listener_id, status, current_period_end
-     FROM subscription_entitlement_sources
-     WHERE provider = 'stripe' AND provider_subscription_id = ?`
-  ).bind(subscriptionId).first<SourceRow>();
+  return loadLaunchLabStripeSource(db, subscriptionId);
 }
 
 async function transition(

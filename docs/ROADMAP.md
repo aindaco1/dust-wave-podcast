@@ -490,8 +490,8 @@ them as launch blockers.
   outcomes without public Checkout: successful monthly renewal, a
   decline-after-attachment payment failure, payment-method recovery, and
   immediate cancellation, plus a full recovery-payment refund. It advances
-  one idempotent phase per signed call,
-  waits for the real provider-signed webhook projection at every status gate,
+  one idempotent phase per signed call, waits for the real provider-signed
+  webhook projection at every status gate,
   resolves the exact paid PaymentIntent through Invoice Payments, and waits
   for a terminal successful refund before cancellation. The refund remains
   financial evidence only and cannot mutate access. The adapter deletes the
@@ -500,6 +500,14 @@ them as launch blockers.
   $1 test-only Product/Price that is tainted to the hidden Launch Lab show and
   never applies tax; hosted Checkout success and provider-originated
   duplicate/out-of-order delivery remain separate pending evidence.
+- The on-demand hosted Checkout adapter now creates an isolated test Customer,
+  $1 no-tax subscription Session, and content-hashed attempt without changing
+  the public Checkout switch. It waits for the real hosted browser completion
+  and provider-signed Checkout projection, then cancels, deletes the Customer,
+  and removes exact local fixtures. A CSRF-authenticated staging Super-admin
+  can obtain the ephemeral hosted URL; failure cleanup expires it automatically.
+  The adapter and browser boundary are implemented, while the first protected
+  browser completion remains pending evidence.
 - The same real-schema Launch Lab rehearsal now drives the actual signed Pool
   grant and redemption adapters, duplicate handling, Stripe/Pool overlap
   projection, private-feed issue/rotation and bearer invalidation, scheduled

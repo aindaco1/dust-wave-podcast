@@ -1628,6 +1628,12 @@ headers. Supported actions are:
   exact paid Invoice Payment resolves to a terminal successful Stripe refund.
   The response contains only phase booleans and never provider IDs or customer
   data;
+- `run_stripe_checkout`: advance one resumable step of the isolated hosted
+  Checkout rehearsal. It returns only phase booleans and waits at
+  `session_open` for the separate authenticated browser handoff;
+- `cleanup_stripe_checkout`: request and advance bounded cleanup for the exact
+  hosted fixture. It expires an open Session before deleting the Customer and
+  local fixture rows;
 - `status`: return the content-free scenario projection for one exact source
   commit and run.
 
@@ -1640,6 +1646,11 @@ gate.
 `GET /v1/admin/launch-lab` is a staging-only, super-admin view of the same
 content-free ledger. It returns the fixture boundary, the latest five runs,
 and allowlisted scenario outcomes with private no-store headers. It is absent
-in production, excludes provider identifiers and listener data, and performs
-no Launch Lab writes. Normal `GET /v1/admin/shows` results exclude test
-fixtures so the rehearsal cannot be mistaken for a publishable show.
+in production. `POST /v1/admin/launch-lab/stripe-checkout` is also absent in
+production and requires a staging Super-admin session plus exact same-origin
+CSRF. It performs one read-only Stripe retrieval and returns only the current
+open `checkout.stripe.com` URL and expiry; it cannot create a Session, choose a
+run, enable Checkout, or expose provider IDs. The read-only ledger endpoint
+also excludes provider identifiers and listener data and performs no Launch
+Lab writes. Normal `GET /v1/admin/shows` results exclude test fixtures so the
+rehearsal cannot be mistaken for a publishable show.

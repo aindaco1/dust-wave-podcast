@@ -166,7 +166,10 @@ import {
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
 } from "./diagnostics";
-import { getAdminLaunchLab } from "./launch-lab-admin";
+import {
+  getAdminLaunchLab,
+  openAdminLaunchLabHostedCheckout
+} from "./launch-lab-admin";
 import {
   listDistributionDestinations,
   retryDistributionJob,
@@ -982,6 +985,12 @@ async function routeRequest(
   }
   if (url.pathname === "/v1/admin/launch-lab" && method === "GET") {
     return getAdminLaunchLab(request, env);
+  }
+  if (
+    url.pathname === "/v1/admin/launch-lab/stripe-checkout"
+    && method === "POST"
+  ) {
+    return openAdminLaunchLabHostedCheckout(request, env);
   }
   if (url.pathname === "/v1/admin/billing/readiness" && method === "GET") {
     return getBillingReadiness(request, env);
