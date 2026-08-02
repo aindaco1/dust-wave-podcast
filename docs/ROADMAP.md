@@ -491,6 +491,11 @@ them as launch blockers.
   projection, private-feed issue/rotation and bearer invalidation, scheduled
   expiry reconciliation, and revocation. Only those seven synthetic Pool
   scenarios are recorded; they remain non-launch evidence.
+- Resend complaint rehearsal treats provider delivery as an intermediate state
+  because a complaint follows successful delivery. The same read-only provider
+  retrieval may recover an older premature mismatch without sending again;
+  passed evidence remains immutable and provider failures remain terminal
+  unless the exact expected later event is observed.
 - The first Subscribers workbench boundary now exposes only Super-admin,
   private/no-store, keyset-paginated aggregate/source state, feed and consent
   booleans, and bounded formula-safe CSV. It intentionally excludes every

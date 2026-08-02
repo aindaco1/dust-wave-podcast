@@ -238,6 +238,11 @@
   previous run stopped after updating its source. Expired subscriptions fail
   both member feed issuance and bearer-feed lookup, while rotated raw bearer
   tokens are never persisted.
+- Launch Lab Resend recovery retrieves only the exact stored provider ID and
+  normalizes its bounded `last_event`; it never retrieves or stores recipient,
+  subject, body, or provider payload evidence. Intermediate delivery before a
+  complaint remains non-passing, and recovery reuses the original idempotency
+  key without resending.
 - Customer Portal requires an authenticated listener, same-origin CSRF,
   show-scoped Stripe customer, rate limit, and explicit
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must

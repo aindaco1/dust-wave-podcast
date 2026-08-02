@@ -37,6 +37,7 @@ jobs:
           tests/ad-runtime.test.ts
           tests/pool-redemptions.test.ts
           tests/pool-lifecycle.test.mjs
+          tests/launch-lab-resend-ordering.test.mjs
           tests/stripe-webhook-lifecycle.test.mjs
           tests/launch-lab-public-boundary.test.mjs
           tests/launch-lab-ledger.test.mjs
