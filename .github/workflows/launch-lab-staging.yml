@@ -15,7 +15,7 @@ concurrency:
 jobs:
   rehearse:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     environment: podcast-staging
     steps:
       - name: Check out exact rehearsal source
@@ -33,6 +33,7 @@ jobs:
           tests/pool-redemptions.test.ts
           tests/pool-lifecycle.test.mjs
           tests/launch-lab-resend-ordering.test.mjs
+          tests/launch-lab-stripe-lifecycle.test.mjs
           tests/stripe-webhook-lifecycle.test.mjs
           tests/feed-media.test.ts
           tests/distribution.test.ts
@@ -72,6 +73,11 @@ jobs:
         env:
           LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
         run: npm run launch-lab -- stripe
+
+      - name: Rehearse Stripe test-clock lifecycle
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab:stripe-lifecycle
 
       - name: Read content-free rehearsal status
         if: ${{ always() }}

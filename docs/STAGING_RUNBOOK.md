@@ -181,8 +181,11 @@ show, off-origin or missing-CSRF writes fail before D1 mutation, and a stale
 `expectedUpdatedAt` returns `marketing_link_changed` without a second audit
 event. The returned JSON must omit admin-user IDs.
 
-Use a Stripe sandbox test clock only after an accountant-approved staging Tax
-Rate exists. Exercise initial invoice, monthly and annual renewal, address
+Use a Stripe sandbox test clock with billable show Prices only after an
+accountant-approved staging Tax Rate exists. The isolated, tax-free Launch Lab
+$1 fixture is the sole exception because it cannot enter public Checkout and
+is deleted after projection evidence is captured. Exercise initial invoice,
+monthly and annual renewal, address
 change, same-rate replay, rate change, payment failure/recovery, cancellation,
 duplicate delivery, and out-of-order events. Do not create or expire a tax
 registration, activate a live Tax Rate, or enable Checkout as part of this
@@ -2042,6 +2045,16 @@ private-feed rotation, scheduled expiry, interrupted-pass recovery, and signed
 revocation all finish with clean foreign keys and no raw email, code, or bearer
 token persisted.
 
+Migration `0084` adds the resumable Stripe provider lifecycle and one reusable
+test-only Product/Price identity. Replay every migration, run
+`tests/launch-lab-stripe-lifecycle.test.mjs`, and confirm the adapter cannot
+call Stripe outside staging test mode; does not advance before the signed
+webhook source matches; records only renewal, payment failure, recovery, and
+cancellation; deletes the test clock; restores zero Launch Lab checkout,
+listener, source, and aggregate rows; and leaves foreign keys clean. The
+provider catalog fixture remains active only in Stripe test mode so later
+rehearsals can reuse it without unbounded Product/Price creation.
+
 The Launch Lab turns provider-dependent prelaunch blockers into repeatable
 staging rehearsals without requiring a publishable episode or broad provider
 credentials in GitHub Actions.
@@ -2056,6 +2069,7 @@ credentials in GitHub Actions.
    npm run launch-lab -- record /absolute/path/to/observations.json
    npm run launch-lab -- resend
    npm run launch-lab -- stripe
+   npm run launch-lab:stripe-lifecycle
    npm run launch-lab -- status
    ```
 
@@ -2100,7 +2114,10 @@ reconciliation may then advance YouTube channel identity only from the
 existing provider-health row when it exactly matches the configured channel,
 is less than 24 hours old, and has no active lease; it performs no provider
 call and returns no account reference.
-Scenarios needing a real Checkout, test-clock renewal/refund, native client,
+Real test-clock renewal, payment failure, recovery, and cancellation now pass
+only after their provider subscription state and the production signed-webhook
+projection agree. Scenarios needing hosted Checkout, a real refund,
+provider-originated duplicate/out-of-order delivery, a native client, an
 unlisted YouTube object, or directory ingestion remain `pending` until their
 adapters produce truthful evidence. A pending or passing synthetic scenario
 never counts as launch evidence.

@@ -1621,6 +1621,11 @@ headers. Supported actions are:
   bounded read-only provider retrieval;
 - `run_stripe_readiness`: read and attest the exact inactive test-mode Product
   and Price objects through the production Stripe adapter;
+- `run_stripe_lifecycle`: advance one resumable step of an isolated test-clock
+  subscription through real renewal, failed-payment, recovery, and immediate
+  cancellation outcomes. Each outcome waits for the production signed-webhook
+  projection before it can pass; the response contains only phase booleans and
+  never provider IDs or customer data;
 - `status`: return the content-free scenario projection for one exact source
   commit and run.
 

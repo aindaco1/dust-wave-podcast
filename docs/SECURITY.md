@@ -245,6 +245,15 @@
   outranks delivery regardless of event order, intermediate delivery before a
   complaint remains non-passing, and recovery reuses the original idempotency
   key without resending.
+- Launch Lab Stripe lifecycle writes are available only when both the runtime
+  environment is staging and Stripe mode is test. The signed caller supplies
+  no provider object, payment method, customer identity, or expected result.
+  A persisted phase machine creates one mutation at a time with stable
+  idempotency keys, waits for the production signed-webhook projection, and
+  exposes only the current phase. It uses Stripe's test PaymentMethod aliases,
+  retains no email/address/card value, deletes its test clock and associated
+  provider objects, then removes its exact D1 listener, attempt, source, and
+  aggregate fixtures. Production, live mode, and public Checkout remain inert.
 - Customer Portal requires an authenticated listener, same-origin CSRF,
   show-scoped Stripe customer, rate limit, and explicit
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must

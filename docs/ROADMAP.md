@@ -486,6 +486,16 @@ them as launch blockers.
   same-second events against the real migration schema, while recording only
   the synthetic `webhook_contract` as passed. Real Checkout, renewal, refund,
   and test-clock scenarios remain separate provider evidence.
+- The staging-only test-clock adapter now covers four of those real provider
+  outcomes without public Checkout: successful monthly renewal, a
+  decline-after-attachment payment failure, payment-method recovery, and
+  immediate cancellation. It advances one idempotent phase per signed call,
+  waits for the real provider-signed webhook projection at every status gate,
+  deletes the clock/customer/subscription simulation, and removes its local
+  listener/checkout/source fixtures when complete. It uses one reusable active
+  $1 test-only Product/Price that is tainted to the hidden Launch Lab show and
+  never applies tax; hosted Checkout success, refund, and provider-originated
+  duplicate/out-of-order delivery remain separate pending evidence.
 - The same real-schema Launch Lab rehearsal now drives the actual signed Pool
   grant and redemption adapters, duplicate handling, Stripe/Pool overlap
   projection, private-feed issue/rotation and bearer invalidation, scheduled

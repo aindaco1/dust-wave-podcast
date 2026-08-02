@@ -168,14 +168,18 @@ export async function getBillingReadiness(
     env.DB.prepare(
       `SELECT id, title, billing_mode, stripe_product_id
        FROM shows
+       WHERE test_fixture = 0
        ORDER BY title`
     ).all<Record<string, unknown>>(),
     env.DB.prepare(
       `SELECT
-         id, show_id, billing_period, amount_cents, currency,
-         stripe_price_id, stripe_lookup_key, provider_mode, active
-       FROM show_prices
-       ORDER BY show_id, amount_cents`
+         price.id, price.show_id, price.billing_period, price.amount_cents,
+         price.currency, price.stripe_price_id, price.stripe_lookup_key,
+         price.provider_mode, price.active
+       FROM show_prices price
+       JOIN shows show_record ON show_record.id = price.show_id
+       WHERE show_record.test_fixture = 0
+       ORDER BY price.show_id, price.amount_cents`
     ).all<Record<string, unknown>>(),
     env.DB.prepare(
       `SELECT COUNT(*) AS count
@@ -192,7 +196,8 @@ export async function getBillingReadiness(
            t.expires_at IS NULL
            OR t.expires_at > ${SQL_UTC_NOW_RFC3339}
          )
-         AND s.billing_mode = ?`
+         AND s.billing_mode = ?
+         AND s.test_fixture = 0`
     ).bind(expectedMode, expectedMode).first<{ count: number }>(),
     env.DB.prepare(
       `SELECT COUNT(*) AS count
