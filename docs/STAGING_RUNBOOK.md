@@ -1896,6 +1896,24 @@ Before any external clip upload, exercise the first-party public clip preview:
 
 For the YouTube clip test:
 
+The five-minute Worker scheduler checks a configured YouTube refresh grant on
+a bounded cadence before any controlled test: every 12 hours after success and
+hourly after failure. It uses an expiring D1 lease so overlapping cron
+invocations cannot duplicate the provider read. The composed launch gate
+requires a successful exact-channel check from the last 24 hours as its own
+node; that node never substitutes for the separately required inspected
+unlisted upload. A failed check stores only a bounded failure code. Reauthorize
+the dedicated staging consent grant when it reports `youtube_oauth_invalid_grant`;
+repair the dedicated client when it reports `youtube_oauth_invalid_client` or
+`youtube_oauth_unauthorized_client`. Network, rejected-request, and malformed-
+response states remain distinct; timeouts are separated from other transport
+failures. The adapter never stores Google's error
+description or response body, and a browser access token must never be copied
+into Worker configuration or evidence.
+Google requests use manual redirect handling because the Cloudflare runtime
+throws before exposing Google's ordinary response with `redirect: error`;
+every `3xx` is still rejected without following or forwarding credentials.
+
 1. Leave `YOUTUBE_PUBLISH_MODE=dry_run`, prepare the immutable current-render
    draft in Marketing, and have a recently authenticated super-admin approve
    it. Confirm D1/audit status `dry_run` and zero provider calls.

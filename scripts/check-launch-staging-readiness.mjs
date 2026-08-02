@@ -163,6 +163,14 @@ export function evaluateLaunchStagingReadiness(snapshot) {
   );
 
   const youtube = snapshot.youtube ?? {};
+  add(
+    youtube.channelAccessReady === true ? "PASS" : "BLOCK",
+    "youtube_access",
+    "YouTube channel access",
+    youtube.channelAccessReady === true
+      ? "a refresh grant reached the exact configured channel within 24 hours"
+      : "refresh and verify the exact configured channel; credentials, channel mismatch, or evidence freshness require attention"
+  );
   const youtubeReady = boundedCount(youtube.uploadedUnlisted) > 0
     && boundedCount(youtube.unresolved) === 0;
   add(
@@ -471,7 +479,14 @@ function launchStateStatements(episodeId, validatorVersion) {
         THEN 1 ELSE 0 END), 0) AS uploaded_unlisted,
       COALESCE(SUM(CASE
         WHEN status IN ('uploading', 'reconciliation_required')
-        THEN 1 ELSE 0 END), 0) AS unresolved
+        THEN 1 ELSE 0 END), 0) AS unresolved,
+      EXISTS (
+        SELECT 1 FROM provider_access_health health
+        WHERE health.provider = 'youtube'
+          AND health.status = 'ready'
+          AND health.account_reference IS NOT NULL
+          AND health.last_success_at >= datetime('now', '-24 hours')
+      ) AS channel_access_ready
     FROM episode_youtube_publications
     WHERE show_id = ${showId};
     SELECT
@@ -537,7 +552,8 @@ function presentDistribution(row) {
 function presentYoutube(row) {
   return {
     uploadedUnlisted: boundedCount(row?.uploaded_unlisted),
-    unresolved: boundedCount(row?.unresolved)
+    unresolved: boundedCount(row?.unresolved),
+    channelAccessReady: Number(row?.channel_access_ready) === 1
   };
 }
 

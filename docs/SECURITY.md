@@ -156,6 +156,16 @@
 
 ## Provider boundaries
 
+- The scheduled YouTube access check acquires one expiring D1 lease, refreshes
+  OAuth, and verifies that `mine=true` still contains the exact configured
+  channel. It stores only the public channel ID, bounded status/failure code,
+  timestamps, and a consecutive-failure count. Access tokens, refresh tokens,
+  client credentials, provider bodies, and account profile data never enter
+  D1 or logs. Success remains separate from controlled unlisted-upload
+  evidence and cannot authorize or enqueue an upload. Known OAuth failures are
+  reduced to a fixed allowlist (`invalid_grant`, client authorization,
+  malformed response, rejection, timeout, or transport failure); Google error
+  descriptions and all other provider response content are discarded.
 - Announcement review is structurally side-effect free. Approval writes a
   durable, audited, idempotent outbox. Staging is explicitly `dry_run`,
   production is explicitly `disabled`, and the live sender fails closed unless
@@ -237,7 +247,8 @@
   approval refreshes OAuth and requires the bounded authenticated `mine=true`
   channel list to contain the exact configured channel ID. The adapter
   repeats that check with the consumer's fresh access token before creating an
-  upload session, hard-pins Google origins, disables redirects, bounds provider
+  upload session, hard-pins Google origins, uses manual redirect handling and
+  rejects every `3xx` without following it, bounds provider
   JSON, streams the conditionally read private R2 body, verifies returned
   channel/privacy, and fails closed if the mode is restored before consumption.
 - Saved marketing links accept only bounded text and the show's existing

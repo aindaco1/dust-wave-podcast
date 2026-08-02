@@ -9,6 +9,7 @@ const CHANNEL_LOOKUP_URL =
   "https://www.googleapis.com/youtube/v3/channels";
 const VIDEO_LOOKUP_URL = "https://www.googleapis.com/youtube/v3/videos";
 const MAXIMUM_PROVIDER_RESPONSE_BYTES = 64_000;
+const NO_FOLLOW_REDIRECT = "manual" as const;
 const TOKEN_TIMEOUT_MS = 10_000;
 const METADATA_TIMEOUT_MS = 15_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
@@ -59,7 +60,7 @@ async function verifyAuthenticatedChannel(
   url.searchParams.set("maxResults", "50");
   const response = await fetchWithTimeout(url, {
     headers: { authorization: `Bearer ${accessToken}` },
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError(
       "youtube_channel_verification_failed"
@@ -138,7 +139,7 @@ export async function uploadUnlistedYouTubeVideo(
         selfDeclaredMadeForKids: false
       }
     }),
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_upload_session_failed");
   });
@@ -156,7 +157,7 @@ export async function uploadUnlistedYouTubeVideo(
       "content-type": "video/mp4"
     },
     body,
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, uploadTimeoutMs).catch(() => {
     throw new YouTubeProviderError("youtube_upload_failed");
   });
@@ -265,15 +266,32 @@ async function refreshAccessToken(
       client_secret: config.clientSecret,
       refresh_token: config.refreshToken,
       grant_type: "refresh_token"
-    }),
-    redirect: "error"
-  }, TOKEN_TIMEOUT_MS).catch(() => {
-    throw new YouTubeProviderError("youtube_oauth_failed");
+    }).toString(),
+    redirect: NO_FOLLOW_REDIRECT
+  }, TOKEN_TIMEOUT_MS).catch((error: unknown) => {
+    throw new YouTubeProviderError(oauthTransportFailureCode(error));
   });
   if (!response.ok) {
-    throw new YouTubeProviderError("youtube_oauth_failed");
+    let providerCode = "";
+    try {
+      const rejected = await boundedJson(
+        response,
+        "youtube_oauth_response_invalid"
+      );
+      providerCode = typeof rejected.error === "string"
+        ? rejected.error
+        : "";
+    } catch {
+      // Provider bodies are intentionally discarded. The status-independent
+      // fallback remains actionable without retaining potentially sensitive
+      // response text.
+    }
+    throw new YouTubeProviderError(oauthFailureCode(providerCode));
   }
-  const payload = await boundedJson(response, "youtube_oauth_failed");
+  const payload = await boundedJson(
+    response,
+    "youtube_oauth_response_invalid"
+  );
   const accessToken = typeof payload.access_token === "string"
     ? payload.access_token
     : "";
@@ -285,9 +303,32 @@ async function refreshAccessToken(
     || accessToken.length > 4096
     || tokenType.toLowerCase() !== "bearer"
   ) {
-    throw new YouTubeProviderError("youtube_oauth_failed");
+    throw new YouTubeProviderError("youtube_oauth_response_invalid");
   }
   return accessToken;
+}
+
+function oauthFailureCode(providerCode: string): string {
+  switch (providerCode) {
+    case "invalid_grant":
+      return "youtube_oauth_invalid_grant";
+    case "invalid_client":
+      return "youtube_oauth_invalid_client";
+    case "unauthorized_client":
+      return "youtube_oauth_unauthorized_client";
+    case "invalid_request":
+      return "youtube_oauth_invalid_request";
+    case "unsupported_grant_type":
+      return "youtube_oauth_unsupported_grant_type";
+    default:
+      return "youtube_oauth_request_rejected";
+  }
+}
+
+function oauthTransportFailureCode(error: unknown): string {
+  return error instanceof Error && error.name === "AbortError"
+    ? "youtube_oauth_timeout"
+    : "youtube_oauth_transport_failed";
 }
 
 async function verifyUploadedVideo(
@@ -301,7 +342,7 @@ async function verifyUploadedVideo(
   url.searchParams.set("id", videoId);
   const response = await fetchWithTimeout(url, {
     headers: { authorization: `Bearer ${accessToken}` },
-    redirect: "error"
+    redirect: NO_FOLLOW_REDIRECT
   }, METADATA_TIMEOUT_MS).catch(() => {
     throw new YouTubeProviderError("youtube_verification_failed");
   });

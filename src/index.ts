@@ -40,6 +40,9 @@ import { scheduleAutomaticClipDrafts } from "./clip-drafts";
 import {
   scheduleAutomaticDistributionObservations
 } from "./distribution-observations";
+import {
+  scheduleYouTubeProviderAccessCheck
+} from "./provider-access-health";
 
 export default {
   async fetch(
@@ -139,7 +142,8 @@ export default {
       schedulePendingAnnouncementDeliveries(env),
       schedulePendingTranscriptions(env),
       syncProcessorDispatches(env),
-      scheduleAdminActionNotifications(env)
+      scheduleAdminActionNotifications(env),
+      scheduleYouTubeProviderAccessCheck(env)
     ]);
   }
 } satisfies ExportedHandler<PodcastEnv, PodcastJob>;
