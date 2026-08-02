@@ -7,13 +7,16 @@ import {
   updateAdminShow
 } from "./admin";
 import {
-  createAdminEpisodeShowNotesDraft
+  createAdminEpisodeShowNotesDraft,
+  listAdminEpisodeShowNotesDrafts
 } from "./show-notes";
 import {
-  createAdminEpisodeChapterDraft
+  createAdminEpisodeChapterDraft,
+  listAdminEpisodeChapterDrafts
 } from "./chapter-drafts";
 import {
-  createAdminEpisodeClipDraft
+  createAdminEpisodeClipDraft,
+  listAdminEpisodeClipDrafts
 } from "./clip-drafts";
 import {
   getAdminAdQualificationReconciliation
@@ -158,6 +161,7 @@ import {
 } from "./youtube-audio-renditions";
 import {
   issueStagingVirtualAudioCapability,
+  manageStagingVirtualAudioGate,
   manageStagingVirtualAudioFixtureObject,
   serveStagingVirtualAudioDiagnostic,
   serveStagingVirtualAudioPlayer
@@ -223,6 +227,10 @@ import {
   getAdminShowPremiumPrices
 } from "./show-premium-prices";
 import {
+  configureAdminShowTaxPolicy,
+  getAdminShowTaxPolicy
+} from "./tax-policies";
+import {
   createListenerBillingPortal,
   createSubscriptionCheckout
 } from "./subscription-checkout";
@@ -253,6 +261,11 @@ import {
   listAdminEpisodeTranscriptionJobs,
   queueAdminEpisodeTranscription
 } from "./transcription-jobs";
+import {
+  acknowledgeProcessorDispatch,
+  claimProcessorDispatches,
+  rejectProcessorDispatchLease
+} from "./processor-dispatches";
 import {
   approveAdminEpisodeTranscript,
   listAdminEpisodeTranscripts,
@@ -333,6 +346,8 @@ const ADMIN_SHOW_SITE_PROJECTION_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/site-projection$/;
 const ADMIN_SHOW_PREMIUM_PRICES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/premium-prices$/;
+const ADMIN_SHOW_TAX_POLICY_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/tax-policy$/;
 const ADMIN_SHOW_AUDIO_QC_POLICY_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/audio-qc-policy$/;
 const ADMIN_SHOW_CLIPS_PATH =
@@ -382,10 +397,16 @@ const ADMIN_SHOW_FEED_VALIDATION_PATH =
 const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
 const ADMIN_EPISODE_SHOW_NOTES_DRAFT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/show-notes\/draft$/;
+const ADMIN_EPISODE_SHOW_NOTES_DRAFTS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/show-notes\/drafts$/;
 const ADMIN_EPISODE_CHAPTER_DRAFT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/draft$/;
+const ADMIN_EPISODE_CHAPTER_DRAFTS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/drafts$/;
 const ADMIN_EPISODE_CLIP_DRAFT_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/draft$/;
+const ADMIN_EPISODE_CLIP_DRAFTS_PATH =
+  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/drafts$/;
 const ADMIN_EPISODE_PUBLISH_PATH =
   /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
 const ADMIN_EPISODE_READINESS_PATH =
@@ -497,6 +518,10 @@ const ADMIN_AD_PLAN_APPROVE_PATH =
   /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/approve$/;
 const ADMIN_AD_PLAN_REJECT_PATH =
   /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/reject$/;
+const PROCESSOR_DISPATCH_CLAIM_PATH =
+  "/v1/processor/dispatches/claim";
+const PROCESSOR_DISPATCH_RESULT_PATH =
+  /^\/v1\/processor\/dispatches\/([A-Za-z0-9_-]+)\/(dispatched|failed)$/;
 const PROCESSOR_AD_PLAN_COMPLETE_PATH =
   /^\/v1\/processor\/ad-plans\/([A-Za-z0-9_-]+)\/complete$/;
 const PROCESSOR_CLIP_RENDER_COMPLETE_PATH =
@@ -837,6 +862,12 @@ async function routeRequest(
   ) {
     return issueStagingVirtualAudioCapability(request, env);
   }
+  if (
+    url.pathname === "/v1/diagnostics/virtual-audio/gate"
+    && method === "POST"
+  ) {
+    return manageStagingVirtualAudioGate(request, env);
+  }
   const virtualAudioFixtureObjectMatch = url.pathname.match(
     VIRTUAL_AUDIO_FIXTURE_OBJECT_PATH
   );
@@ -1032,6 +1063,25 @@ async function routeRequest(
         request,
         env,
         adminShowPremiumPricesMatch[1]
+      );
+    }
+  }
+  const adminShowTaxPolicyMatch = url.pathname.match(
+    ADMIN_SHOW_TAX_POLICY_PATH
+  );
+  if (adminShowTaxPolicyMatch) {
+    if (method === "GET") {
+      return getAdminShowTaxPolicy(
+        request,
+        env,
+        adminShowTaxPolicyMatch[1]
+      );
+    }
+    if (method === "PUT") {
+      return configureAdminShowTaxPolicy(
+        request,
+        env,
+        adminShowTaxPolicyMatch[1]
       );
     }
   }
@@ -1333,6 +1383,16 @@ async function routeRequest(
       adminEpisodeShowNotesDraftMatch[1]
     );
   }
+  const adminEpisodeShowNotesDraftsMatch = url.pathname.match(
+    ADMIN_EPISODE_SHOW_NOTES_DRAFTS_PATH
+  );
+  if (adminEpisodeShowNotesDraftsMatch && method === "GET") {
+    return listAdminEpisodeShowNotesDrafts(
+      request,
+      env,
+      adminEpisodeShowNotesDraftsMatch[1]
+    );
+  }
   const adminEpisodeChapterDraftMatch = url.pathname.match(
     ADMIN_EPISODE_CHAPTER_DRAFT_PATH
   );
@@ -1343,6 +1403,16 @@ async function routeRequest(
       adminEpisodeChapterDraftMatch[1]
     );
   }
+  const adminEpisodeChapterDraftsMatch = url.pathname.match(
+    ADMIN_EPISODE_CHAPTER_DRAFTS_PATH
+  );
+  if (adminEpisodeChapterDraftsMatch && method === "GET") {
+    return listAdminEpisodeChapterDrafts(
+      request,
+      env,
+      adminEpisodeChapterDraftsMatch[1]
+    );
+  }
   const adminEpisodeClipDraftMatch = url.pathname.match(
     ADMIN_EPISODE_CLIP_DRAFT_PATH
   );
@@ -1351,6 +1421,16 @@ async function routeRequest(
       request,
       env,
       adminEpisodeClipDraftMatch[1]
+    );
+  }
+  const adminEpisodeClipDraftsMatch = url.pathname.match(
+    ADMIN_EPISODE_CLIP_DRAFTS_PATH
+  );
+  if (adminEpisodeClipDraftsMatch && method === "GET") {
+    return listAdminEpisodeClipDrafts(
+      request,
+      env,
+      adminEpisodeClipDraftsMatch[1]
     );
   }
   const adminEpisodeReadinessMatch = url.pathname.match(
@@ -2005,6 +2085,25 @@ async function routeRequest(
   const uploadMatch = url.pathname.match(ADMIN_UPLOAD_PATH);
   if (uploadMatch && method === "DELETE") {
     return abortMultipartUpload(request, env, uploadMatch[1]);
+  }
+  if (url.pathname === PROCESSOR_DISPATCH_CLAIM_PATH && method === "POST") {
+    return claimProcessorDispatches(request, env);
+  }
+  const processorDispatchResultMatch = url.pathname.match(
+    PROCESSOR_DISPATCH_RESULT_PATH
+  );
+  if (processorDispatchResultMatch && method === "POST") {
+    return processorDispatchResultMatch[2] === "dispatched"
+      ? acknowledgeProcessorDispatch(
+          request,
+          env,
+          processorDispatchResultMatch[1]
+        )
+      : rejectProcessorDispatchLease(
+          request,
+          env,
+          processorDispatchResultMatch[1]
+        );
   }
   const processorAdPlanCompleteMatch = url.pathname.match(
     PROCESSOR_AD_PLAN_COMPLETE_PATH

@@ -219,6 +219,37 @@ describe("full-length audio enhancement derivative boundaries", () => {
     expect(fixture.batchCount()).toBe(1);
   });
 
+  it("trusts a resolved guard-protected approval batch over D1 metadata", async () => {
+    const fixture = await rejectionFixture();
+    const response = await approveAdminAudioEnhancementDerivative(
+      fixture.request({
+        baseRevision: 1,
+        masterId: "master_enhanced",
+        approvalReason:
+          "The exact enhanced candidate passed full-file review."
+      }, "approve"),
+      fixture.env,
+      "derivative_fixture"
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      master: {
+        id: "master_enhanced",
+        episodeId: "episode_fixture",
+        revision: 2,
+        originKind: "enhanced_derivative",
+        sourceSha256: "8".repeat(64)
+      }
+    });
+    expect(fixture.batchCount()).toBe(1);
+    expect(
+      fixture.queries.filter((query) =>
+        query.includes("INSERT INTO publication_batch_guards")
+      )
+    ).toHaveLength(2);
+  });
+
   it("requires recent authentication before either terminal choice", async () => {
     const fixture = await rejectionFixture({ recent: false });
     const body = {
@@ -383,6 +414,12 @@ async function rejectionFixture({ recent = true } = {}) {
           ) {
             return { ...row };
           }
+          if (query.includes("FROM episode_working_master_states")) {
+            return {
+              revision: 1,
+              current_master_id: "master_fixture"
+            };
+          }
           return null;
         },
         async all() {
@@ -422,6 +459,20 @@ async function rejectionFixture({ recent = true } = {}) {
   } as unknown as D1Database;
   const env = {
     DB: db,
+    MEDIA_BUCKET: {
+      async head() {
+        return {
+          key: row.output_object_key,
+          size: row.output_object_bytes,
+          httpEtag: row.output_object_etag,
+          httpMetadata: { contentType: "audio/mpeg" },
+          customMetadata: {
+            "processor-manifest-sha256":
+              row.processor_manifest_sha256
+          }
+        };
+      }
+    },
     SITE_ORIGIN: "https://dustwave.xyz",
     ALLOWED_ORIGINS: "https://dustwave.xyz",
     ADMIN_SESSION_SECRET: sessionSecret,

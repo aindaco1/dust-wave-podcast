@@ -1,5 +1,7 @@
 import {
+  DEFAULT_CAPTION_SEGMENTATION_POLICY,
   normalizeSegmentTranscription,
+  type CaptionSegmentationPolicy,
   type NormalizedSegmentTranscription,
   type TimedTextLanguage
 } from "@dustwave/timed-text/transcription";
@@ -13,7 +15,11 @@ import {
 
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import { prepareAdminAuditAfterSingleChange } from "./audit";
 import type { PodcastEnv } from "./env";
+import {
+  FINAL_WORKING_MASTER_DECISION_SQL
+} from "./final-working-master";
 import { privateJson } from "./http";
 import {
   canonicalTranscriptContent,
@@ -45,6 +51,7 @@ const READ_ROLES: AdminRole[] = [
 ];
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
 const TRANSCRIPTION_MODEL = "@cf/openai/whisper-large-v3-turbo";
+const TRANSCRIPTION_PIPELINE_VERSION = "workers-ai-segment-caption-v2";
 const RETRYABLE_FAILURES = new Set(["provider_failed", "storage_failed"]);
 const MAXIMUM_PROVIDER_RESPONSE_BYTES = 5 * 1024 * 1024;
 
@@ -54,6 +61,7 @@ export const MAXIMUM_DIRECT_TRANSCRIPTION_BYTES =
   MAXIMUM_TRANSCRIPTION_CHUNK_BYTES;
 
 type TranscriptionSourceRow = {
+  show_id: string;
   source_language: string | null;
   current_master_id: string | null;
   working_master_id: string;
@@ -69,6 +77,75 @@ type TranscriptionSourceRow = {
   vocabulary_json: string;
   transcript_revision: number | null;
 };
+
+type AutomatedTranscriptionCandidate = {
+  episode_id: string;
+  current_master_id: string;
+  source_language: TimedTextLanguage;
+};
+
+type TranscriptionDelivery =
+  | "queued"
+  | "scheduled_recovery"
+  | "scheduled_delivery"
+  | "chunk_processor_required";
+
+type EnsureTranscriptionJobResult =
+  | {
+    status:
+      | "language_mismatch"
+      | "master_changed"
+      | "queue_conflict"
+      | "request_conflict"
+      | "source_required";
+    currentWorkingMasterId?: string | null;
+    sourceLanguage?: string | null;
+  }
+  | {
+    status: "ready";
+    job: TranscriptionJobRow;
+    chunkRun: TranscriptionChunkRunRow | null;
+    delivery: TranscriptionDelivery;
+    idempotent: boolean;
+  };
+
+export const AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL = `
+  SELECT
+    episode.id AS episode_id,
+    state.current_master_id,
+    episode.source_language
+  FROM episodes episode
+  JOIN episode_working_master_states state
+    ON state.episode_id = episode.id
+  JOIN episode_working_masters master
+    ON master.id = state.current_master_id
+   AND master.episode_id = episode.id
+  JOIN show_transcription_settings settings
+    ON settings.show_id = episode.show_id
+  WHERE episode.status IN ('draft', 'scheduled')
+    AND episode.source_language IN ('en', 'es')
+    AND ${FINAL_WORKING_MASTER_DECISION_SQL}
+    AND NOT EXISTS (
+      SELECT 1
+      FROM transcripts transcript
+      WHERE transcript.episode_id = episode.id
+        AND transcript.language = episode.source_language
+        AND transcript.approved_revision IS NOT NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM transcription_jobs job
+      WHERE job.episode_id = episode.id
+        AND job.working_master_id = master.id
+        AND job.language = episode.source_language
+        AND job.model = settings.model
+        AND job.settings_revision = settings.revision
+        AND job.settings_version = settings.settings_version
+        AND json_extract(job.settings_json, '$.pipelineVersion') =
+          '${TRANSCRIPTION_PIPELINE_VERSION}'
+    )
+  ORDER BY master.approved_at, episode.id
+  LIMIT ?`;
 
 type TranscriptionJobRow = {
   id: string;
@@ -186,32 +263,145 @@ export async function queueAdminEpisodeTranscription(
     "expectedWorkingMasterId"
   );
   const language = transcriptionLanguage(body.language);
-  const source = await loadTranscriptionSource(env.DB, access.episode.id);
-  if (!source?.current_master_id) {
+  const result = await ensureEpisodeTranscriptionJob(env, {
+    episodeId: access.episode.id,
+    expectedWorkingMasterId,
+    language,
+    requestId,
+    requestedByAdminUserId: access.authorization.identity.id,
+    deferDelivery: false
+  });
+  if (result.status === "source_required") {
     return transcriptionConflict(
       request,
       env,
       "transcription_working_master_required"
     );
   }
-  if (
-    source.current_master_id !== expectedWorkingMasterId
-    || source.working_master_id !== expectedWorkingMasterId
-  ) {
+  if (result.status === "master_changed") {
     return transcriptionConflict(
       request,
       env,
       "transcription_working_master_changed",
-      { currentWorkingMasterId: source.current_master_id }
+      { currentWorkingMasterId: result.currentWorkingMasterId ?? null }
     );
   }
-  if (source.source_language !== language) {
+  if (result.status === "language_mismatch") {
     return transcriptionConflict(
       request,
       env,
       "transcription_source_language_mismatch",
-      { sourceLanguage: source.source_language }
+      { sourceLanguage: result.sourceLanguage ?? null }
     );
+  }
+  if (result.status === "request_conflict") {
+    return transcriptionConflict(
+      request,
+      env,
+      "transcription_request_id_conflict"
+    );
+  }
+  if (result.status === "queue_conflict") {
+    return transcriptionConflict(
+      request,
+      env,
+      "transcription_queue_conflict"
+    );
+  }
+  if (result.status !== "ready") {
+    return transcriptionConflict(
+      request,
+      env,
+      "transcription_queue_conflict"
+    );
+  }
+  return privateJson(
+    request,
+    env.ALLOWED_ORIGINS,
+    {
+      job: presentTranscriptionJob(result.job, result.chunkRun),
+      idempotent: result.idempotent,
+      ...(!result.idempotent ? { delivery: result.delivery } : {})
+    },
+    { status: result.idempotent ? 200 : 202 }
+  );
+}
+
+export async function scheduleAutomaticTranscriptionJobs(
+  env: PodcastEnv
+): Promise<number> {
+  if (env.ENVIRONMENT !== "staging") return 0;
+  let candidates: D1Result<AutomatedTranscriptionCandidate>;
+  try {
+    candidates = await env.DB.prepare(
+      AUTOMATED_TRANSCRIPTION_CANDIDATES_SQL
+    ).bind(10).all<AutomatedTranscriptionCandidate>();
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      event: "transcription_automation_scan_failed",
+      errorName: error instanceof Error ? error.name : "UnknownError"
+    }));
+    return 0;
+  }
+  let created = 0;
+  for (const candidate of candidates.results) {
+    try {
+      const result = await ensureEpisodeTranscriptionJob(env, {
+        episodeId: candidate.episode_id,
+        expectedWorkingMasterId: candidate.current_master_id,
+        language: candidate.source_language,
+        requestId: null,
+        requestedByAdminUserId: null,
+        deferDelivery: true
+      });
+      if (result.status === "ready" && !result.idempotent) created += 1;
+    } catch (error) {
+      console.error(JSON.stringify({
+        level: "error",
+        event: "transcription_automation_failed",
+        episodeId: candidate.episode_id,
+        errorName: error instanceof Error ? error.name : "UnknownError"
+      }));
+    }
+  }
+  return created;
+}
+
+async function ensureEpisodeTranscriptionJob(
+  env: PodcastEnv,
+  {
+    episodeId,
+    expectedWorkingMasterId,
+    language,
+    requestId,
+    requestedByAdminUserId,
+    deferDelivery
+  }: {
+    episodeId: string;
+    expectedWorkingMasterId: string;
+    language: TimedTextLanguage;
+    requestId: string | null;
+    requestedByAdminUserId: string | null;
+    deferDelivery: boolean;
+  }
+): Promise<EnsureTranscriptionJobResult> {
+  const source = await loadTranscriptionSource(env.DB, episodeId);
+  if (!source?.current_master_id) return { status: "source_required" };
+  if (
+    source.current_master_id !== expectedWorkingMasterId
+    || source.working_master_id !== expectedWorkingMasterId
+  ) {
+    return {
+      status: "master_changed",
+      currentWorkingMasterId: source.current_master_id
+    };
+  }
+  if (source.source_language !== language) {
+    return {
+      status: "language_mismatch",
+      sourceLanguage: source.source_language
+    };
   }
   if (source.model !== TRANSCRIPTION_MODEL) {
     throw new RequestValidationError(
@@ -222,11 +412,13 @@ export async function queueAdminEpisodeTranscription(
 
   const vocabulary = normalizedVocabulary(source.vocabulary_json);
   const settings = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    pipelineVersion: TRANSCRIPTION_PIPELINE_VERSION,
     task: "transcribe",
     vadFilter: true,
     conditionOnPreviousText: true,
-    vocabulary
+    vocabulary,
+    captionSegmentationPolicy: DEFAULT_CAPTION_SEGMENTATION_POLICY
   };
   const settingsJson = JSON.stringify(settings);
   const inputFingerprint = await sha256Hex(JSON.stringify({
@@ -238,40 +430,39 @@ export async function queueAdminEpisodeTranscription(
     settingsVersion: source.settings_version,
     settings
   }));
+  const resolvedRequestId = requestId
+    ?? `transcription_auto_${inputFingerprint.slice(0, 32)}`;
   const existing = await findTranscriptionJob(
     env.DB,
-    requestId,
+    resolvedRequestId,
     inputFingerprint
   );
   if (existing) {
     if (
-      existing.request_id === requestId
+      existing.request_id === resolvedRequestId
       && existing.input_fingerprint !== inputFingerprint
     ) {
-      return transcriptionConflict(
-        request,
-        env,
-        "transcription_request_id_conflict"
-      );
+      return { status: "request_conflict" };
     }
     const chunkRun = existing.source_object_bytes
         > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES
       ? await ensureTranscriptionChunkRun(env, existing)
       : null;
-    if (!chunkRun || chunkRun.status === "ready") {
+    if (!deferDelivery && (!chunkRun || chunkRun.status === "ready")) {
       await enqueueRetryableTranscription(env, existing);
     }
-    return privateJson(request, env.ALLOWED_ORIGINS, {
-      job: presentTranscriptionJob(existing, chunkRun),
+    return {
+      status: "ready",
+      job: existing,
+      chunkRun,
+      delivery: chunkRun ? "chunk_processor_required" : "queued",
       idempotent: true
-    });
+    };
   }
 
   const jobId = `transcription_${inputFingerprint.slice(0, 32)}`;
   const artifactPrefix =
-    `podcasts/${access.episode.showId}/${access.episode.id}/`
-    + `transcription/${jobId}`;
-  const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
+    `podcasts/${source.show_id}/${episodeId}/transcription/${jobId}`;
   const results = await env.DB.batch([
     env.DB.prepare(
       `INSERT OR IGNORE INTO transcription_jobs (
@@ -289,8 +480,8 @@ export async function queueAdminEpisodeTranscription(
        )`
     ).bind(
       jobId,
-      requestId,
-      access.episode.id,
+      resolvedRequestId,
+      episodeId,
       source.working_master_id,
       source.source_sha256,
       source.object_key,
@@ -310,20 +501,16 @@ export async function queueAdminEpisodeTranscription(
       `${artifactPrefix}/captions.vtt`,
       `${artifactPrefix}/captions.srt`,
       `${artifactPrefix}/transcript.txt`,
-      access.authorization.identity.id
+      requestedByAdminUserId
     ),
-    env.DB.prepare(
-      `INSERT INTO admin_audit_events (
-         id, admin_user_id, action, target_type, target_id, metadata_json
-       )
-       SELECT ?, ?, 'transcription.queued', 'transcription_job', id, ?
-       FROM transcription_jobs
-       WHERE id = ? AND request_id = ?`
-    ).bind(
-      auditId,
-      access.authorization.identity.id,
-      JSON.stringify({
-        episodeId: access.episode.id,
+    prepareAdminAuditAfterSingleChange(env.DB, {
+      adminUserId: requestedByAdminUserId,
+      action: "transcription.queued",
+      targetType: "transcription_job",
+      targetId: jobId,
+      metadata: {
+        automated: requestedByAdminUserId === null,
+        episodeId,
         workingMasterId: source.working_master_id,
         workingMasterSha256: source.source_sha256,
         language,
@@ -331,35 +518,30 @@ export async function queueAdminEpisodeTranscription(
         model: source.model,
         settingsVersion: source.settings_version,
         inputFingerprint
-      }),
-      jobId,
-      requestId
-    )
+      }
+    })
   ]);
   if (Number(results[0]?.meta?.changes ?? 0) !== 1) {
     const raced = await findTranscriptionJob(
       env.DB,
-      requestId,
+      resolvedRequestId,
       inputFingerprint
     );
-    if (!raced) {
-      return transcriptionConflict(
-        request,
-        env,
-        "transcription_queue_conflict"
-      );
-    }
+    if (!raced) return { status: "queue_conflict" };
     const chunkRun = raced.source_object_bytes
         > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES
       ? await ensureTranscriptionChunkRun(env, raced)
       : null;
-    if (!chunkRun || chunkRun.status === "ready") {
+    if (!deferDelivery && (!chunkRun || chunkRun.status === "ready")) {
       await enqueueRetryableTranscription(env, raced);
     }
-    return privateJson(request, env.ALLOWED_ORIGINS, {
-      job: presentTranscriptionJob(raced, chunkRun),
+    return {
+      status: "ready",
+      job: raced,
+      chunkRun,
+      delivery: chunkRun ? "chunk_processor_required" : "queued",
       idempotent: true
-    });
+    };
   }
 
   const created = await loadTranscriptionJob(env.DB, jobId);
@@ -367,30 +549,26 @@ export async function queueAdminEpisodeTranscription(
     throw new Error("Created transcription job could not be loaded");
   }
   let chunkRun: TranscriptionChunkRunRow | null = null;
-  let delivery:
-    | "queued"
-    | "scheduled_recovery"
-    | "chunk_processor_required" = "queued";
+  let delivery: TranscriptionDelivery = deferDelivery
+    ? "scheduled_delivery"
+    : "queued";
   if (created.source_object_bytes > MAXIMUM_DIRECT_TRANSCRIPTION_BYTES) {
     chunkRun = await ensureTranscriptionChunkRun(env, created);
     delivery = "chunk_processor_required";
-  } else {
+  } else if (!deferDelivery) {
     try {
       await sendTranscriptionJob(env, created);
     } catch {
       delivery = "scheduled_recovery";
     }
   }
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    {
-      job: presentTranscriptionJob(created, chunkRun),
-      idempotent: false,
-      delivery
-    },
-    { status: 202 }
-  );
+  return {
+    status: "ready",
+    job: created,
+    chunkRun,
+    delivery,
+    idempotent: false
+  };
 }
 
 export async function processTranscriptionJob(
@@ -641,7 +819,9 @@ async function processPreparedChunkTranscription(
       })),
       {
         language: job.language as TimedTextLanguage,
-        sourceDurationMs: job.source_duration_ms
+        sourceDurationMs: job.source_duration_ms,
+        captionPolicy: parseSettings(job.settings_json)
+          .captionSegmentationPolicy
       }
     );
     const rawIndex = {
@@ -950,7 +1130,9 @@ async function completeTranscriptionJob(
   const normalized = completion?.normalized
     ?? normalizeSegmentTranscription(providerResponse, {
       language: job.language as TimedTextLanguage,
-      durationMs: job.source_duration_ms
+      durationMs: job.source_duration_ms,
+      captionPolicy: parseSettings(job.settings_json)
+        .captionSegmentationPolicy
     });
   const transcriptCues = normalizeTranscriptCues(
     normalized.cues,
@@ -1206,6 +1388,7 @@ async function loadTranscriptionSource(
 ): Promise<TranscriptionSourceRow | null> {
   return db.prepare(
     `SELECT
+       episode.show_id,
        episode.source_language,
        state.current_master_id,
        master.id AS working_master_id,
@@ -1223,13 +1406,18 @@ async function loadTranscriptionSource(
      FROM episodes episode
      JOIN episode_working_master_states state
        ON state.episode_id = episode.id
-     LEFT JOIN episode_working_masters master
+     JOIN episode_working_masters master
        ON master.id = state.current_master_id
       AND master.episode_id = episode.id
-     LEFT JOIN audio_qc_runs qc
+     JOIN audio_qc_runs qc
        ON qc.id = master.quality_control_run_id
       AND qc.status = 'succeeded'
       AND qc.blocker_count = 0
+      AND qc.source_sha256 = master.source_sha256
+      AND qc.report_sha256 = master.quality_control_report_sha256
+     JOIN show_audio_qc_policies policy
+       ON policy.show_id = episode.show_id
+      AND policy.revision = qc.policy_revision
      JOIN show_transcription_settings settings
        ON settings.show_id = episode.show_id
      LEFT JOIN transcripts transcript
@@ -1509,16 +1697,25 @@ function parseSettings(value: string): {
   vadFilter: boolean;
   conditionOnPreviousText: boolean;
   vocabulary: string[];
+  captionSegmentationPolicy?: CaptionSegmentationPolicy;
 } {
   const parsed = JSON.parse(value) as {
     schemaVersion?: unknown;
+    pipelineVersion?: unknown;
     task?: unknown;
     vadFilter?: unknown;
     conditionOnPreviousText?: unknown;
     vocabulary?: unknown;
+    captionSegmentationPolicy?: unknown;
   };
+  const legacySettings = parsed.schemaVersion === 1;
+  const currentSettings = parsed.schemaVersion === 2
+    && parsed.pipelineVersion === TRANSCRIPTION_PIPELINE_VERSION
+    && isCurrentCaptionSegmentationPolicy(
+      parsed.captionSegmentationPolicy
+    );
   if (
-    parsed.schemaVersion !== 1
+    (!legacySettings && !currentSettings)
     || parsed.task !== "transcribe"
     || parsed.vadFilter !== true
     || parsed.conditionOnPreviousText !== true
@@ -1529,10 +1726,25 @@ function parseSettings(value: string): {
   return {
     vadFilter: true,
     conditionOnPreviousText: true,
-    vocabulary: parsed.vocabulary.map(
-      (entry) => vocabularyEntry(entry)
-    )
+    vocabulary: parsed.vocabulary.map((entry) => vocabularyEntry(entry)),
+    ...(currentSettings
+      ? { captionSegmentationPolicy: DEFAULT_CAPTION_SEGMENTATION_POLICY }
+      : {})
   };
+}
+
+function isCurrentCaptionSegmentationPolicy(
+  value: unknown
+): value is CaptionSegmentationPolicy {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const policy = value as Record<string, unknown>;
+  return Object.entries(DEFAULT_CAPTION_SEGMENTATION_POLICY).every(
+    ([key, expected]) => policy[key] === expected
+  ) && Object.keys(policy).length === Object.keys(
+    DEFAULT_CAPTION_SEGMENTATION_POLICY
+  ).length;
 }
 
 function normalizedVocabulary(value: string): string[] {

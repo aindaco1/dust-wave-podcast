@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "dust-wave-podcast-tax-policy-candidates-v1",
+  "shows": {
+    "show_opera_en_la_selva": {
+      "applicableMode": "test",
+      "jurisdictionCode": "US-NM-87120",
+      "ratePartsPerMillion": 76250,
+      "inclusive": false,
+      "providerName": "nm_grt",
+      "sourceReference": "github:aindaco1/store@f4b95a2435a5f05c4f9345c9f98a1e4ae08031de:_config.yml#pricing,tax,shipping",
+      "effectiveAt": "2026-08-02T00:00:00.000Z",
+      "expiresAt": null,
+      "displayName": "NM GRT"
+    }
+  }
+}

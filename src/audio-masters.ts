@@ -29,6 +29,7 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { describeProcessorAvailability } from "./processor-mode";
 import {
   readSignedJsonBody,
   verifySignedText
@@ -252,13 +253,10 @@ export async function getAdminEpisodeAudioMaster(
       enhancementPreviewIsMaster: false,
       replacementInvalidatesDerivedApprovals: true
     },
-    processor: {
-      available: env.ENVIRONMENT === "staging"
-        && Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET),
-      mode: env.ENVIRONMENT === "staging"
-        ? "staging_manual"
-        : "unavailable"
-    }
+    processor: describeProcessorAvailability(
+      env,
+      Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET)
+    )
   });
 }
 

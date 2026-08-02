@@ -7,7 +7,10 @@ import {
   pruneSubscriptionBillingRateLimits
 } from "./subscription-checkout";
 import { pruneTaxQuoteRateLimits } from "./tax-quotes";
-import { schedulePendingTranscriptions } from "./transcription-jobs";
+import {
+  scheduleAutomaticTranscriptionJobs,
+  schedulePendingTranscriptions
+} from "./transcription-jobs";
 import type { PodcastJob } from "./types";
 import {
   schedulePendingAnnouncementDeliveries
@@ -19,6 +22,27 @@ import {
 import {
   scheduleRssImportExecutions
 } from "./rss-import-executions";
+import { syncProcessorDispatches } from "./processor-dispatches";
+import {
+  handlePodcastDeadLetterBatch,
+  isPodcastDeadLetterQueue
+} from "./queue-dead-letters";
+import {
+  scheduleAdminActionNotifications
+} from "./admin-action-notifications";
+import {
+  scheduleAutomatedDeliveryAudioJobs
+} from "./delivery-audio";
+import { scheduleAutomaticAlignmentJobs } from "./alignment-jobs";
+import { scheduleAutomaticShowNotesDrafts } from "./show-notes";
+import { scheduleAutomaticChapterDrafts } from "./chapter-drafts";
+import { scheduleAutomaticClipDrafts } from "./clip-drafts";
+import {
+  scheduleAutomaticDistributionObservations
+} from "./distribution-observations";
+import {
+  scheduleYouTubeProviderAccessCheck
+} from "./provider-access-health";
 
 export default {
   async fetch(
@@ -50,6 +74,14 @@ export default {
   },
 
   async queue(batch: MessageBatch<PodcastJob>, env: PodcastEnv): Promise<void> {
+    if (isPodcastDeadLetterQueue(env, batch.queue)) {
+      await handlePodcastDeadLetterBatch(
+        batch as unknown as MessageBatch<unknown>,
+        env
+      );
+      return;
+    }
+
     for (const message of batch.messages) {
       console.log(
         JSON.stringify({
@@ -90,8 +122,17 @@ export default {
     env: PodcastEnv
   ): Promise<void> {
     await Promise.all([
+      scheduleAutomatedDeliveryAudioJobs(env),
+      scheduleAutomaticTranscriptionJobs(env),
+      scheduleAutomaticAlignmentJobs(env)
+    ]);
+    await scheduleAutomaticShowNotesDrafts(env);
+    await scheduleAutomaticChapterDrafts(env);
+    await scheduleAutomaticClipDrafts(env);
+    await Promise.all([
       scheduleDuePublications(env),
       scheduleRssImportExecutions(env),
+      scheduleAutomaticDistributionObservations(env),
       pruneAdminAuthState(env.DB),
       pruneListenerAuthState(env.DB),
       pruneSubscriptionBillingRateLimits(env.DB),
@@ -99,7 +140,10 @@ export default {
       cleanupPodcastAnalytics(env.DB),
       cleanupVirtualAudioDiagnosticLeases(env.DB),
       schedulePendingAnnouncementDeliveries(env),
-      schedulePendingTranscriptions(env)
+      schedulePendingTranscriptions(env),
+      syncProcessorDispatches(env),
+      scheduleAdminActionNotifications(env),
+      scheduleYouTubeProviderAccessCheck(env)
     ]);
   }
 } satisfies ExportedHandler<PodcastEnv, PodcastJob>;

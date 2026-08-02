@@ -50,7 +50,7 @@ describe("publication readiness graph", () => {
       expect.objectContaining({
         id: "editorial.word_alignment",
         status: "ready",
-        severity: "blocker"
+        severity: "warning"
       }),
       expect.objectContaining({
         id: "core.working_master",
@@ -152,6 +152,115 @@ describe("publication readiness graph", () => {
         evidence: expect.objectContaining({
           certified: 10,
           remaining: 0
+        })
+      })
+    ]));
+  });
+
+  it("distinguishes automatic transcript work from editorial approval", () => {
+    const input = readyInput();
+    input.transcripts[0] = {
+      ...input.transcripts[0],
+      status: "processing",
+      approved_revision: null
+    };
+
+    const processing = evaluatePublicationReadiness(input);
+    expect(processing.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "pending",
+        summary: "The ES transcript is processing.",
+        evidence: expect.objectContaining({
+          transcriptStatus: "processing"
+        })
+      }),
+      expect.objectContaining({
+        id: "editorial.bilingual_transcripts",
+        status: "pending",
+        evidence: expect.objectContaining({
+          transcriptStatuses: {
+            en: "approved",
+            es: "processing"
+          }
+        })
+      })
+    ]));
+
+    input.transcripts[0] = {
+      ...input.transcripts[0],
+      status: "needs_review"
+    };
+    const review = evaluatePublicationReadiness(input);
+    expect(review.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "pending",
+        summary: "Approve the current ES transcript revision.",
+        evidence: expect.objectContaining({
+          transcriptStatus: "needs_review"
+        })
+      }),
+      expect.objectContaining({
+        id: "editorial.bilingual_transcripts",
+        status: "pending",
+        evidence: expect.objectContaining({
+          transcriptStatuses: {
+            en: "approved",
+            es: "needs_review"
+          }
+        })
+      })
+    ]));
+  });
+
+  it("keeps transcript and word alignment as non-blocking launch enhancements", () => {
+    const input = readyInput();
+    input.transcripts = [];
+
+    const result = evaluatePublicationReadiness(input);
+
+    expect(result.candidateGate.ready).toBe(true);
+    expect(result.candidateGate.blockerCount).toBe(0);
+    expect(result.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "missing",
+        severity: "warning"
+      }),
+      expect.objectContaining({
+        id: "editorial.word_alignment",
+        status: "missing",
+        severity: "warning"
+      })
+    ]));
+  });
+
+  it("projects transcript failures as terminal readiness evidence", () => {
+    const input = readyInput();
+    input.transcripts[0] = {
+      ...input.transcripts[0],
+      status: "failed",
+      approved_revision: null
+    };
+
+    const result = evaluatePublicationReadiness(input);
+    expect(result.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "editorial.primary_transcript",
+        status: "failed",
+        evidence: expect.objectContaining({
+          transcriptStatus: "failed"
+        })
+      }),
+      expect.objectContaining({
+        id: "editorial.bilingual_transcripts",
+        status: "failed",
+        evidence: expect.objectContaining({
+          transcriptStatuses: {
+            en: "approved",
+            es: "failed"
+          }
         })
       })
     ]));

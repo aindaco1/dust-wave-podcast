@@ -488,7 +488,7 @@ describe("RSS import executions", () => {
     });
     harness.database.prepare(
       `UPDATE show_feed_validations
-       SET validator_version = 'dustwave-rss-launch-v3'
+       SET validator_version = 'dustwave-rss-launch-v4'
        WHERE show_id = ?`
     ).run(episode.show_id);
     const cutoverPreview = await handleRequest(
@@ -1180,7 +1180,7 @@ function makeCutoverReady(database, episodeId) {
        show_id, status, feed_url, validator_version,
        feed_sha256, item_count, checked_at, validated_at
      ) VALUES (
-       ?, 'valid', ?, 'dustwave-rss-launch-v3',
+       ?, 'valid', ?, 'dustwave-rss-launch-v4',
        ?, 1, '2026-07-28T12:00:00.000Z',
        '2026-07-28T12:00:00.000Z'
      )`

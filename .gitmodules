@@ -6,4 +6,4 @@
 [submodule "alignment-runner"]
 	path = alignment-runner
 	url = https://github.com/aindaco1/dust-wave-alignment-runner.git
-	branch = release/0.2.0
+	branch = release/0.2.2

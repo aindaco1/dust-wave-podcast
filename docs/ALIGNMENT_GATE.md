@@ -1,5 +1,11 @@
 # English/Spanish word-alignment gate
 
+This is a post-launch feature gate as of August 1, 2026. It still controls
+word-level navigation, edit boundaries, alignment-dependent chapter/clip
+automation, and any claim that aligned timing passed. It no longer blocks the
+core audio, News, RSS, premium-feed, or segment-player launch. Unapproved
+transcripts and chapters remain private or absent from public projections.
+
 Word-level navigation and edit boundaries are disabled until one pinned
 alignment adapter passes the recorded launch benchmark in both English and
 Spanish. Segment captions remain available when this gate is incomplete or
@@ -56,11 +62,13 @@ The Python/model runtime belongs in a pinned GitHub or owner-controlled runner,
 not in the public Worker. The Worker owns job fingerprints, state, policy,
 result validation, and D1/R2 projection.
 
-The parent repository pins the green `release/0.2.0` submodule so the private
+The parent repository pins the green `release/0.2.2` submodule so the private
 benchmark-bundle assembler and its contract are reviewable with the Worker.
 Model execution remains independently pinned to reviewed commit
-`3c5ab054fdad375901eb186f32d7aed6cdb40413` and runner digest
-`sha256:5b07bbf315bd62a3c445a7a5a476bf642f91aa1c781173aa1f4e4e8021a51178`.
+`e611801d2af82dcdb079444b7e8a7eea4309d1a6` and runner digest
+`sha256:8a7cda2702487a1d542d5fb740efe8580ca9edd99f405d722d610536c73a3a11`.
+The digest is reproducible from that exact execution revision with
+`git archive --format=tar REVISION | shasum -a 256`.
 After the Worker validates that exact identity, the staging workflow fetches
 and detaches the submodule at the execution commit before installing an
 adapter. A bundle assembled by later source still identifies the exact commit
@@ -111,39 +119,63 @@ alignment `passed` transition without an exact approval and rejects an
 approval unless the result is structurally eligible and its current inputs and
 clean bilingual benchmark all match.
 
-The Podcast admin queues the selected approved language and displays the exact
-manual workflow handoff. `process-alignment.yml` is staging-only, pinned to
-Ubuntu 24.04, validates the Worker-selected execution revision against the
-reviewed constant, verifies the runner remote, and performs an exact
-content-addressed fetch/detached checkout before installing only the selected
-locked adapter extra. It uses purpose-bound signed Worker routes, receives no
-Cloudflare/R2 credential, and retains no audio, transcript, or raw result
-artifact. The Worker validates and stores the result but can move it only to
-`needs_review`; an Admin/Super-admin approval button remains disabled until
-the benchmark row matches.
+The Podcast scheduler claims eligible alignment work through the durable
+processor-dispatch ledger and dispatches `process-alignment.yml` without a
+manual GitHub Actions handoff. The workflow is staging-only, pinned to Ubuntu
+24.04, validates the Worker-selected execution revision against the reviewed
+constant, verifies the runner remote, and performs an exact content-addressed
+fetch/detached checkout before installing only the selected locked adapter
+extra. It uses purpose-bound signed Worker routes, receives no Cloudflare/R2
+credential, retains no audio, transcript, or raw result artifact, and masks
+each derived callback signature before exposing it as a step output. The
+Worker validates and stores the result but can move it only to `needs_review`;
+an Admin/Super-admin approval button remains disabled until the benchmark row
+matches.
+
+The retained content-free evidence includes the source language and a sampled
+peak-disk measurement alongside the runner's input-duration, wall-clock, and
+peak-memory values. Disk sampling records immutable input bytes plus peak
+filesystem growth during the exact adapter command; it never records a source
+path, transcript, object key, provider response, or credential. A qualifying
+clean 60-minute run can therefore flow directly into private H1 resource
+evidence instead of requiring an operator to reconstruct measurements from
+logs.
 
 ## Current evidence state
 
-The schema, normalized evaluator, private import path, and adversarial
-integration fixtures are implemented. The test suite proves evaluation,
-content-addressed storage, replay/conflict handling, content-free auditing,
-role/recent-auth/CSRF enforcement, and D1 approval linkage with synthetic
-records only. It does not claim that either candidate passes real audio. H1
-remains blocked until the 24-fixture rights-cleared corpus, human word
-boundaries, 100 preview reviews, 60-minute resource runs, idempotency evidence,
-and clean-runner reproduction are imported and produce a passing row.
+The schema, normalized evaluator, private import path, adversarial integration
+fixtures, benchmark-bundle assembler, and automated processor handoff are
+implemented. The test suite proves evaluation, content-addressed storage,
+replay/conflict handling, content-free auditing, role/recent-auth/CSRF
+enforcement, and D1 approval linkage with synthetic records only. It does not
+claim that either candidate passes the bilingual launch benchmark. H1 remains
+blocked until the 24-fixture rights-cleared corpus, human word boundaries, 100
+preview reviews, 60-minute resource runs, idempotency evidence, and
+clean-runner reproduction are imported and produce a passing row.
 
-As of July 28, 2026, the owner-authorized English Dust Don't Settle source has
-enough duration for 12 non-overlapping two-to-five-minute candidates, but its
-transcript still needs human text, speaker, and timing review. No English
-fixture is accepted yet. The Ópera en la Selva Substack feed currently exposes
-two editorial items and no podcast-audio enclosure. A metadata-only review of
+As of August 1, 2026, the owner-authorized English Dust Don't Settle source has
+an approved, speaker-confirmed transcript and has completed exact WhisperX
+alignment under runner commit
+`e611801d2af82dcdb079444b7e8a7eea4309d1a6`. Staging job
+`alignment_job_0426ec9ac766e5b43e626dd75695f128` produced immutable manifest
+SHA-256
+`b60b845414ae52a78987530550be58b10d5e416b2567d876ce51842f567a1706`:
+10,176 of 10,176 words are aligned, with zero unaligned, interpolated,
+invalid, or projection-issue words. That result is structurally eligible and
+awaits the real H1 benchmark plus exact human approval; it is not launch-gate
+evidence by itself. The Ópera en la Selva Substack feed currently exposes two
+editorial items and no podcast-audio enclosure. A metadata-only review of
 candidate Dust Wave YouTube uploads found English automatic captions and no
 owner-confirmed Spanish spoken-audio source. YouTube's translated caption
 options are not evidence that the underlying speech is Spanish.
 
-The Spanish 12-fixture corpus therefore remains a sourcing and rights blocker.
-Do not download an unapproved candidate, derive gold boundaries from
-machine-translated captions, or substitute the deterministic UI fixture for
-real benchmark evidence. Record the source authorization and spoken language
-before any private corpus download or segmentation.
+On August 1, 2026, the owner approved the native-Spanish interview
+`KVlzIKhqIWw` (36:28) for private benchmark testing. Its source metadata reports
+Spanish speech and YouTube exposes an original Spanish automatic-caption
+reference. `prepare:alignment-benchmark-source` now selects twelve distinct,
+non-overlapping, caption-dense two-to-five-minute windows, transcodes exact
+private PCM fixtures, and records source ranges, media/reference hashes,
+authorization, tool identity, and word-count evidence without committing media
+or transcript content. Automatic captions remain an unreviewed reference: the
+fixtures cannot become H1 gold until the Spanish transcript and sampled word
+boundaries are explicitly reviewed.

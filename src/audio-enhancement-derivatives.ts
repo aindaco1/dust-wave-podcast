@@ -20,6 +20,9 @@ import {
 
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import {
+  prepareResolveWorkingMasterAction
+} from "./admin-action-notifications";
+import {
   hasAdminRoleForShow,
   requireAdmin,
   requireRecentAdminAuthentication,
@@ -35,6 +38,7 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { describeProcessorAvailability } from "./processor-mode";
 import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
   readSignedJsonBody,
@@ -48,6 +52,9 @@ import {
   requiredText,
   validIdentifier
 } from "./validation";
+import {
+  currentWorkingMasterDecisionEvidenceSql
+} from "./working-master-decision-evidence";
 
 const READ_ROLES: AdminRole[] = [
   "super_admin",
@@ -73,27 +80,8 @@ const FAILURE_CODES = new Set([
   "output_invalid",
   "multipart_unavailable"
 ]);
-const CURRENT_DECISION_EVIDENCE_SQL = `
-  EXISTS (
-    SELECT 1
-    FROM episode_working_master_states state
-    JOIN audio_qc_runs qc
-      ON qc.id =
-        audio_enhancement_derivatives.derivative_quality_control_run_id
-    JOIN show_audio_qc_policies policy
-      ON policy.show_id = ?
-    WHERE state.episode_id =
-        audio_enhancement_derivatives.episode_id
-      AND state.revision = ?
-      AND state.current_master_id =
-        audio_enhancement_derivatives.source_master_id
-      AND qc.status = 'succeeded'
-      AND qc.blocker_count = 0
-      AND qc.policy_revision = policy.revision
-      AND qc.source_sha256 =
-        audio_enhancement_derivatives.output_sha256
-      AND qc.report_sha256 IS NOT NULL
-  )`;
+const CURRENT_DECISION_EVIDENCE_SQL =
+  currentWorkingMasterDecisionEvidenceSql({ requireRevision: true });
 
 type DerivativeSourceRow = {
   episode_id: string;
@@ -209,12 +197,7 @@ export async function listAdminAudioEnhancementDerivatives(
   ).bind(access.episode.id).all<DerivativeRow>();
   return privateJson(request, env.ALLOWED_ORIGINS, {
     derivatives: rows.results.map((row) => presentDerivative(env, row)),
-    processor: {
-      available: processorAvailable(env),
-      mode: env.ENVIRONMENT === "staging"
-        ? "staging_manual"
-        : "unavailable"
-    },
+    processor: describeProcessorAvailability(env, processorAvailable(env)),
     safeguards: {
       selectedReadyPreviewRequired: true,
       currentMasterSnapshotRequired: true,
@@ -1275,9 +1258,8 @@ export async function approveAdminAudioEnhancementDerivative(
     `derivative_approval_guard_${crypto.randomUUID().replace(/-/g, "")}`;
   const masterGuardId =
     `master_approval_guard_${crypto.randomUUID().replace(/-/g, "")}`;
-  let results;
   try {
-    results = await env.DB.batch([
+    await env.DB.batch([
       env.DB.prepare(
         `UPDATE audio_enhancement_derivatives
          SET
@@ -1296,7 +1278,6 @@ export async function approveAdminAudioEnhancementDerivative(
         approvalReason,
         derivativeId,
         derivative.source_master_id,
-        derivative.show_id,
         baseRevision
       ),
       env.DB.prepare(
@@ -1370,7 +1351,8 @@ export async function approveAdminAudioEnhancementDerivative(
       ).bind(derivativeGuardId),
       env.DB.prepare(
         `DELETE FROM publication_batch_guards WHERE id = ?`
-      ).bind(masterGuardId)
+      ).bind(masterGuardId),
+      prepareResolveWorkingMasterAction(env.DB, derivativeId)
     ]);
   } catch (error) {
     const message = String(error);
@@ -1386,16 +1368,10 @@ export async function approveAdminAudioEnhancementDerivative(
     }
     throw error;
   }
-  if (
-    Number(results[0]?.meta?.changes ?? 0) !== 1
-    || Number(results[3]?.meta?.changes ?? 0) !== 1
-  ) {
-    return derivativeConflict(
-      request,
-      env,
-      "audio_enhancement_derivative_master_conflict"
-    );
-  }
+  // The two publication_batch_guards abort this atomic batch unless both
+  // snapshot-bound updates changed exactly one row. A resolved batch is the
+  // authoritative commit signal; D1 statement metadata can report trigger-
+  // affected change counts that do not describe those guarded updates.
   return privateJson(request, env.ALLOWED_ORIGINS, {
     master: {
       id: masterId,
@@ -1500,7 +1476,6 @@ export async function rejectAdminAudioEnhancementDerivative(
       rejectionReason,
       derivativeId,
       derivative.source_master_id,
-      derivative.show_id,
       baseRevision
     ),
     prepareAdminAuditAfterSingleChange(env.DB, {
@@ -1518,7 +1493,8 @@ export async function rejectAdminAudioEnhancementDerivative(
         qualityControlReportSha256:
           derivative.quality_control_report_sha256
       }
-    })
+    }),
+    prepareResolveWorkingMasterAction(env.DB, derivativeId)
   ]);
   if (Number(results[0]?.meta?.changes ?? 0) !== 1) {
     return derivativeConflict(

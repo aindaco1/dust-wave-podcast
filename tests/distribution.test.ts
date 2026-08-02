@@ -1,5 +1,5 @@
 import { sha256Hex } from "@dustwave/worker-core/crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   listDistributionDestinations,
@@ -12,6 +12,10 @@ import { handleRequest } from "../src/app";
 import type { PodcastEnv } from "../src/env";
 
 describe("streamlined publishing directory registry", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("returns one role-scoped show feed and normalized directory readiness", async () => {
     const fixture = await distributionFixture({ role: "analyst" });
     const response = await listDistributionDestinations(
@@ -41,6 +45,7 @@ describe("streamlined publishing directory registry", () => {
         feedValidation: Record<string, unknown>;
       };
       destinations: Array<Record<string, unknown>>;
+      submissionPacket: Record<string, unknown>;
     };
 
     expect(response.status).toBe(200);
@@ -102,6 +107,36 @@ describe("streamlined publishing directory registry", () => {
     expect(JSON.stringify(payload.destinations)).not.toContain(
       "owner_setup_status"
     );
+    expect(payload.submissionPacket).toMatchObject({
+      schema: "dust-wave-directory-submission-packet",
+      version: 1,
+      containsCredentials: false,
+      show: {
+        id: "show_opera_en_la_selva",
+        slug: "opera-en-la-selva",
+        title: "Ópera en la Selva",
+        feedUrl:
+          "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
+        owner: {
+          name: "Dust Wave",
+          email: "podcasts@dustwave.xyz"
+        }
+      },
+      feedValidation: {
+        status: "valid",
+        feedSha256: "a".repeat(64)
+      },
+      destinations: [
+        expect.objectContaining({
+          id: "spotify",
+          submissionUrl: "https://podcasters.spotify.com/"
+        }),
+        expect.objectContaining({ id: "apple_podcasts" })
+      ]
+    });
+    expect(JSON.stringify(payload.submissionPacket)).not.toMatch(
+      /setupNotes|ownerAccountLabel|submissionEvidenceUrl|password|token/iu
+    );
     expect(
       fixture.queries.some(({ query, values }) =>
         query.includes("show_distribution_destinations")
@@ -112,6 +147,22 @@ describe("streamlined publishing directory registry", () => {
 
   it("revalidates the exact show feed through the CSRF-scoped admin route", async () => {
     const fixture = await distributionFixture({ role: "producer" });
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (new Headers(init?.headers).has("range")) {
+        return new Response(pngHeader(1_400, 1_400), {
+          status: 206,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "24",
+            "content-range": "bytes 0-23/24"
+          }
+        });
+      }
+      return new Response(null, {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    }));
     const response = await handleRequest(
       fixture.request(
         "/v1/admin/shows/show_opera_en_la_selva/feed-validation",
@@ -123,7 +174,7 @@ describe("streamlined publishing directory registry", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       valid: true,
-      validatorVersion: "dustwave-rss-launch-v3",
+      validatorVersion: "dustwave-rss-launch-v4",
       itemCount: 1
     });
     expect(
@@ -372,7 +423,8 @@ describe("streamlined publishing directory registry", () => {
     expect(
       fixture.queries.some(({ query, values }) =>
         query.includes("UPDATE episode_publications")
-        && query.includes("evidence_source = 'manual_review'")
+        && query.includes("evidence_source = ?")
+        && values.includes("manual_review")
         && values.includes(
           "https://open.spotify.com/episode/dust-wave-fixture"
         )
@@ -638,6 +690,19 @@ async function distributionFixture({
           return this;
         },
         async first() {
+          if (query.includes(
+            "LEFT JOIN distribution_observation_events event"
+          )) {
+            return {
+              status: "observed",
+              evidence_url:
+                "https://open.spotify.com/episode/dust-wave-fixture",
+              evidence_source: "manual_review",
+              last_error: null,
+              event_id: values[0],
+              audit_id: values[1]
+            };
+          }
           if (query.includes("SELECT s.admin_user_id")) {
             return {
               admin_user_id: "admin_distribution_fixture",
@@ -686,11 +751,25 @@ async function distributionFixture({
               owner_setup_status: observationOwnerSetupStatus
             };
           }
-          if (query.includes("SELECT id, title, rss_slug")) {
+          if (
+            query.includes(
+              "id, slug, title, description, language, artwork_url, canonical_url"
+            )
+          ) {
             return {
               id: "show_opera_en_la_selva",
+              slug: "opera-en-la-selva",
               title: "Ópera en la Selva",
-              rss_slug: "opera-en-la-selva"
+              description: "Historias de música, bosque y comunidad.",
+              language: "es",
+              artwork_url: "https://dustwave.xyz/opera.jpg",
+              canonical_url:
+                "https://dustwave.xyz/podcasts/opera-en-la-selva/",
+              rss_slug: "opera-en-la-selva",
+              podcast_guid: "d21642df-1816-55c8-b308-6209066e9ef6",
+              author_name: "Dust Wave",
+              category: "Arts",
+              explicit: 0
             };
           }
           if (
@@ -700,6 +779,22 @@ async function distributionFixture({
             return {
               id: "show_opera_en_la_selva",
               rss_slug: "opera-en-la-selva"
+            };
+          }
+          if (
+            query.includes("FROM episodes")
+            && query.includes("WHERE id = ?")
+            && query.includes("audio_etag")
+          ) {
+            return {
+              id: "episode_opera",
+              show_id: "show_opera_en_la_selva",
+              duration_seconds: 600,
+              audio_key: "podcasts/episode.mp3",
+              audio_bytes: 1_000,
+              audio_mime_type: "audio/mpeg",
+              audio_filename: "opera.mp3",
+              audio_etag: '"etag"'
             };
           }
           if (
@@ -727,7 +822,7 @@ async function distributionFixture({
               status: "valid",
               feed_url:
                 "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
-              validator_version: "dustwave-rss-launch-v3",
+              validator_version: "dustwave-rss-launch-v4",
               feed_sha256: "a".repeat(64),
               item_count: 1,
               failure_code: null,
@@ -875,6 +970,28 @@ async function distributionFixture({
       async send(job: Record<string, unknown>) {
         sentJobs.push(job);
       }
+    },
+    MEDIA_BUCKET: {
+      async head() {
+        return {
+          size: 1_000,
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "audio/mpeg");
+          }
+        };
+      },
+      async get() {
+        return {
+          body: new Blob([new Uint8Array([0])]).stream(),
+          size: 1,
+          range: { offset: 0, length: 1 },
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "audio/mpeg");
+          }
+        };
+      }
     }
   } as unknown as PodcastEnv;
   return {
@@ -904,6 +1021,15 @@ async function distributionFixture({
       });
     }
   };
+}
+
+function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
 }
 
 function destinationRow(

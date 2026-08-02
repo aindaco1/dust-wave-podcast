@@ -47,7 +47,7 @@ const sourceShow = {
   language: "es",
   status: "active",
   artwork_url:
-    "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork.png",
+    "https://dustwave.xyz/img/podcasts/opera-en-la-selva/artwork-feed.jpg",
   canonical_url: "https://dustwave.xyz/podcasts/opera-en-la-selva/",
   rss_slug: "opera-en-la-selva",
   youtube_channel_url:

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminSession,
+  issueAdminLoginToken,
   startAdminLogin
 } from "../src/admin-auth";
 import type { PodcastEnv } from "../src/env";
@@ -12,6 +13,94 @@ afterEach(() => {
 });
 
 describe("admin authentication privacy", () => {
+  it("reuses one content-stable action token without storing its usable value", async () => {
+    const writes: Array<{ query: string; values: unknown[] }> = [];
+    const db = {
+      prepare(query: string) {
+        let values: unknown[] = [];
+        return {
+          bind(...bound: unknown[]) {
+            values = bound;
+            return this;
+          },
+          async first() {
+            return query.includes("FROM admin_users")
+              ? { id: "admin_fixture" }
+              : null;
+          },
+          async all() {
+            return query.includes("FROM admin_user_roles")
+              ? { results: [{ role: "super_admin", show_id: null }] }
+              : { results: [] };
+          },
+          async run() {
+            writes.push({ query, values });
+            return { success: true, meta: { changes: 1 } };
+          }
+        };
+      }
+    } as unknown as D1Database;
+    const env = {
+      DB: db,
+      SITE_ORIGIN: "https://dustwave.xyz",
+      ADMIN_EMAIL_LOOKUP_PEPPER: "pepper_fixture",
+      ADMIN_SESSION_SECRET: "session_fixture"
+    } as unknown as PodcastEnv;
+    const options = {
+      allowedRoles: ["super_admin" as const],
+      email: "ADMIN@EXAMPLE.COM",
+      returnPath:
+        "/admin/podcasts/?show=show_fixture&episode=episode_fixture"
+        + "&step=media&target=working_master",
+      showId: "show_fixture",
+      stableSeed: "a".repeat(64)
+    };
+
+    const first = await issueAdminLoginToken(env, options);
+    const second = await issueAdminLoginToken(env, options);
+
+    expect(first).toEqual(second);
+    expect(first?.loginUrl).toContain(
+      "?show=show_fixture&episode=episode_fixture&step=media"
+    );
+    expect(first?.loginUrl).toContain("#magic-link=");
+    expect(first?.deliveryKey).toBe("a".repeat(64));
+    const tokenWrites = writes.filter(({ query }) =>
+      query.includes("INSERT INTO admin_login_tokens")
+    );
+    expect(tokenWrites).toHaveLength(2);
+    expect(tokenWrites[0].values).toEqual(tokenWrites[1].values);
+    expect(tokenWrites[0].values[0]).toMatch(/^[a-f0-9]{64}$/);
+    expect(tokenWrites.flatMap(({ values }) => values)).not.toContain(
+      "admin@example.com"
+    );
+    const usableToken = new URL(first!.loginUrl).hash.replace(
+      "#magic-link=",
+      ""
+    );
+    expect(tokenWrites.flatMap(({ values }) => values)).not.toContain(
+      usableToken
+    );
+  });
+
+  it("fails closed for an off-site admin action return path", async () => {
+    const env = {
+      DB: {
+        prepare() {
+          throw new Error("database must not be read");
+        }
+      },
+      SITE_ORIGIN: "https://dustwave.xyz",
+      ADMIN_EMAIL_LOOKUP_PEPPER: "pepper_fixture",
+      ADMIN_SESSION_SECRET: "session_fixture"
+    } as unknown as PodcastEnv;
+
+    expect(await issueAdminLoginToken(env, {
+      email: "admin@example.com",
+      returnPath: "https://attacker.example/admin/podcasts/"
+    })).toBeNull();
+  });
+
   it("stores only an email lookup HMAC while sending the address directly to Resend", async () => {
     const boundValues: unknown[][] = [];
     const db = {

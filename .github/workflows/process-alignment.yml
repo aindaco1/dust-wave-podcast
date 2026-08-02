@@ -26,19 +26,13 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
+      - name: Set up shared processor runtime
+        uses: ./.github/actions/setup-processor-node
 
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           enable-cache: true
-
-      - name: Install locked JavaScript dependencies
-        run: npm ci
 
       - name: Validate alignment request
         id: request
@@ -53,7 +47,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/manifest-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Fetch exact private alignment manifest
         env:
@@ -83,7 +76,7 @@ jobs:
           EXPECTED_RUNNER_REVISION: ${{ steps.alignment.outputs.runner_revision }}
         run: |
           test "$EXPECTED_RUNNER_REVISION" \
-            = "3c5ab054fdad375901eb186f32d7aed6cdb40413"
+            = "e611801d2af82dcdb079444b7e8a7eea4309d1a6"
           test "$(git -C alignment-runner remote get-url origin)" \
             = "https://github.com/aindaco1/dust-wave-alignment-runner.git"
           git -C alignment-runner fetch \
@@ -105,7 +98,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/source-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream immutable private working master
         env:
@@ -141,12 +133,15 @@ jobs:
           ALIGNMENT_ADAPTER: ${{ steps.alignment.outputs.adapter }}
           RUNNER_DIGEST: ${{ steps.alignment.outputs.runner_digest }}
         run: |
-          uv run dustwave-align run \
-            --adapter "$ALIGNMENT_ADAPTER" \
-            --request ../work/alignment/runner-request.json \
-            --input-root ../work/alignment \
-            --output ../work/alignment/result.json \
-            --runner-digest "$RUNNER_DIGEST"
+          node ../scripts/run-with-disk-sampling.mjs \
+            --output ../work/alignment/disk-measurement.json \
+            --existing-input ../work/alignment/source.audio \
+            -- uv run dustwave-align run \
+              --adapter "$ALIGNMENT_ADAPTER" \
+              --request ../work/alignment/runner-request.json \
+              --input-root ../work/alignment \
+              --output ../work/alignment/result.json \
+              --runner-digest "$RUNNER_DIGEST"
 
       - name: Validate result and build content-free evidence
         run: >-
@@ -155,6 +150,7 @@ jobs:
           work/alignment/result.json
           work/alignment/callback.json
           work/alignment/evidence.json
+          work/alignment/disk-measurement.json
 
       - name: Sign private result
         id: success_signature
@@ -163,7 +159,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit immutable private alignment result
         id: submit
@@ -201,7 +196,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/alignment/failure-callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit bounded failure evidence
         if: ${{ failure() && steps.alignment.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}

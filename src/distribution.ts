@@ -7,6 +7,10 @@ import {
   loadDistributionLaunchCertification,
   type DestinationLaunchCertification
 } from "./distribution-certification";
+import { buildDirectorySubmissionPacket } from
+  "./directory-submission-packet";
+import { recordDistributionObservation } from
+  "./distribution-observation-store";
 import {
   publicationJobType,
   type PublicationDestination
@@ -62,12 +66,27 @@ export async function listDistributionDestinations(
   }
   const show = await env.DB
     .prepare(
-      `SELECT id, title, rss_slug
+      `SELECT
+         id, slug, title, description, language, artwork_url, canonical_url,
+         rss_slug, podcast_guid, author_name, category, explicit
        FROM shows
        WHERE id = ?`
     )
     .bind(showId)
-    .first<{ id: string; title: string; rss_slug: string }>();
+    .first<{
+      id: string;
+      slug: string;
+      title: string;
+      description: string;
+      language: string;
+      artwork_url: string | null;
+      canonical_url: string;
+      rss_slug: string;
+      podcast_guid: string | null;
+      author_name: string;
+      category: string;
+      explicit: number;
+    }>();
   if (!show) {
     return privateJson(
       request,
@@ -212,12 +231,34 @@ export async function listDistributionDestinations(
     (maximum, channel) => Math.max(maximum, channel.publicationRevision),
     0
   );
+  const feedUrl =
+    `${env.FEED_ORIGIN.replace(/\/$/, "")}/${show.rss_slug}/rss.xml`;
+  const submissionPacket = buildDirectorySubmissionPacket({
+    show: {
+      id: show.id,
+      slug: show.slug,
+      title: show.title,
+      description: show.description,
+      language: show.language,
+      artworkUrl: show.artwork_url,
+      canonicalUrl: show.canonical_url,
+      podcastGuid: show.podcast_guid,
+      authorName: show.author_name,
+      category: show.category,
+      explicit: show.explicit === 1
+    },
+    feedUrl,
+    ownerName: show.author_name,
+    ownerEmail: env.PODCAST_OWNER_EMAIL,
+    feedValidation: launchCertification.feedValidation,
+    destinations
+  });
   return privateJson(request, env.ALLOWED_ORIGINS, {
     showId,
     showTitle: show.title,
     episodeId,
-    feedUrl:
-      `${env.FEED_ORIGIN.replace(/\/$/, "")}/${show.rss_slug}/rss.xml`,
+    feedUrl,
+    submissionPacket,
     semantics: "rss-follow-after-one-time-owner-setup",
     summary: {
       ...launchCertification.summary,
@@ -839,113 +880,25 @@ export async function updateEpisodeDistributionObservation(
     );
   }
   const nextError = status === "failed" ? error : null;
-  const idempotent = publication.status === status
-    && (publication.evidence_url || null) === evidenceUrl
-    && (publication.last_error || null) === nextError
-    && publication.evidence_source === "manual_review";
-  if (idempotent) {
-    return privateJson(request, env.ALLOWED_ORIGINS, {
-      updated: true,
-      idempotent: true,
+  const observation = await recordDistributionObservation(env.DB, {
+    publication: {
+      id: publication.id,
+      showId: access.episode.showId,
       episodeId: access.episode.id,
       destinationId,
       publicationRevision,
-      status,
-      evidenceUrl
-    });
-  }
-
-  const priorStatus = publication.status;
-  const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
-  const observationEventId =
-    `distribution_observation_${crypto.randomUUID().replace(/-/g, "")}`;
-  const results = await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO admin_audit_events (
-         id, admin_user_id, action, target_type, target_id, metadata_json
-       )
-       SELECT ?, ?, ?, ?, ?, ?
-       FROM episode_publications
-       WHERE id = ?
-         AND publication_revision = ?
-         AND status = ?`
-    ).bind(
-      auditId,
-      access.authorization.identity.id,
-      status === "observed"
-        ? "distribution.directory_observed"
-        : "distribution.directory_failed",
-      "episode_publication",
-      publication.id,
-      JSON.stringify({
-        episodeId: access.episode.id,
-        destinationId,
-        publicationRevision,
-        priorStatus,
-        status,
-        hasEvidenceUrl: Boolean(evidenceUrl),
-        hasError: Boolean(nextError)
-      }),
-      publication.id,
-      publicationRevision,
-      priorStatus
-    ),
-    env.DB.prepare(
-      `INSERT INTO distribution_observation_events (
-         id, show_id, episode_id, destination_id, publication_revision,
-         status, evidence_url, failure_detail, evidence_source,
-         evidence_admin_user_id
-       )
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'manual_review', ?
-       FROM episode_publications
-       WHERE id = ?
-         AND publication_revision = ?
-         AND status = ?`
-    ).bind(
-      observationEventId,
-      access.episode.showId,
-      access.episode.id,
-      destinationId,
-      publicationRevision,
-      status,
-      evidenceUrl,
-      nextError,
-      access.authorization.identity.id,
-      publication.id,
-      publicationRevision,
-      priorStatus
-    ),
-    env.DB.prepare(
-      `UPDATE episode_publications
-       SET
-         status = ?,
-         evidence_url = ?,
-         evidence_source = 'manual_review',
-         evidence_admin_user_id = ?,
-         last_observed_at = CASE
-           WHEN ? = 'observed' THEN datetime('now')
-           ELSE last_observed_at
-         END,
-         last_error = ?,
-         updated_at = datetime('now')
-       WHERE id = ?
-         AND publication_revision = ?
-         AND status = ?`
-    ).bind(
-      status,
-      evidenceUrl,
-      access.authorization.identity.id,
-      status,
-      nextError,
-      publication.id,
-      publicationRevision,
-      priorStatus
-    )
-  ]);
-  if (
-    Number(results[1]?.meta?.changes ?? 0) !== 1
-    || Number(results[2]?.meta?.changes ?? 0) !== 1
-  ) {
+      priorStatus: publication.status,
+      priorEvidenceUrl: publication.evidence_url,
+      priorError: publication.last_error,
+      priorEvidenceSource: publication.evidence_source
+    },
+    status: status as "observed" | "failed",
+    evidenceUrl,
+    error: nextError,
+    evidenceSource: "manual_review",
+    adminUserId: access.authorization.identity.id
+  });
+  if (observation.status === "conflict") {
     return privateJson(
       request,
       env.ALLOWED_ORIGINS,
@@ -955,7 +908,7 @@ export async function updateEpisodeDistributionObservation(
   }
   return privateJson(request, env.ALLOWED_ORIGINS, {
     updated: true,
-    idempotent: false,
+    idempotent: observation.status === "idempotent",
     episodeId: access.episode.id,
     destinationId,
     publicationRevision,

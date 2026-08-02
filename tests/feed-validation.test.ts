@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { PodcastEnv } from "../src/env";
@@ -14,8 +14,30 @@ import {
 } from "../src/transcripts";
 
 describe("canonical feed launch validation", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("validates and records the exact generated RSS body during Publish", async () => {
     const fixture = await feedFixture();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (new Headers(init?.headers).has("range")) {
+        return new Response(pngHeader(1_400, 1_400), {
+          status: 206,
+          headers: {
+            "content-type": "image/png",
+            "content-length": "24",
+            "content-range": "bytes 0-23/24"
+          }
+        });
+      }
+      expect(init?.method).toBe("HEAD");
+      return new Response(null, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" }
+      });
+    }));
     const evidence = await validateAndRecordPublicFeed(
       fixture.env,
       "show_opera"
@@ -25,7 +47,7 @@ describe("canonical feed launch validation", () => {
       showId: "show_opera",
       feedUrl:
         "https://feeds.dustwave.xyz/opera-en-la-selva/rss.xml",
-      validatorVersion: "dustwave-rss-launch-v3",
+      validatorVersion: "dustwave-rss-launch-v4",
       itemCount: 1
     });
     expect(evidence.feedSha256).toMatch(/^[a-f0-9]{64}$/u);
@@ -232,6 +254,33 @@ async function feedFixture({
               explicit: 0
             };
           }
+          if (
+            query.includes("FROM episodes")
+            && query.includes("WHERE id = ?")
+            && query.includes("audio_etag")
+          ) {
+            return {
+              id: "episode_opera_1",
+              show_id: "show_opera",
+              duration_seconds: 600,
+              audio_key: "public/opera-1.mp3",
+              audio_bytes: 1_000,
+              audio_mime_type: "audio/mpeg",
+              audio_filename: "opera-1.mp3",
+              audio_etag: '"audio-etag"'
+            };
+          }
+          if (
+            query.includes("FROM episodes e")
+            && query.includes("JOIN shows s")
+            && query.includes("e.slug = ?")
+          ) {
+            return {
+              id: "episode_opera_1",
+              canonical_url:
+                "https://dustwave.xyz/news/el-primer-episodio/"
+            };
+          }
           return null;
         },
         async all() {
@@ -271,11 +320,43 @@ async function feedFixture({
   return {
     env: {
       DB: db,
+      SITE_ORIGIN: "https://dustwave.xyz",
       FEED_ORIGIN: "https://feeds.dustwave.xyz",
       MEDIA_ORIGIN: "https://media.dustwave.xyz",
+      MEDIA_BUCKET: {
+        async head() {
+          return {
+            size: 1_000,
+            httpEtag: '"audio-etag"',
+            writeHttpMetadata(headers: Headers) {
+              headers.set("content-type", "audio/mpeg");
+            }
+          };
+        },
+        async get() {
+          return {
+            body: new Blob([new Uint8Array([0])]).stream(),
+            size: 1,
+            range: { offset: 0, length: 1 },
+            httpEtag: '"audio-etag"',
+            writeHttpMetadata(headers: Headers) {
+              headers.set("content-type", "audio/mpeg");
+            }
+          };
+        }
+      },
       PODCAST_AUTHOR_NAME: "Dust Wave",
       PODCAST_OWNER_EMAIL: "podcasts@dustwave.xyz"
     } as unknown as PodcastEnv,
     statements
   };
+}
+
+function pngHeader(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
 }

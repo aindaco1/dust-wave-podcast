@@ -339,6 +339,8 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/site-projection` | recently authenticated super-admin | Recompute and SHA-bind the reviewed site-catalog projection; dry-run unless GitHub publishing is explicitly live |
 | `GET` | `/v1/admin/shows/{id}/premium-prices` | super-admin | Read the non-secret monthly/annual USD configuration, provider readiness, and pre-launch mutation blockers |
 | `PATCH` | `/v1/admin/shows/{id}/premium-prices` | recently authenticated super-admin | Atomically configure both pre-launch USD prices with optimistic values and exact confirmation; clears stale provider Price links but never mutates Stripe |
+| `GET` | `/v1/admin/shows/{id}/tax-policy` | super-admin | Read assigned, mode-bound tax-policy evidence and any checked-in unapproved candidate without exposing Stripe Tax Rate IDs |
+| `PUT` | `/v1/admin/shows/{id}/tax-policy` | recently authenticated super-admin | Idempotently create and attest an exact manual Stripe Tax Rate, then atomically approve and assign its immutable policy version after exact typed confirmation; does not enable Checkout |
 | `POST` | `/v1/admin/shows/{id}/rss-import/preview` | recently authenticated super-admin | Fetch and sanitize one explicitly authorized public HTTPS RSS feed without importing episodes or media |
 | `POST` | `/v1/admin/shows/{id}/rss-import/podcast-guid` | recently authenticated super-admin | Deliberately assign a previewed source channel GUID once to an empty coming-soon show |
 | `GET` | `/v1/admin/shows/{id}/rss-import/plans` | analyst+ | List the ten most recent show-scoped immutable migration plans and selected evidence |
@@ -388,6 +390,13 @@ including under concurrent requests.
 | `GET` | `/v1/admin/distribution?showId={id}` | analyst+ | Show-scoped 10+ directory setup/readiness registry and canonical feed |
 | `GET` | `/v1/admin/subscribers` | super-admin | Bounded privacy-minimized aggregate and multi-source subscriber operations view as JSON or CSV |
 | `GET` | `/v1/admin/episodes/{id}/distribution` | analyst+ | Latest immutable RSS/News/YouTube jobs plus per-directory state for one role-scoped episode |
+
+Processor readiness responses reuse one environment projection. Their `mode`
+is `staging_automatic` when the durable GitHub Actions pull dispatcher owns
+routine execution, `staging_manual` only for explicit break-glass staging, and
+`unavailable` when the environment or processor prerequisites fail closed.
+Queue responses that expose `manualDispatchOnly` derive it from that same
+projection rather than maintaining processor-specific UI policy.
 | `PATCH` | `/v1/admin/episodes/{id}/distribution/{destinationId}` | producer+ | Record evidence-backed observation/failure for the exact current revision |
 | `POST` | `/v1/admin/episodes/{id}/distribution/{rss\|news\|youtube\|email}/retry` | producer+ | Requeue one failed job for the exact current publication revision |
 | `PATCH` | `/v1/admin/shows/{showId}/distribution/{destinationId}` | admin+ | Record show-specific enabled/setup state plus a credential-free owner/submission checklist |
@@ -406,6 +415,7 @@ including under concurrent requests.
 | `POST` | `/v1/admin/episodes/{id}/show-notes/draft` | producer+ | Generate one bounded bilingual review draft from the latest verified approved transcript; never saves or publishes |
 | `GET` | `/v1/admin/episodes/{id}/chapters` | analyst+ | Current normalized chapter rows plus version/approval state |
 | `POST` | `/v1/admin/episodes/{id}/chapters/draft` | producer+ | Propose bounded bilingual chapter markers from every cue in one verified approved transcript; never saves or approves |
+| `GET` | `/v1/admin/episodes/{id}/chapters/drafts` | producer+ | List current private automatic proposals pinned to the exact master, transcript, and passed alignment; never applies them |
 | `PUT` | `/v1/admin/episodes/{id}/chapters` | producer+ | Idempotent optimistic chapter revision |
 | `POST` | `/v1/admin/episodes/{id}/chapters/approve` | admin+ | Approve one exact chapter revision |
 | `GET` | `/v1/admin/episodes/{id}/reviews` | analyst+ | Current reviewable targets, exact-revision history, comments, blockers, and non-enforcing readiness |
@@ -413,6 +423,8 @@ including under concurrent requests.
 | `PATCH` | `/v1/admin/reviews/{id}` | producer+; admin+ for approval/reopen | Optimistically update target review state/assignment |
 | `PATCH` | `/v1/admin/review-comments/{id}` | producer+ | Optimistically resolve/reopen or assign a review note |
 | `GET` | `/v1/admin/episodes/{id}/clips` | analyst+ | List versioned clip recipes and latest private render state |
+| `POST` | `/v1/admin/episodes/{id}/clips/draft` | producer+ | Propose bounded bilingual social ranges from one verified approved transcript; never saves or renders |
+| `GET` | `/v1/admin/episodes/{id}/clips/drafts` | producer+ | List current private automatic proposals pinned to the exact master, transcript, and passed alignment; never applies them |
 | `PUT` | `/v1/admin/episodes/{id}/clips/{clipId}` | producer+ | Idempotently create/revise an approved-transcript clip recipe |
 | `POST` | `/v1/admin/clips/{clipId}/render` | producer+ | Queue one exact private render contract and return its processor manifest |
 | `GET`, `HEAD` | `/v1/admin/clip-renders/{renderId}/captions.{vtt\|srt}` | analyst+ | Download checksum-bound relative WebVTT or SubRip rebuilt from the exact approved caption manifest |
@@ -653,6 +665,22 @@ query and enabled-destination aggregate; disabled historical observations
 remain visible on their directory but never increase summary or claim counts.
 This does not submit a show, store credentials, or claim that a directory
 ingests instantly.
+
+### Isolated-staging processor dispatcher
+
+These HMAC-authenticated routes are `404` unless isolated staging has
+`PROCESSOR_DISPATCH_MODE=github_actions_pull`. They lease only closed-registry
+processor type, target ID, and manifest-digest records; they never return
+media URLs, content, listener data, or provider credentials.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/processor/dispatches/claim` | Reconcile existing source jobs and conditionally lease at most four due jobs |
+| `POST` | `/v1/processor/dispatches/{dispatchId}/dispatched` | Idempotently bind an accepted GitHub workflow run ID to the exact lease |
+| `POST` | `/v1/processor/dispatches/{dispatchId}/failed` | Reject the exact lease and schedule bounded backoff after a GitHub dispatch failure |
+
+The complete trust, retry, registry, deployment, and rollback contract is in
+[`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md).
 
 ### Isolated-staging transcription chunk processor
 
@@ -897,13 +925,17 @@ title pairs. The Worker requires the first cue, rejects missing, duplicate, or
 reordered identities, derives start times from exact verified cues, creates
 deterministic draft-only IDs, and reruns the ordinary chapter validator.
 
-The response contains exact transcript revision/digest/count evidence,
-`reviewRequired: true`, and `saved: false`. It stores no proposal text and
-cannot write chapter revisions or approvals. The browser renders titles with
-DOM text nodes; “Replace unsaved chapters” only changes the local chapter
-editor after confirmation. The existing `PUT` and Admin approval routes remain
-the only persistence/publication path. Staging enables the feature; production
-keeps `CHAPTER_DRAFT_AI_ENABLED=false`.
+The manual response contains exact transcript revision/digest/count evidence,
+`reviewRequired: true`, and `saved: false`; it stores no proposal text.
+Staging automation uses the same strict generator only after the exact final
+master, approved transcript, and human-approved passing word alignment exist.
+It persists a private, retry-bounded proposal keyed by all of that evidence;
+`GET /chapters/drafts` revalidates it before returning it and never applies it.
+The browser renders titles with DOM text nodes; “Replace unsaved chapters”
+only changes the local chapter editor after confirmation. The existing `PUT`
+and Admin approval routes remain the only persistence/publication path.
+Production keeps both `CHAPTER_DRAFT_AUTOMATION_MODE=disabled` and
+`CHAPTER_DRAFT_AI_ENABLED=false`.
 
 ### Review-only AI social clip candidates
 
@@ -927,8 +959,16 @@ approval, or publication state. The browser repeats the contract and can place
 one candidate only into a new unsaved vertical segment recipe after confirming
 replacement of populated fields. The ordinary clip PUT remains the sole save
 path; H1 alignment, private render, approval, and publication remain separate.
-Staging enables the feature; production keeps
-`CLIP_DRAFT_AI_ENABLED=false`.
+Staging automation uses the same strict generator only after the exact final
+master, approved speaker-confirmed transcript, and human-approved passing word
+alignment exist. A shared aligned-editorial source query prevents chapter and
+clip eligibility drift; the private proposal ledger supplies the same
+four-minute lease, three-attempt ceiling, and exact fingerprints. The clip
+fingerprint binds master, transcript, alignment, episode title/duration,
+language, model, and prompt version. `GET /clips/drafts` revalidates all of
+that current evidence and the candidate ranges before returning private JSON;
+it never applies a candidate. Production keeps both
+`CLIP_DRAFT_AUTOMATION_MODE=disabled` and `CLIP_DRAFT_AI_ENABLED=false`.
 
 ### Saved transcript caption export
 
@@ -1048,7 +1088,11 @@ Each node has a stable ID/group, `ready|missing|pending|stale|failed|
 not_applicable` status, `blocker|warning|info` severity, plain summary, and
 non-secret evidence. Audio object keys, transcript/chapter/recipe digests,
 review text, job errors, credentials, and listener data are not returned. The
-top-level `snapshotDigest` is SHA-256 over schema version 1, the publication
+primary and bilingual transcript nodes include only their bounded lifecycle
+states (`missing`, `processing`, `needs_review`, `approved`, or `failed`) so a
+client can separate automatic work from a human approval without receiving
+transcript content or provider evidence. The top-level `snapshotDigest` is
+SHA-256 over schema version 1, the publication
 revision, monotonic episode/show/global evidence versions, the legacy and
 candidate results, and ordered node evidence. `generatedAt` is excluded, so
 identical evidence produces an identical digest. The Worker reads the versions
@@ -1440,6 +1484,24 @@ A Producer/Admin/Super-admin must then approve. Approval rechecks the manifest
 digest, source identity, and current R2 objects and replaces active
 marker/segment rows in one D1 batch. It does not set either dynamic-ad feature
 flag, create a decision, change the public file, or count an impression.
+
+### Staging virtual-audio gate automation
+
+`POST /v1/diagnostics/virtual-audio/gate` is an internal, staging-only signed
+endpoint. It is indistinguishable from `404` in production, when dynamic-ad
+validation is disabled, when the processor callback secret is absent, or when
+the five-minute HMAC signature is invalid. Its bounded actions create one
+hashed 15-minute diagnostic lease, delete one exact lease ID, or record one
+content-free GitHub gate result. It never accepts raw media, an R2 key, a
+Cloudflare credential, a raw lease token, a listener identifier, or a public
+activation command.
+
+Gate records are immutable and idempotent by GitHub run/attempt. They retain
+only the tested source commit, aggregate protocol/load/error/latency values,
+cleanup booleans, and workflow identity for 90 days. The scheduled cleanup
+removes older rows. The public diagnostic capability exchange and fixture
+routes remain separately protected by the one-time hashed lease and expiring
+HMAC capability.
 
 ### Signed decisions and guarded runtime
 

@@ -24,15 +24,15 @@ webhook-projected multi-source entitlements, and the signed Stripe
 webhook/readiness boundary. Draft/approval/kill sponsor
 operations, deterministic targeting preview, bounded creative validation, and
 the signed processor/producer-review boundary for frame-aligned episode ad
-plans are implemented without connecting public audio assembly. The bilingual word-alignment
-storage contract, executable launch-quality evaluator, signed staging
+plans are implemented without connecting public audio assembly. The bilingual
+word-alignment storage contract, executable launch-quality evaluator, signed staging
 processor bridge, and normalized stable-ts/WhisperX runner are also
-implemented;
-the source-language Workers AI transcription adapter is now implemented behind
+implemented. The source-language Workers AI transcription adapter is now implemented behind
 an immutable working-master snapshot, Queue recovery, private R2 evidence, and
-versioned transcript review. A real rights-cleared transcription run plus the
-alignment adapter's human-reviewed benchmark evidence remain gated. Checkout
-remains disabled pending accountant-approved tax/provider evidence. Dynamic
+versioned transcript review. The first rights-cleared private transcription
+run completed; human transcript review and the alignment adapter's
+human-reviewed benchmark evidence remain gated. Checkout remains disabled
+pending accountant-approved tax/provider evidence. Dynamic
 audio now has a guarded public-enclosure runtime in code. Its isolated
 synthetic protocol and 10,000-request paired-load gates pass with exact
 cleanup, but both deployed modes remain non-automatic until the native-client,
@@ -40,6 +40,25 @@ inventory/fallback, and sponsor-reconciliation gates pass. Public clip
 selection and verified range delivery are implemented as a staging preview
 with production disabled; production-live YouTube/GitHub publishing remains
 roadmap work.
+
+Exhausted staging Queue jobs now move to an isolated dead-letter queue and are
+automatically reduced to durable, content-free D1 incident evidence. The
+consumer stores a payload digest plus bounded internal job identity, never raw
+content, and deliberately cannot replay work or repeat provider side effects.
+Production queue behavior remains unchanged.
+
+Staging also discovers exact enhanced-master decisions, ready delivery audio,
+source-language transcripts, and benchmark-qualified word alignments that need human review, then sends one
+bilingual Resend action message to a configured Super-admin. Each link signs in
+once, selects the authorized show and episode, and focuses the existing exact
+review control. Stable idempotency digests support three bounded delivery
+attempts; D1 retains only content-free action state and a login-token hash.
+Approval, rejection, editing drift, benchmark drift, or stale evidence resolves
+the relevant reminder automatically. Alignment mail appears only after the
+same structural, current-input, final-master, and private bilingual benchmark
+evidence required by the approval transaction. Downstream reminders remain
+blocked until the shared master decision is final, and production delivery
+remains disabled.
 
 Public release, premium-window, subscription-expiry, tax-rate, and publication
 job boundaries compare canonical millisecond UTC RFC 3339 timestamps against
@@ -103,7 +122,11 @@ credential-minimized workflow. Full decode, complete-frame validation,
 checksummed multipart upload, private existing-player review, and recent
 Super-admin approval are required before the episode enclosure can satisfy
 News/RSS publication. Master changes make unapproved delivery work stale, and
-the public waveform exists only for the exact published approval.
+the public waveform exists only for the exact published approval. Once the
+enhanced-master decision is final, the staging scheduler now creates the first
+eligible delivery render automatically and the existing dispatcher sends it
+to the pinned processor. Deterministic IDs, one-active-job constraints, and a
+three-attempt ceiling make retries bounded; production remains disabled.
 
 Audience reporting now combines provisional qualified downloads, daily
 60-second engaged Dust Wave web-player listens, app/device/country breakdowns,
@@ -148,8 +171,14 @@ Workers AI binding, and strictly validates the returned JSON and Markdown.
 Generation is rate-limited and audited without transcript or draft text.
 Results stay in a separate review card until the producer explicitly places
 them in the unsaved editor; no episode, News, RSS, distribution, or provider
-publication state changes. Staging is enabled for controlled review while
-production remains disabled.
+publication state changes. After the same final-working-master decision used
+by transcription and alignment, staging now prepares the primary-language
+proposal automatically. An exact transcript/master/model/prompt fingerprint,
+short lease, three-attempt ceiling, and strict response validation make the
+private D1 proposal replay-safe. The Admin loads the newest validated proposal
+without applying it and keeps manual generation inside secondary controls.
+Production discovery exits before D1 and both automation and AI remain
+disabled there.
 
 The chapter workbench has a separate bilingual, review-only proposal assistant
 on the same verified-transcript and Workers AI boundary. Chapter drafting
@@ -158,7 +187,12 @@ silently proposes a table of contents from a partial transcript. Provider
 output may select only exact cue IDs, which the Worker maps back to immutable
 cue start times before the normal chapter validator runs. Applying a proposal
 only replaces unsaved chapter-editor state. Saving and Admin approval remain
-separate explicit actions. Staging is enabled and production is disabled.
+separate explicit actions. In staging, the scheduler now prepares the missing
+primary/show-language proposals only after the same final-master predicate and
+the exact approved transcript have passed human word-alignment review. The
+shared private AI-draft ledger pins that alignment revision, bounds recovery to
+three attempts, and never writes chapter state. Production exits before D1 and
+both chapter automation and AI are disabled.
 
 The clip factory also has a bilingual, review-only social-candidate assistant
 on that shared boundary. It requires complete approved-transcript coverage and
@@ -166,15 +200,23 @@ accepts only chronological, non-overlapping exact cue ranges. The Worker
 derives and enforces 15–90 second timing from immutable cues, while generated
 titles and editorial reasons remain review text. Choosing a candidate fills a
 new unsaved vertical segment recipe; the existing versioned save, alignment,
-render, approval, and publication gates remain unchanged. Staging is enabled
-and production is disabled.
+render, approval, and publication gates remain unchanged. Staging now prepares
+primary/show-language candidates automatically only after the exact final
+master, approved speaker-confirmed transcript, and human-approved passing word
+alignment exist. Chapters and clips share one aligned-editorial eligibility
+query plus the private AI-draft lease/retry ledger; clip fingerprints also bind
+episode title and duration. The Admin reads only current proposals and never
+applies one. Production exits before D1 and both clip automation and AI remain
+disabled.
 
 Source-language transcription accepts an explicit English/Spanish episode
 language and only the current approved working master. The job fingerprint
 binds the master SHA-256, model, language, and versioned settings; duplicate
-inputs reuse one stored job. Provider responses, normalized timed-text JSON,
-WebVTT, SRT, and plain text remain private in R2. Workers AI segment timing is
-normalized through `@dustwave/timed-text`; provider word records and speaker
+inputs reuse one stored job. Once the enhanced-master decision is final,
+staging creates the missing source-language job automatically through the same
+queue primitive used by the Admin API. Provider responses, normalized
+timed-text JSON, WebVTT, SRT, and plain text remain private in R2. Workers AI
+segment timing is normalized through `@dustwave/timed-text`; provider word records and speaker
 guesses are not imported. Direct Worker processing is capped at 16 MiB to
 bound base64 memory. Larger masters use the credential-minimized
 `process-transcription-chunks.yml` staging workflow: it verifies the immutable
@@ -187,9 +229,13 @@ The working master and public enclosure are never changed. Production
 processor routes remain absent until the owner-controlled large-source gate
 passes.
 
-Forced alignment is a separate immutable job after transcript approval. It
-binds the exact approved transcript content/projection hashes, current
-working-master bytes, adapter/model/settings, and pinned runner revision. The
+Forced alignment is a separate immutable job after transcript approval.
+Staging discovers each approved English/Spanish transcript only after the
+shared final-master decision, queues the exact job with a system-owned audit,
+and lets the existing durable processor dispatcher claim it; the Admin queue
+action remains break glass. It binds the exact approved transcript
+content/projection hashes, current working-master bytes,
+adapter/model/settings, and pinned runner revision. The
 credential-minimized `process-alignment.yml` workflow receives no Cloudflare
 or R2 token: signed purpose-bound Worker routes provide the exact private
 source and accept one bounded result. The Worker independently validates every
@@ -208,6 +254,15 @@ Worker re-evaluates it, stores canonical raw evidence privately by input
 SHA-256, exposes only content-free summaries, and records replay-safe D1/audit
 evidence. Synthetic integration fixtures prove the path, but no real
 rights-cleared corpus has been imported.
+
+`npm run prepare:alignment-benchmark-source -- ...` prepares an approved local
+source without committing media or transcript content. It uses the existing
+YouTube JSON3 reference parser, chooses the requested number of non-overlapping
+caption-dense two-to-five-minute windows, writes deterministic 16 kHz mono PCM
+fixtures and clipped unreviewed references, and records source ranges, hashes,
+rights scope, FFmpeg identity, and explicit human-review requirements. It
+fails closed when duration or speech density is insufficient and never turns
+automatic captions into reviewed transcript or H1 gold evidence.
 
 Stripe staging readiness has a repeatable read-only operator gate:
 `npm run gate:stripe:staging`. It compares the exact D1 show/Price projection
@@ -428,6 +483,8 @@ non-secret human inputs that gate production are kept in
 - [`docs/API.md`](docs/API.md) — current HTTP surface and authentication
   contract
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries and secret handling
+- [`docs/PROCESSOR_DISPATCH_AUTOMATION.md`](docs/PROCESSOR_DISPATCH_AUTOMATION.md)
+  — staging processor discovery, GitHub dispatch, retries, and rollback
 - [`docs/ALIGNMENT_GATE.md`](docs/ALIGNMENT_GATE.md) — English/Spanish
   word-alignment evidence and launch thresholds
 - [`docs/CLIP_RENDER_GATE.md`](docs/CLIP_RENDER_GATE.md) — staging clip

@@ -52,9 +52,12 @@ FFmpeg/FFprobe evidence outside the repository with:
 npm run fixtures:virtual-audio -- /absolute/private/evidence/directory
 ```
 
-The generator refuses an implicit destination, emits checksums and probe
-metadata, verifies that program-only and mid-roll byte assemblies fully decode,
-and writes a manifest that can be projected into the Worker contract. Its
+The generator refuses an implicit destination, expands canonical
+self-contained MPEG seed frames without invoking an encoder, emits checksums
+and FFmpeg/FFprobe decode evidence, verifies that program-only and mid-roll
+byte assemblies fully decode, and writes a manifest that can be projected into
+the Worker contract. This keeps fixture bytes identical across macOS and Linux
+instead of depending on an OS FFmpeg/libmp3lame build. Its
 versioned contract lives in
 `config/virtual-audio-synthetic-fixture.json`; the generator, Worker diagnostic,
 load boundary patterns, and tests all consume that one source of byte counts,
@@ -131,6 +134,12 @@ npm run gate:virtual-audio:staging -- \
   --pairs 5000 --concurrency 12
 ```
 
+Lease creation and exact-ID deletion use the same timestamped HMAC callback
+secret as the isolated media processors. The wrapper does not need a
+Cloudflare account ID, API token, direct D1 credential, or direct R2
+credential. Supply `MEDIA_PROCESSOR_CALLBACK_SECRET` through the environment;
+never put it in an argument or evidence directory.
+
 It is hard-bound to the Dust Wave staging origin, D1 database binding, and
 bucket. It refuses a nonempty evidence directory or any non-matching R2
 object, generates and verifies the fixture contract, and waits for three
@@ -152,7 +161,7 @@ runbook.
 ## Isolated synthetic staging evidence
 
 On July 31, 2026, source commit
-`af1ef817466d646aad6ca9ed64fb611813d4f20f` passed the complete wrapper
+`b0e5799ca7285b6518ccf6d38d7a5d1c3a14225e` passed the complete wrapper
 against `dust-wave-podcast-staging.jogo.workers.dev` with 5,000 request pairs
 at concurrency 12:
 
@@ -161,8 +170,8 @@ at concurrency 12:
   unsatisfiable/multipart rejection, and concurrent range reads;
 - all 10,000 measured requests completed with zero request errors and zero
   content mismatches;
-- virtual delivery measured 838.34 ms p95 versus 794.47 ms for the
-  byte-identical private-R2 baseline, an added p95 of 43.87 ms against the
+- virtual delivery measured 282.93 ms p95 versus 206.27 ms for the
+  byte-identical private-R2 baseline, an added p95 of 76.66 ms against the
   250 ms ceiling; and
 - the wrapper confirmed removal of every object uploaded by the run and its
   exact D1 lease. A follow-up aggregate query found zero diagnostic leases.
@@ -174,6 +183,24 @@ gate only. It does not authorize `staging_public` or `live`, satisfy native
 Apple/Spotify/Overcast/Pocket Casts/Podcast Addict playback, prove launch
 inventory has equal-length house coverage, or replace the reviewed sponsor
 pilot.
+
+## Automatic evidence refresh
+
+`.github/workflows/virtual-audio-staging-gate.yml` repeats the complete
+5,000-pair gate every three days and on manual dispatch. It uses the protected
+`podcast-staging` environment and only `MEDIA_PROCESSOR_CALLBACK_SECRET`; all
+GitHub actions are SHA-pinned, concurrent runs never cancel one another, and
+the job has a 30-minute ceiling. A successful run adds
+`--publish-evidence`, which records only the source commit, aggregate protocol
+and load metrics, cleanup booleans, and GitHub run identity in
+`virtual_audio_gate_runs`. The redacted JSON files remain a private 30-day
+Actions artifact.
+
+The composed launch gate reads the newest durable row when no explicit
+artifact is supplied. It still requires a run no more than seven days old and
+proves that the current checkout has no relevant source drift from the tested
+commit. An explicit `--virtual-audio-evidence` file remains available for
+recovery and independent review.
 
 ## Required fixture set
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateVirtualAudioEvidence,
   evaluateLaunchStagingReadiness,
+  presentStoredVirtualAudioEvidence,
   publicFeedValidatorVersion
 } from "../scripts/check-launch-staging-readiness.mjs";
 
@@ -10,6 +11,7 @@ const stagingVars = {
   AD_DECISION_MODE: "staging_validate",
   ANNOUNCEMENT_DELIVERY_MODE: "dry_run",
   CLIP_PUBLICATION_MODE: "staging_preview",
+  DISTRIBUTION_OBSERVATION_MODE: "staging_probe",
   GITHUB_PUBLISH_MODE: "dry_run",
   PUBLICATION_GATE_MODE: "shadow",
   RSS_IMPORT_EXECUTION_MODE: "staging_copy",
@@ -26,6 +28,7 @@ const productionVars = {
   AD_DECISION_MODE: "disabled",
   ANNOUNCEMENT_DELIVERY_MODE: "disabled",
   CLIP_PUBLICATION_MODE: "disabled",
+  DISTRIBUTION_OBSERVATION_MODE: "disabled",
   GITHUB_PUBLISH_MODE: "dry_run",
   PUBLICATION_GATE_MODE: "legacy",
   RSS_IMPORT_EXECUTION_MODE: "disabled",
@@ -76,6 +79,7 @@ function readySnapshot() {
       certified: 10
     },
     youtube: {
+      channelAccessReady: true,
       uploadedUnlisted: 1,
       unresolved: 0
     },
@@ -101,7 +105,7 @@ describe("launch staging gate", () => {
     const report = evaluateLaunchStagingReadiness(readySnapshot());
 
     expect(report.summary).toEqual({
-      passCount: 12,
+      passCount: 13,
       failCount: 0,
       blockCount: 0,
       waitCount: 0,
@@ -148,7 +152,11 @@ describe("launch staging gate", () => {
       detail: "approval remains required"
     }];
     snapshot.distribution = { feedCurrent: false, certified: 9 };
-    snapshot.youtube = { uploadedUnlisted: 0, unresolved: 1 };
+    snapshot.youtube = {
+      channelAccessReady: false,
+      uploadedUnlisted: 0,
+      unresolved: 1
+    };
     snapshot.resend = { delivered: 0, suppressed: 0, failed: 0 };
     snapshot.dynamicAds = {
       approvedPlans: 1,
@@ -160,11 +168,50 @@ describe("launch staging gate", () => {
 
     expect(report.summary.safe).toBe(true);
     expect(report.summary.launchReady).toBe(false);
-    expect(report.summary.blockCount).toBe(6);
+    expect(report.summary.blockCount).toBe(7);
     expect(report.nextAction?.id).toBe("episode");
     expect(report.nextAction?.detail).toContain(
       "Enhancement decision - listen and promote or reject"
     );
+    expect(report.nodes.find(({ id }) => id === "dynamic_ads")?.detail)
+      .toBe(
+        "missing durable evidence: selected ad decision, "
+        + "qualified direct-sponsor download"
+      );
+  });
+
+  it("keeps channel access and controlled upload as separate evidence", () => {
+    const snapshot = readySnapshot();
+    snapshot.youtube.channelAccessReady = false;
+
+    const report = evaluateLaunchStagingReadiness(snapshot);
+
+    expect(report.nodes.find(({ id }) => id === "youtube_access"))
+      .toMatchObject({
+        status: "BLOCK",
+        label: "YouTube channel access"
+      });
+    expect(report.nodes.find(({ id }) => id === "youtube"))
+      .toMatchObject({ status: "PASS" });
+  });
+
+  it("names both synthetic and durable dynamic-ad evidence when absent", () => {
+    const snapshot = readySnapshot();
+    snapshot.virtualAudioEvidence = null;
+    snapshot.dynamicAds = {
+      approvedPlans: 0,
+      selectedDecisions: 0,
+      directQualifications: 0
+    };
+
+    const report = evaluateLaunchStagingReadiness(snapshot);
+
+    expect(report.nodes.find(({ id }) => id === "dynamic_ads")?.detail)
+      .toBe(
+        "run the current signed synthetic protocol/load gate; "
+        + "missing durable evidence: approved episode ad plan, "
+        + "selected ad decision, qualified direct-sponsor download"
+      );
   });
 
   it("prioritizes safety failures ahead of earlier promotion blocks", () => {
@@ -214,5 +261,28 @@ describe("launch staging gate", () => {
     expect(evaluateVirtualAudioEvidence(evidence, true)).toEqual({
       passed: false
     });
+  });
+
+  it("maps the durable aggregate row into the same current-source gate", () => {
+    const row = {
+      source_commit: "a".repeat(40),
+      generated_at: new Date().toISOString(),
+      paired_requests: 5_000,
+      total_measured_requests: 10_000,
+      protocol_passed: 1,
+      load_passed: 1,
+      cleanup_complete: 1,
+      diagnostic_lease_removed: 1,
+      uploaded_objects_removed: 1,
+      failure_code: null
+    };
+
+    expect(presentStoredVirtualAudioEvidence(row, true)).toEqual({
+      passed: true
+    });
+    expect(presentStoredVirtualAudioEvidence(row, false)).toEqual({
+      passed: false
+    });
+    expect(presentStoredVirtualAudioEvidence(null, true)).toBeNull();
   });
 });

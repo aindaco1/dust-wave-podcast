@@ -13,6 +13,7 @@ import { hmacSha256 } from "@dustwave/worker-core/crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  AUTOMATED_ALIGNMENT_CANDIDATES_SQL,
   completeAlignmentProcessorJob,
   getAlignmentProcessorManifest,
   getAlignmentProcessorSource
@@ -31,9 +32,9 @@ const jobId = "alignment_job_fixture";
 const revisionId = "alignment_revision_fixture";
 const sourceSha256 = "b".repeat(64);
 const transcriptContentSha256 = "c".repeat(64);
-const runnerRevision = "3c5ab054fdad375901eb186f32d7aed6cdb40413";
+const runnerRevision = "e611801d2af82dcdb079444b7e8a7eea4309d1a6";
 const runnerDigest =
-  "sha256:5b07bbf315bd62a3c445a7a5a476bf642f91aa1c781173aa1f4e4e8021a51178";
+  "sha256:8a7cda2702487a1d542d5fb740efe8580ca9edd99f405d722d610536c73a3a11";
 const passingBenchmarkReport = JSON.stringify({
   schemaVersion: "1",
   corpusVersion: "rights-cleared-bilingual-v1",
@@ -80,6 +81,25 @@ const cues = [
 ];
 
 describe("word-alignment orchestration", () => {
+  it("prepares the automatic exact-revision candidate query on the real schema", () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      applyMigrations(database);
+      expect(database.prepare(AUTOMATED_ALIGNMENT_CANDIDATES_SQL).all(
+        "whisperx",
+        "3.8.6",
+        "default",
+        "default-en-es-v1",
+        "whisperx-align-v1",
+        runnerRevision,
+        runnerDigest,
+        10
+      )).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
   it("routes the admin alignment collection before the method fallback", async () => {
     const response = await handleRequest(
       new Request(
@@ -133,7 +153,7 @@ describe("word-alignment orchestration", () => {
     expect(completion.status).toBe(404);
   });
 
-  it("projects one exact private result to needs-review words", async () => {
+  it("accepts an exact commit when D1 reports zero batch changes", async () => {
     const database = new DatabaseSync(":memory:");
     try {
       applyMigrations(database);
@@ -225,7 +245,7 @@ describe("word-alignment orchestration", () => {
         ENVIRONMENT: "staging",
         ALLOWED_ORIGINS: "https://dustwave.xyz",
         MEDIA_PROCESSOR_CALLBACK_SECRET: processorSecret,
-        DB: d1Database(database),
+        DB: d1Database(database, { batchMetaChanges: 0 }),
         MEDIA_BUCKET: {
           async head(key) {
             return objects.get(key) ?? null;
@@ -702,7 +722,7 @@ async function signedRequest(body) {
   );
 }
 
-function d1Database(database) {
+function d1Database(database, { batchMetaChanges } = {}) {
   const prepare = (query) => {
     let values = [];
     const statement = {
@@ -739,7 +759,12 @@ function d1Database(database) {
           statement.executeRun()
         );
         database.exec("COMMIT");
-        return results;
+        return batchMetaChanges === undefined
+          ? results
+          : results.map((result) => ({
+              ...result,
+              meta: { ...result.meta, changes: batchMetaChanges }
+            }));
       } catch (error) {
         database.exec("ROLLBACK");
         throw error;

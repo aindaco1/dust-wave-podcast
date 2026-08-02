@@ -9,9 +9,20 @@ import {
   generatedAiText,
   parseAiProviderJsonObject,
   projectTranscriptForAiDraft,
+  safeAiDraftFailureCode,
   safeAiUsage
 } from "./ai-drafts";
 import { recordAdminAudit } from "./audit";
+import {
+  ALIGNED_EDITORIAL_SOURCES_ORDER_SQL,
+  ALIGNED_EDITORIAL_SOURCES_SQL,
+  type AlignedEditorialSource
+} from "./aligned-editorial-sources";
+import {
+  claimEditorialAiDraft,
+  completeEditorialAiDraft,
+  failEditorialAiDraft
+} from "./editorial-ai-draft-ledger";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import {
@@ -27,6 +38,32 @@ const MAXIMUM_TITLE_CHARACTERS = 160;
 const MAXIMUM_REASON_CHARACTERS = 280;
 const MINIMUM_CANDIDATE_DURATION_MS = 15_000;
 const MAXIMUM_CANDIDATE_DURATION_MS = 90_000;
+const MAXIMUM_AUTOMATED_DRAFTS_PER_RUN = 4;
+export const CLIP_DRAFT_PROMPT_VERSION = "clip-draft-v1";
+
+type SavedClipDraftRow = {
+  id: string;
+  source_alignment_revision_id: string;
+  source_language: string;
+  source_transcript_revision: number;
+  source_transcript_sha256: string;
+  included_cue_count: number;
+  total_cue_count: number;
+  transcript_truncated: number;
+  episode_evidence_sha256: string;
+  current_episode_title: string;
+  current_duration_seconds: number | null;
+  output_language: string;
+  model: string;
+  prompt_version: string;
+  draft_json: string;
+  draft_sha256: string;
+  completed_at: string;
+};
+
+export const AUTOMATED_CLIP_SOURCES_SQL = `${ALIGNED_EDITORIAL_SOURCES_SQL}
+  ${ALIGNED_EDITORIAL_SOURCES_ORDER_SQL}
+  LIMIT ?`;
 
 export type ClipDraftCandidate = {
   id: string;
@@ -38,6 +75,167 @@ export type ClipDraftCandidate = {
   endsAtMs: number;
   durationMs: number;
 };
+
+export async function listAdminEpisodeClipDrafts(
+  request: Request,
+  env: PodcastEnv,
+  episodeIdValue: string
+): Promise<Response> {
+  const authorized = await authorizeAdminEpisode(
+    request,
+    env,
+    episodeIdValue,
+    EDIT_ROLES
+  );
+  if (authorized instanceof Response) return authorized;
+  const rows = await env.DB.prepare(
+    `SELECT
+       draft.id, draft.source_alignment_revision_id, draft.source_language,
+       draft.source_transcript_revision, draft.source_transcript_sha256,
+       draft.included_cue_count, draft.total_cue_count,
+       draft.transcript_truncated, draft.episode_evidence_sha256,
+       episode.title AS current_episode_title,
+       episode.duration_seconds AS current_duration_seconds,
+       draft.output_language, draft.model, draft.prompt_version,
+       draft.draft_json, draft.draft_sha256, draft.completed_at
+     FROM editorial_ai_drafts draft
+     JOIN episodes episode ON episode.id = draft.episode_id
+     JOIN episode_working_master_states state
+       ON state.episode_id = draft.episode_id
+      AND state.current_master_id = draft.working_master_id
+     JOIN transcript_alignment_revisions alignment
+       ON alignment.id = draft.source_alignment_revision_id
+      AND alignment.transcript_id = draft.source_transcript_id
+      AND alignment.transcript_revision_sha256 = draft.source_transcript_sha256
+      AND alignment.language = draft.source_language
+      AND alignment.status = 'passed'
+     JOIN transcript_alignment_approvals alignment_approval
+       ON alignment_approval.alignment_revision_id = alignment.id
+     WHERE draft.episode_id = ?
+       AND draft.kind = 'clips'
+       AND draft.status = 'ready'
+       AND EXISTS (
+         SELECT 1
+         FROM transcript_approvals approval
+         JOIN transcript_revisions revision
+           ON revision.transcript_id = approval.transcript_id
+          AND revision.revision = approval.revision
+         WHERE approval.transcript_id = draft.source_transcript_id
+           AND approval.revision = (
+             SELECT MAX(latest.revision)
+             FROM transcript_approvals latest
+             WHERE latest.transcript_id = draft.source_transcript_id
+           )
+           AND revision.revision = draft.source_transcript_revision
+           AND revision.content_sha256 = draft.source_transcript_sha256
+           AND revision.speaker_labels_confirmed = 1
+       )
+     ORDER BY draft.completed_at DESC, draft.id DESC
+     LIMIT 10`
+  ).bind(authorized.episode.id).all<SavedClipDraftRow>();
+  const drafts: Array<Record<string, unknown>> = [];
+  for (const row of rows.results) {
+    try {
+      const transcript = await loadVerifiedApprovedTranscript(
+        env.DB,
+        authorized.episode.id,
+        row.source_language as TranscriptLanguage
+      );
+      if (
+        !transcript
+        || transcript.revision !== row.source_transcript_revision
+        || transcript.contentSha256 !== row.source_transcript_sha256
+      ) continue;
+      const episodeEvidenceSha256 = await clipEpisodeEvidenceSha256({
+        title: row.current_episode_title,
+        durationSeconds: row.current_duration_seconds
+      });
+      if (episodeEvidenceSha256 !== row.episode_evidence_sha256) continue;
+      drafts.push({
+        id: row.id,
+        draft: {
+          candidates: await parseSavedClipDraft(row.draft_json, transcript)
+        },
+        source: {
+          language: row.source_language,
+          revision: row.source_transcript_revision,
+          contentSha256: row.source_transcript_sha256,
+          alignmentRevisionId: row.source_alignment_revision_id,
+          includedCueCount: row.included_cue_count,
+          totalCueCount: row.total_cue_count,
+          truncated: row.transcript_truncated === 1
+        },
+        outputLanguage: row.output_language,
+        model: row.model,
+        promptVersion: row.prompt_version,
+        draftSha256: row.draft_sha256,
+        completedAt: row.completed_at,
+        reviewRequired: true,
+        saved: true
+      });
+    } catch {
+      // Corrupt or stale private proposals fail closed and remain invisible.
+    }
+  }
+  return privateJson(request, env.ALLOWED_ORIGINS, {
+    episodeId: authorized.episode.id,
+    drafts
+  });
+}
+
+export async function scheduleAutomaticClipDrafts(
+  env: PodcastEnv
+): Promise<number> {
+  if (
+    env.ENVIRONMENT !== "staging"
+    || env.CLIP_DRAFT_AUTOMATION_MODE !== "staging_generate"
+    || !isTruthy(env.CLIP_DRAFT_AI_ENABLED)
+  ) return 0;
+  let sources: D1Result<AlignedEditorialSource>;
+  try {
+    sources = await env.DB.prepare(
+      AUTOMATED_CLIP_SOURCES_SQL
+    ).bind(10).all<AlignedEditorialSource>();
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      event: "clip_draft_automation_scan_failed",
+      errorName: error instanceof Error ? error.name : "UnknownError"
+    }));
+    return 0;
+  }
+  let generated = 0;
+  let attempted = 0;
+  for (const source of sources.results) {
+    const outputLanguages = new Set<TranscriptLanguage>([
+      source.source_language
+    ]);
+    if (source.show_language === "en" || source.show_language === "es") {
+      outputLanguages.add(source.show_language);
+    }
+    for (const outputLanguage of outputLanguages) {
+      if (attempted >= MAXIMUM_AUTOMATED_DRAFTS_PER_RUN) return generated;
+      try {
+        const result = await generateAutomaticClipDraft(
+          env,
+          source,
+          outputLanguage
+        );
+        if (result !== "skipped") attempted += 1;
+        if (result === "ready") generated += 1;
+      } catch (error) {
+        console.error(JSON.stringify({
+          level: "error",
+          event: "clip_draft_automation_failed",
+          episodeId: source.episode_id,
+          outputLanguage,
+          errorName: error instanceof Error ? error.name : "UnknownError"
+        }));
+      }
+    }
+  }
+  return generated;
+}
 
 export async function createAdminEpisodeClipDraft(
   request: Request,
@@ -94,6 +292,20 @@ export async function createAdminEpisodeClipDraft(
       { status: 409 }
     );
   }
+  const episode = await env.DB.prepare(
+    `SELECT title
+     FROM episodes
+     WHERE id = ?
+     LIMIT 1`
+  ).bind(authorized.episode.id).first<{ title: string }>();
+  if (!episode) {
+    return privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "episode_not_found" },
+      { status: 404 }
+    );
+  }
 
   const adminUserId = authorized.authorization.identity.id;
   const generationClaimed = await claimAiDraftGeneration(env.DB, {
@@ -124,35 +336,15 @@ export async function createAdminEpisodeClipDraft(
   }
 
   try {
-    const providerResponse = await env.AI.run(
-      AI_DRAFT_MODEL,
-      {
-        messages: clipDraftMessages({
-          outputLanguage,
-          projectionExcerpt: projection.excerpt,
-          sourceLanguage
-        }),
-        response_format: {
-          type: "json_schema",
-          json_schema: clipDraftResponseSchema()
-        },
-        max_tokens: 1_400,
-        temperature: 0.2,
-        seed: 41_729
-      },
-      {
-        tags: [
-          "dust-wave-podcast",
-          "clip-review-draft",
-          outputLanguage
-        ]
-      }
-    );
-    const candidates = await parseClipDraftProviderResponse(
-      providerResponse,
-      transcript
-    );
-    const draftSha256 = await sha256Hex(JSON.stringify(candidates));
+    const { candidates, draftSha256, providerResponse } =
+      await requestClipDraft(env, {
+        episodeTitle: episode.title,
+        outputLanguage,
+        projectionExcerpt: projection.excerpt,
+        sourceLanguage,
+        transcript,
+        tag: "clip-review-draft"
+      });
     const durations = candidates.map(({ durationMs }) => durationMs);
     await recordAdminAudit(env.DB, {
       adminUserId,
@@ -210,6 +402,193 @@ export async function createAdminEpisodeClipDraft(
       { status: 502 }
     );
   }
+}
+
+async function generateAutomaticClipDraft(
+  env: PodcastEnv,
+  source: AlignedEditorialSource,
+  outputLanguage: TranscriptLanguage
+): Promise<"failed" | "ready" | "skipped"> {
+  const transcript = await loadVerifiedApprovedTranscript(
+    env.DB,
+    source.episode_id,
+    source.source_language
+  );
+  if (
+    !transcript
+    || transcript.revision !== source.transcript_revision
+    || transcript.contentSha256 !== source.transcript_sha256
+  ) return "skipped";
+  const projection = projectTranscriptForAiDraft(transcript, {
+    includeCueIds: true
+  });
+  if (projection.truncated) return "skipped";
+  const episodeEvidenceSha256 = await clipEpisodeEvidenceSha256({
+    title: source.episode_title,
+    durationSeconds: source.episode_duration_seconds
+  });
+  const inputFingerprint = await sha256Hex([
+    "podcast-editorial-ai-draft-v1",
+    "clips",
+    source.episode_id,
+    source.working_master_id,
+    source.transcript_id,
+    String(source.transcript_revision),
+    source.transcript_sha256,
+    source.alignment_revision_id,
+    source.source_language,
+    outputLanguage,
+    episodeEvidenceSha256,
+    AI_DRAFT_MODEL,
+    CLIP_DRAFT_PROMPT_VERSION
+  ].join(":"));
+  const claim = await claimEditorialAiDraft(env.DB, {
+    episodeId: source.episode_id,
+    workingMasterId: source.working_master_id,
+    kind: "clips",
+    sourceTranscriptId: source.transcript_id,
+    sourceAlignmentRevisionId: source.alignment_revision_id,
+    sourceLanguage: source.source_language,
+    sourceTranscriptRevision: source.transcript_revision,
+    sourceTranscriptSha256: source.transcript_sha256,
+    includedCueCount: projection.includedCueCount,
+    totalCueCount: projection.totalCueCount,
+    transcriptTruncated: false,
+    episodeEvidenceSha256,
+    outputLanguage,
+    model: AI_DRAFT_MODEL,
+    promptVersion: CLIP_DRAFT_PROMPT_VERSION,
+    inputFingerprint
+  });
+  if (!claim) return "skipped";
+
+  try {
+    const { candidates, draftSha256, providerResponse } =
+      await requestClipDraft(env, {
+        episodeTitle: source.episode_title,
+        outputLanguage,
+        projectionExcerpt: projection.excerpt,
+        sourceLanguage: source.source_language,
+        transcript,
+        tag: "clip-automatic"
+      });
+    const completed = await completeEditorialAiDraft(env.DB, claim, {
+      draftJson: JSON.stringify({ candidates }),
+      draftSha256,
+      auditAction: "clip_draft.automatic_completed",
+      auditMetadata: {
+        automated: true,
+        episodeId: source.episode_id,
+        workingMasterId: source.working_master_id,
+        sourceLanguage: source.source_language,
+        outputLanguage,
+        transcriptRevision: source.transcript_revision,
+        transcriptSha256: source.transcript_sha256,
+        alignmentRevisionId: source.alignment_revision_id,
+        inputFingerprint,
+        draftSha256,
+        candidateCount: candidates.length,
+        model: AI_DRAFT_MODEL,
+        promptVersion: CLIP_DRAFT_PROMPT_VERSION,
+        includedCueCount: projection.includedCueCount,
+        totalCueCount: projection.totalCueCount,
+        usage: safeAiUsage(providerResponse)
+      }
+    });
+    return completed ? "ready" : "failed";
+  } catch (error) {
+    const failureCode = safeAiDraftFailureCode(error);
+    await failEditorialAiDraft(env.DB, claim, {
+      auditAction: "clip_draft.automatic_failed",
+      failureCode,
+      auditMetadata: {
+        automated: true,
+        episodeId: source.episode_id,
+        sourceLanguage: source.source_language,
+        outputLanguage,
+        transcriptRevision: source.transcript_revision,
+        transcriptSha256: source.transcript_sha256,
+        alignmentRevisionId: source.alignment_revision_id,
+        inputFingerprint,
+        model: AI_DRAFT_MODEL,
+        promptVersion: CLIP_DRAFT_PROMPT_VERSION,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        failureCode
+      }
+    });
+    return "failed";
+  }
+}
+
+async function requestClipDraft(
+  env: PodcastEnv,
+  {
+    episodeTitle,
+    outputLanguage,
+    projectionExcerpt,
+    sourceLanguage,
+    transcript,
+    tag
+  }: {
+    episodeTitle: string;
+    outputLanguage: TranscriptLanguage;
+    projectionExcerpt: string;
+    sourceLanguage: TranscriptLanguage;
+    transcript: VerifiedApprovedTranscript;
+    tag: "clip-automatic" | "clip-review-draft";
+  }
+): Promise<{
+  candidates: ClipDraftCandidate[];
+  draftSha256: string;
+  providerResponse: unknown;
+}> {
+  const providerResponse = await env.AI.run(
+    AI_DRAFT_MODEL,
+    {
+      messages: clipDraftMessages({
+        episodeTitle,
+        outputLanguage,
+        projectionExcerpt,
+        sourceLanguage
+      }),
+      response_format: {
+        type: "json_schema",
+        json_schema: clipDraftResponseSchema()
+      },
+      max_tokens: 1_400,
+      temperature: 0.2,
+      seed: 41_729
+    },
+    {
+      tags: ["dust-wave-podcast", tag, outputLanguage]
+    }
+  );
+  const candidates = await parseClipDraftProviderResponse(
+    providerResponse,
+    transcript
+  );
+  return {
+    candidates,
+    draftSha256: await sha256Hex(JSON.stringify(candidates)),
+    providerResponse
+  };
+}
+
+async function parseSavedClipDraft(
+  value: string,
+  transcript: VerifiedApprovedTranscript
+): Promise<ClipDraftCandidate[]> {
+  return parseClipDraftProviderResponse({ response: value }, transcript);
+}
+
+async function clipEpisodeEvidenceSha256({
+  title,
+  durationSeconds
+}: {
+  title: string;
+  durationSeconds: number | null;
+}): Promise<string> {
+  return sha256Hex(JSON.stringify({ title, durationSeconds }));
 }
 
 export async function parseClipDraftProviderResponse(
@@ -298,10 +677,12 @@ function validCueIdentifier(value: string): boolean {
 }
 
 function clipDraftMessages({
+  episodeTitle,
   outputLanguage,
   projectionExcerpt,
   sourceLanguage
 }: {
+  episodeTitle: string;
   outputLanguage: TranscriptLanguage;
   projectionExcerpt: string;
   sourceLanguage: TranscriptLanguage;
@@ -325,6 +706,7 @@ function clipDraftMessages({
       role: "user",
       content: JSON.stringify({
         task: {
+          episodeTitle,
           outputLanguage,
           sourceLanguage,
           transcriptCoverage: "complete",

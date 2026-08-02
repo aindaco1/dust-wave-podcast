@@ -26,14 +26,8 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install locked dependencies
-        run: npm ci
+      - name: Set up shared processor runtime
+        uses: ./.github/actions/setup-processor-node
 
       - name: Validate chunk request
         id: request
@@ -48,7 +42,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/manifest-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Fetch private checksummed manifest
         env:
@@ -80,7 +73,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/source-request.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Stream immutable private source
         env:
@@ -131,7 +123,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit immutable chunk inventory
         env:
@@ -164,7 +155,6 @@ jobs:
         run: >-
           node scripts/sign-media-processor-body.mjs
           work/transcription-chunks/failure-callback.json
-          >> "$GITHUB_OUTPUT"
 
       - name: Submit bounded failure evidence
         if: ${{ failure() && steps.chunking.outputs.callback_url != '' && steps.ready.outputs.ready != 'true' }}

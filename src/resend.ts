@@ -132,6 +132,112 @@ export async function sendPodcastAnnouncementEmail(
   );
 }
 
+export async function sendAdminActionMagicLink(
+  env: PodcastEnv,
+  {
+    actionKind,
+    deliveryKey,
+    email,
+    loginUrl
+  }: {
+    actionKind:
+      | "alignment_review"
+      | "delivery_audio_approval"
+      | "transcript_review"
+      | "working_master_decision";
+    deliveryKey: string;
+    email: string;
+    loginUrl: string;
+  }
+): Promise<MagicLinkDelivery> {
+  const copy = adminActionCopy(actionKind);
+  const subject = copy.subject;
+  const text = [
+    copy.english,
+    copy.spanish,
+    `${copy.action}: ${loginUrl}`,
+    "This single-use link expires 15 minutes after it was issued.",
+    "Este enlace de un solo uso vence 15 minutos después de su emisión."
+  ].join("\n\n");
+  const html = [
+    `<p>${copy.english}</p>`,
+    `<p>${copy.spanish}</p>`,
+    `<p><a href="${escapeAttribute(loginUrl)}">${copy.action}</a></p>`,
+    "<p>This single-use link expires 15 minutes after it was issued.<br>",
+    "Este enlace de un solo uso vence 15 minutos después de su emisión.</p>"
+  ].join("");
+  return sendResendPayload(
+    env,
+    {
+      from:
+        env.PODCAST_EMAIL_FROM
+        || "Dust Wave Podcasts <podcasts@dustwave.xyz>",
+      to: [email],
+      subject,
+      text,
+      html,
+      tags: [{ name: "category", value: "admin_action" }]
+    },
+    `podcast-admin-action/${deliveryKey}`
+  );
+}
+
+function adminActionCopy(
+  actionKind:
+    | "alignment_review"
+    | "delivery_audio_approval"
+    | "transcript_review"
+    | "working_master_decision"
+): {
+  subject: string;
+  english: string;
+  spanish: string;
+  action: string;
+} {
+  if (actionKind === "delivery_audio_approval") {
+    return {
+      subject:
+        "Podcast audio ready for review / Audio del podcast listo para revisión",
+      english:
+        "The normalized podcast audio and player waveform passed their evidence checks and need final review.",
+      spanish:
+        "El audio normalizado y la forma de onda del podcast aprobaron sus controles y necesitan revisión final.",
+      action: "Review audio / Revisar audio"
+    };
+  }
+  if (actionKind === "transcript_review") {
+    return {
+      subject:
+        "Podcast transcript ready for review / Transcripción del podcast lista para revisión",
+      english:
+        "The source-language podcast transcript is ready for editorial and speaker-label review.",
+      spanish:
+        "La transcripción del podcast en el idioma original está lista para revisión editorial y de hablantes.",
+      action: "Review transcript / Revisar transcripción"
+    };
+  }
+  if (actionKind === "alignment_review") {
+    return {
+      subject:
+        "Podcast alignment ready for review / Alineación del podcast lista para revisión",
+      english:
+        "The exact transcript and audio alignment passed its automated structural and benchmark gates and needs final review.",
+      spanish:
+        "La alineación exacta de la transcripción y el audio aprobó los controles estructurales y de referencia y necesita revisión final.",
+      action: "Review alignment / Revisar alineación"
+    };
+  }
+  return {
+    subject:
+      "Podcast master ready for review / Máster del podcast listo para revisión",
+    english:
+      "A full enhanced podcast master passed its quality gate and needs your decision.",
+    spanish:
+      "Un máster completo y mejorado del podcast aprobó el control de calidad y necesita tu decisión.",
+    action: "Review and decide / Revisar y decidir"
+  };
+}
+
 async function sendMagicLink(
   env: PodcastEnv,
   {

@@ -14,14 +14,22 @@ import { sha256Hex } from "@dustwave/worker-core/crypto";
 import type { AdminRole } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import {
+  prepareResolveAlignmentReviewAction
+} from "./admin-action-notifications";
+import {
   ALIGNMENT_RUNNER_DIGEST,
   ALIGNMENT_RUNNER_REPOSITORY,
   ALIGNMENT_RUNNER_REVISION,
   configuredAlignmentAdapter
 } from "./alignment-config";
+import { prepareAdminAuditAfterSingleChange } from "./audit";
 import type { PodcastEnv } from "./env";
+import {
+  FINAL_WORKING_MASTER_DECISION_SQL
+} from "./final-working-master";
 import { privateJson } from "./http";
 import { putImmutablePrivateArtifact } from "./private-artifacts";
+import { describeProcessorAvailability } from "./processor-mode";
 import { readSignedJsonBody } from "./signed-callback";
 import { normalizeTranscriptCues } from "./transcripts";
 import {
@@ -116,6 +124,86 @@ type AlignmentJobRow = {
   benchmark_run_id: string | null;
 };
 
+type AutomatedAlignmentCandidate = {
+  episode_id: string;
+  current_master_id: string;
+  transcript_id: string;
+  transcript_revision: number;
+  transcript_content_sha256: string;
+  language: string;
+};
+
+type EnsureAlignmentJobResult =
+  | { status: "request_conflict" }
+  | { status: "queue_conflict" }
+  | {
+    status: "ready";
+    job: AlignmentJobRow;
+    idempotent: boolean;
+    delivery: "processor_required" | "existing";
+    queued: boolean;
+  };
+
+export type AlignmentCompletionCommitEvidence = {
+  jobId: string;
+  alignmentRevisionId: string;
+  transcriptId: string;
+  auditId: string;
+  adapterVersion: string;
+  resultObjectKey: string;
+  resultManifestSha256: string;
+  qualityJson: string;
+  auditMetadataJson: string;
+  wordCount: number;
+};
+
+export const AUTOMATED_ALIGNMENT_CANDIDATES_SQL = `SELECT
+    episode.id AS episode_id,
+    state.current_master_id,
+    transcript.id AS transcript_id,
+    transcript.revision AS transcript_revision,
+    transcript.content_sha256 AS transcript_content_sha256,
+    transcript.language
+  FROM transcripts transcript
+  JOIN episodes episode ON episode.id = transcript.episode_id
+  JOIN episode_working_master_states state
+    ON state.episode_id = episode.id
+  JOIN episode_working_masters master
+    ON master.id = state.current_master_id
+   AND master.episode_id = episode.id
+  JOIN audio_qc_runs qc
+    ON qc.id = master.quality_control_run_id
+   AND qc.status = 'succeeded'
+   AND qc.blocker_count = 0
+  WHERE episode.status IN ('draft', 'scheduled')
+    AND transcript.language IN ('en', 'es')
+    AND transcript.status = 'approved'
+    AND transcript.approved_revision = transcript.revision
+    AND transcript.approved_at IS NOT NULL
+    AND ${FINAL_WORKING_MASTER_DECISION_SQL}
+    AND NOT EXISTS (
+      SELECT 1
+      FROM transcript_alignment_jobs job
+      WHERE job.episode_id = episode.id
+        AND job.working_master_id = master.id
+        AND job.transcript_id = transcript.id
+        AND job.transcript_revision = transcript.revision
+        AND job.transcript_content_sha256 = transcript.content_sha256
+        AND job.adapter = ?
+        AND job.adapter_version = ?
+        AND job.model = ?
+        AND job.model_version = ?
+        AND job.settings_version = ?
+        AND job.runner_revision = ?
+        AND job.runner_digest = ?
+        AND (
+          job.status IN ('queued', 'running', 'ready')
+          OR (job.status = 'failed' AND job.attempt_count >= 5)
+        )
+    )
+  ORDER BY transcript.approved_at, episode.id, transcript.language
+  LIMIT ?`;
+
 export async function listAdminEpisodeAlignmentJobs(
   request: Request,
   env: PodcastEnv,
@@ -144,11 +232,10 @@ export async function listAdminEpisodeAlignmentJobs(
     candidates: sources.results.map(presentAlignmentSource),
     jobs: jobs.results.map(presentAlignmentJob),
     processor: {
-      available: env.ENVIRONMENT === "staging"
-        && Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET),
-      mode: env.ENVIRONMENT === "staging"
-        ? "staging_manual"
-        : "unavailable",
+      ...describeProcessorAvailability(
+        env,
+        Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET)
+      ),
       workflow: "process-alignment.yml",
       runnerRepository: ALIGNMENT_RUNNER_REPOSITORY,
       runnerRevision: ALIGNMENT_RUNNER_REVISION
@@ -175,10 +262,7 @@ export async function queueAdminEpisodeAlignmentJob(
     { requireCsrf: true }
   );
   if (access instanceof Response) return access;
-  if (
-    env.ENVIRONMENT !== "staging"
-    || !env.MEDIA_PROCESSOR_CALLBACK_SECRET
-  ) {
+  if (!alignmentProcessorAvailable(env)) {
     return alignmentConflict(request, env, "alignment_processor_unavailable");
   }
   const body = await readJsonObject(request, 30_000);
@@ -228,6 +312,140 @@ export async function queueAdminEpisodeAlignmentJob(
       { currentTranscriptRevision: source.transcript_revision }
     );
   }
+  const result = await ensureAlignmentJob(env, {
+    source,
+    adapter,
+    requestId,
+    requestedByAdminUserId: access.authorization.identity.id,
+    automated: false
+  });
+  if (result.status === "request_conflict") {
+    return alignmentConflict(
+      request,
+      env,
+      "alignment_request_id_conflict"
+    );
+  }
+  if (result.status === "queue_conflict") {
+    return alignmentConflict(request, env, "alignment_queue_conflict");
+  }
+  return privateJson(
+    request,
+    env.ALLOWED_ORIGINS,
+    {
+      job: presentAlignmentJob(result.job),
+      idempotent: result.idempotent,
+      delivery: result.delivery
+    },
+    { status: result.idempotent ? 200 : 202 }
+  );
+}
+
+export async function scheduleAutomaticAlignmentJobs(
+  env: PodcastEnv
+): Promise<number> {
+  if (!alignmentProcessorAvailable(env)) return 0;
+  const adapter = configuredAlignmentAdapter("whisperx");
+  if (!adapter) return 0;
+  let candidates: D1Result<AutomatedAlignmentCandidate>;
+  try {
+    candidates = await env.DB.prepare(
+      AUTOMATED_ALIGNMENT_CANDIDATES_SQL
+    ).bind(
+      adapter.name,
+      adapter.version,
+      adapter.model,
+      adapter.modelVersion,
+      adapter.settingsVersion,
+      ALIGNMENT_RUNNER_REVISION,
+      adapter.runnerDigest,
+      10
+    ).all<AutomatedAlignmentCandidate>();
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      event: "alignment_automation_scan_failed",
+      errorName: error instanceof Error ? error.name : "UnknownError"
+    }));
+    return 0;
+  }
+
+  let queued = 0;
+  for (const candidate of candidates.results) {
+    try {
+      const source = await loadAlignmentSource(
+        env.DB,
+        candidate.episode_id,
+        candidate.language
+      );
+      if (
+        !source?.current_master_id
+        || source.current_master_id !== candidate.current_master_id
+        || source.working_master_id !== candidate.current_master_id
+        || source.transcript_id !== candidate.transcript_id
+        || source.transcript_status !== "approved"
+        || source.transcript_revision !== candidate.transcript_revision
+        || source.approved_revision !== candidate.transcript_revision
+        || source.transcript_content_sha256
+          !== candidate.transcript_content_sha256
+      ) {
+        continue;
+      }
+      const requestDigest = await sha256Hex([
+        "podcast-alignment-automation-v1",
+        source.episode_id,
+        source.working_master_id,
+        source.source_audio_sha256,
+        source.transcript_id,
+        String(source.transcript_revision),
+        source.transcript_content_sha256,
+        source.language,
+        adapter.name,
+        adapter.version,
+        adapter.model,
+        adapter.modelVersion,
+        adapter.settingsVersion,
+        ALIGNMENT_RUNNER_REVISION,
+        adapter.runnerDigest
+      ].join(":"));
+      const result = await ensureAlignmentJob(env, {
+        source,
+        adapter,
+        requestId: `alignment_auto_${requestDigest.slice(0, 32)}`,
+        requestedByAdminUserId: null,
+        automated: true
+      });
+      if (result.status === "ready" && result.queued) queued += 1;
+    } catch (error) {
+      console.error(JSON.stringify({
+        level: "error",
+        event: "alignment_automation_failed",
+        episodeId: candidate.episode_id,
+        language: candidate.language,
+        errorName: error instanceof Error ? error.name : "UnknownError"
+      }));
+    }
+  }
+  return queued;
+}
+
+async function ensureAlignmentJob(
+  env: PodcastEnv,
+  {
+    source,
+    adapter,
+    requestId,
+    requestedByAdminUserId,
+    automated
+  }: {
+    source: AlignmentSourceRow;
+    adapter: AlignmentRunnerAdapterIdentity;
+    requestId: string;
+    requestedByAdminUserId: string | null;
+    automated: boolean;
+  }
+): Promise<EnsureAlignmentJobResult> {
+  const language = alignmentLanguage(source.language);
   const projection = await projectionForSource(source);
   const inputFingerprint = await sha256Hex(JSON.stringify({
     schemaVersion: 2,
@@ -251,20 +469,21 @@ export async function queueAdminEpisodeAlignmentJob(
       existing.request_id === requestId
       && existing.input_fingerprint !== inputFingerprint
     ) {
-      return alignmentConflict(
-        request,
-        env,
-        "alignment_request_id_conflict"
-      );
+      return { status: "request_conflict" };
     }
-    const retry = await reopenRetryableAlignment(env.DB, existing);
-    return privateJson(request, env.ALLOWED_ORIGINS, {
-      job: presentAlignmentJob(retry),
-      idempotent: true,
-      delivery: retry.status === "queued"
-        ? "processor_required"
-        : "existing"
+    const retry = await reopenRetryableAlignment(env.DB, existing, {
+      requestedByAdminUserId,
+      automated
     });
+    return {
+      status: "ready",
+      job: retry.job,
+      idempotent: true,
+      delivery: retry.job.status === "queued"
+        ? "processor_required"
+        : "existing",
+      queued: retry.reopened
+    };
   }
 
   const jobId = `alignment_job_${inputFingerprint.slice(0, 32)}`;
@@ -284,7 +503,22 @@ export async function queueAdminEpisodeAlignmentJob(
     resultObjectKey
   });
   const processorManifest = await buildProcessorManifest(env, candidate);
-  const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
+  const auditMetadata = {
+    automated,
+    episodeId: source.episode_id,
+    transcriptId: source.transcript_id,
+    transcriptRevision: source.transcript_revision,
+    transcriptContentSha256: source.transcript_content_sha256,
+    transcriptProjectionSha256: projection.projectionSha256,
+    workingMasterId: source.working_master_id,
+    sourceAudioSha256: source.source_audio_sha256,
+    language,
+    adapter: adapter.name,
+    adapterVersion: adapter.version,
+    runnerRevision: ALIGNMENT_RUNNER_REVISION,
+    inputFingerprint,
+    wordCount: projection.wordCount
+  };
   const results = await env.DB.batch([
     env.DB.prepare(
       `INSERT OR IGNORE INTO transcript_alignment_revisions (
@@ -353,36 +587,15 @@ export async function queueAdminEpisodeAlignmentJob(
       processorManifest.manifestSha256,
       resultObjectKey,
       inputFingerprint,
-      access.authorization.identity.id
+      requestedByAdminUserId
     ),
-    env.DB.prepare(
-      `INSERT INTO admin_audit_events (
-         id, admin_user_id, action, target_type, target_id, metadata_json
-       )
-       SELECT ?, ?, 'alignment.queued', 'transcript_alignment_job', id, ?
-       FROM transcript_alignment_jobs
-       WHERE id = ? AND request_id = ?`
-    ).bind(
-      auditId,
-      access.authorization.identity.id,
-      JSON.stringify({
-        episodeId: source.episode_id,
-        transcriptId: source.transcript_id,
-        transcriptRevision: source.transcript_revision,
-        transcriptContentSha256: source.transcript_content_sha256,
-        transcriptProjectionSha256: projection.projectionSha256,
-        workingMasterId: source.working_master_id,
-        sourceAudioSha256: source.source_audio_sha256,
-        language,
-        adapter: adapter.name,
-        adapterVersion: adapter.version,
-        runnerRevision: ALIGNMENT_RUNNER_REVISION,
-        inputFingerprint,
-        wordCount: projection.wordCount
-      }),
-      jobId,
-      requestId
-    )
+    prepareAdminAuditAfterSingleChange(env.DB, {
+      adminUserId: requestedByAdminUserId,
+      action: "alignment.queued",
+      targetType: "transcript_alignment_job",
+      targetId: jobId,
+      metadata: auditMetadata
+    })
   ]);
   if (Number(results[1]?.meta?.changes ?? 0) !== 1) {
     const raced = await findAlignmentJob(
@@ -390,26 +603,24 @@ export async function queueAdminEpisodeAlignmentJob(
       requestId,
       inputFingerprint
     );
-    if (!raced) {
-      return alignmentConflict(request, env, "alignment_queue_conflict");
-    }
-    return privateJson(request, env.ALLOWED_ORIGINS, {
-      job: presentAlignmentJob(raced),
+    if (!raced) return { status: "queue_conflict" };
+    return {
+      status: "ready",
+      job: raced,
       idempotent: true,
-      delivery: "existing"
-    });
+      delivery: "existing",
+      queued: false
+    };
   }
   const created = await loadAlignmentJob(env.DB, jobId);
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    {
-      job: created ? presentAlignmentJob(created) : null,
-      idempotent: false,
-      delivery: "processor_required"
-    },
-    { status: 202 }
-  );
+  if (!created) return { status: "queue_conflict" };
+  return {
+    status: "ready",
+    job: created,
+    idempotent: false,
+    delivery: "processor_required",
+    queued: true
+  };
 }
 
 export async function approveAdminEpisodeAlignment(
@@ -554,6 +765,10 @@ export async function approveAdminEpisodeAlignment(
         benchmarkRunId: job.benchmark_run_id,
         alignedWordRatio: quality.alignedWordRatio
       }),
+      job.alignment_revision_id
+    ),
+    prepareResolveAlignmentReviewAction(
+      env.DB,
       job.alignment_revision_id
     )
   ]);
@@ -794,7 +1009,26 @@ export async function completeAlignmentProcessorJob(
   await persistAlignmentWords(env.DB, job, validated.manifest.candidateWords);
   const qualityJson = JSON.stringify(validated.quality);
   const auditId = `audit_${crypto.randomUUID().replace(/-/g, "")}`;
-  const results = await env.DB.batch([
+  const auditMetadataJson = JSON.stringify({
+    episodeId: job.episode_id,
+    transcriptId: job.transcript_id,
+    transcriptRevision: job.transcript_revision,
+    transcriptContentSha256: job.transcript_content_sha256,
+    transcriptProjectionSha256: job.transcript_projection_sha256,
+    workingMasterId: job.working_master_id,
+    sourceAudioSha256: job.source_audio_sha256,
+    alignmentRevisionId: job.alignment_revision_id,
+    resultManifestSha256: validated.manifestSha256,
+    adapter: job.adapter,
+    adapterVersion: job.adapter_version,
+    runnerRevision: job.runner_revision,
+    wordCount: validated.quality.wordCount,
+    alignedWordCount: validated.quality.alignedWordCount,
+    unalignedWordCount: validated.quality.unalignedWordCount,
+    interpolatedWordCount: validated.quality.interpolatedWordCount,
+    structurallyEligible: validated.quality.structurallyEligible
+  });
+  await env.DB.batch([
     env.DB.prepare(
       `UPDATE transcript_alignment_revisions
        SET
@@ -847,32 +1081,23 @@ export async function completeAlignmentProcessorJob(
        WHERE id = ? AND status = 'ready' AND changes() = 1`
     ).bind(
       auditId,
-      JSON.stringify({
-        episodeId: job.episode_id,
-        transcriptId: job.transcript_id,
-        transcriptRevision: job.transcript_revision,
-        transcriptContentSha256: job.transcript_content_sha256,
-        transcriptProjectionSha256: job.transcript_projection_sha256,
-        workingMasterId: job.working_master_id,
-        sourceAudioSha256: job.source_audio_sha256,
-        alignmentRevisionId: job.alignment_revision_id,
-        resultManifestSha256: validated.manifestSha256,
-        adapter: job.adapter,
-        adapterVersion: job.adapter_version,
-        runnerRevision: job.runner_revision,
-        wordCount: validated.quality.wordCount,
-        alignedWordCount: validated.quality.alignedWordCount,
-        unalignedWordCount: validated.quality.unalignedWordCount,
-        interpolatedWordCount: validated.quality.interpolatedWordCount,
-        structurallyEligible: validated.quality.structurallyEligible
-      }),
+      auditMetadataJson,
       job.id
     )
   ]);
-  if (
-    Number(results[0]?.meta?.changes ?? 0) !== 1
-    || Number(results[1]?.meta?.changes ?? 0) !== 1
-  ) {
+  const committed = await verifyAlignmentCompletionCommit(env.DB, {
+    jobId: job.id,
+    alignmentRevisionId: job.alignment_revision_id,
+    transcriptId: job.transcript_id,
+    auditId,
+    adapterVersion: validated.manifest.adapter.version,
+    resultObjectKey: job.result_object_key,
+    resultManifestSha256: validated.manifestSha256,
+    qualityJson,
+    auditMetadataJson,
+    wordCount: validated.manifest.candidateWords.length
+  });
+  if (!committed) {
     return alignmentConflict(
       request,
       env,
@@ -884,6 +1109,65 @@ export async function completeAlignmentProcessorJob(
     job: ready ? presentAlignmentJob(ready) : null,
     idempotent: false
   });
+}
+
+export async function verifyAlignmentCompletionCommit(
+  db: D1Database,
+  evidence: AlignmentCompletionCommitEvidence
+): Promise<boolean> {
+  const committed = await db.prepare(
+    `SELECT
+       job.id AS job_id,
+       revision.id AS alignment_revision_id,
+       audit.id AS audit_id,
+       (
+         SELECT COUNT(*)
+         FROM transcript_words word
+         WHERE word.alignment_revision_id = revision.id
+       ) AS word_count
+     FROM transcript_alignment_jobs job
+     JOIN transcript_alignment_revisions revision
+       ON revision.id = job.alignment_revision_id
+      AND revision.transcript_id = job.transcript_id
+     JOIN admin_audit_events audit
+       ON audit.id = ?
+      AND audit.action = 'alignment.completed'
+      AND audit.target_type = 'transcript_alignment_job'
+      AND audit.target_id = job.id
+      AND audit.metadata_json = ?
+     WHERE job.id = ?
+       AND job.alignment_revision_id = ?
+       AND job.transcript_id = ?
+       AND job.status = 'ready'
+       AND job.result_manifest_sha256 = ?
+       AND job.quality_report_json = ?
+       AND job.failure_code IS NULL
+       AND job.last_error IS NULL
+       AND revision.status = 'needs_review'
+       AND revision.adapter_version = ?
+       AND revision.result_manifest_key = ?
+       AND revision.quality_report_json = ?`
+  ).bind(
+    evidence.auditId,
+    evidence.auditMetadataJson,
+    evidence.jobId,
+    evidence.alignmentRevisionId,
+    evidence.transcriptId,
+    evidence.resultManifestSha256,
+    evidence.qualityJson,
+    evidence.adapterVersion,
+    evidence.resultObjectKey,
+    evidence.qualityJson
+  ).first<{
+    job_id: string;
+    alignment_revision_id: string;
+    audit_id: string;
+    word_count: number;
+  }>();
+  return committed?.job_id === evidence.jobId
+    && committed.alignment_revision_id === evidence.alignmentRevisionId
+    && committed.audit_id === evidence.auditId
+    && committed.word_count === evidence.wordCount;
 }
 
 async function authorizeAlignmentProcessor(
@@ -1177,8 +1461,15 @@ async function markAlignmentStale(
 
 async function reopenRetryableAlignment(
   db: D1Database,
-  job: AlignmentJobRow
-): Promise<AlignmentJobRow> {
+  job: AlignmentJobRow,
+  {
+    requestedByAdminUserId,
+    automated
+  }: {
+    requestedByAdminUserId: string | null;
+    automated: boolean;
+  }
+): Promise<{ job: AlignmentJobRow; reopened: boolean }> {
   if (
     job.status === "failed"
     && job.attempt_count < 5
@@ -1186,7 +1477,7 @@ async function reopenRetryableAlignment(
       job.failure_code ?? ""
     )
   ) {
-    await db.batch([
+    const results = await db.batch([
       db.prepare(
         `UPDATE transcript_alignment_jobs
          SET
@@ -1200,6 +1491,21 @@ async function reopenRetryableAlignment(
            updated_at = datetime('now')
          WHERE id = ? AND status = 'failed' AND attempt_count < 5`
       ).bind(job.id),
+      prepareAdminAuditAfterSingleChange(db, {
+        adminUserId: requestedByAdminUserId,
+        action: "alignment.requeued",
+        targetType: "transcript_alignment_job",
+        targetId: job.id,
+        metadata: {
+          automated,
+          episodeId: job.episode_id,
+          transcriptId: job.transcript_id,
+          transcriptRevision: job.transcript_revision,
+          workingMasterId: job.working_master_id,
+          inputFingerprint: job.input_fingerprint,
+          priorAttemptCount: job.attempt_count
+        }
+      }),
       db.prepare(
         `UPDATE transcript_alignment_revisions
          SET
@@ -1207,12 +1513,16 @@ async function reopenRetryableAlignment(
            quality_report_json = '{}',
            completed_at = NULL,
            updated_at = datetime('now')
-         WHERE id = ? AND status = 'failed'`
+       WHERE id = ? AND status = 'failed'`
       ).bind(job.alignment_revision_id)
     ]);
-    return (await loadAlignmentJob(db, job.id)) as AlignmentJobRow;
+    const reopened = Number(results[0]?.meta?.changes ?? 0) === 1;
+    return {
+      job: (await loadAlignmentJob(db, job.id)) as AlignmentJobRow,
+      reopened
+    };
   }
-  return job;
+  return { job, reopened: false };
 }
 
 async function loadAlignmentSource(
@@ -1502,6 +1812,11 @@ function adapterFromJob(job: AlignmentJobRow): AlignmentRunnerAdapterIdentity {
     settingsVersion: job.settings_version,
     runnerDigest: job.runner_digest as `sha256:${string}`
   };
+}
+
+function alignmentProcessorAvailable(env: PodcastEnv): boolean {
+  return env.ENVIRONMENT === "staging"
+    && Boolean(env.MEDIA_PROCESSOR_CALLBACK_SECRET);
 }
 
 function alignmentAdapter(value: unknown): AlignmentRunnerAdapterIdentity {

@@ -1,0 +1,37 @@
+name: Dispatch queued staging Podcast processors
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: staging-podcast-processor-dispatcher
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: podcast-staging
+    steps:
+      - name: Check out exact dispatcher source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up shared processor runtime
+        uses: ./.github/actions/setup-processor-node
+        with:
+          install-dependencies: "false"
+          install-media-tools: "false"
+
+      - name: Claim and dispatch bounded processor work
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+          PROCESSOR_WORKFLOW_REF: ${{ github.ref_name }}
+        run: node scripts/dispatch-podcast-processors.mjs

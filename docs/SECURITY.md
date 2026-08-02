@@ -156,6 +156,16 @@
 
 ## Provider boundaries
 
+- The scheduled YouTube access check acquires one expiring D1 lease, refreshes
+  OAuth, and verifies that `mine=true` still contains the exact configured
+  channel. It stores only the public channel ID, bounded status/failure code,
+  timestamps, and a consecutive-failure count. Access tokens, refresh tokens,
+  client credentials, provider bodies, and account profile data never enter
+  D1 or logs. Success remains separate from controlled unlisted-upload
+  evidence and cannot authorize or enqueue an upload. Known OAuth failures are
+  reduced to a fixed allowlist (`invalid_grant`, client authorization,
+  malformed response, rejection, timeout, or transport failure); Google error
+  descriptions and all other provider response content are discarded.
 - Announcement review is structurally side-effect free. Approval writes a
   durable, audited, idempotent outbox. Staging is explicitly `dry_run`,
   production is explicitly `disabled`, and the live sender fails closed unless
@@ -192,6 +202,15 @@
   country/state-only dynamic rate matching stay off so they cannot override a
   ZIP/location-specific Store result. Provider mappings are mode-bound so test
   data cannot satisfy live billing readiness.
+- The show-scoped tax-policy importer is restricted to a recently
+  authenticated Super-admin, same-origin CSRF, the active show billing mode,
+  and an exact typed policy confirmation. Its checked-in Store-derived
+  candidate is explicitly unapproved until that action. Provider creation uses
+  a content-derived idempotency key; the returned Tax Rate must attest the
+  exact mode, active state, percentage, inclusive behavior, country/state, and
+  show/policy metadata before one D1 batch records approval, audit evidence,
+  retirement, and assignment. Logs contain only fixed Stripe request metadata,
+  and the API never returns the Stripe Tax Rate ID or enables Checkout.
 - Checkout customer/session calls use deterministic provider idempotency keys.
   Unknown/network outcomes preserve the attempt and reuse the same key; safe
   provider errors are reduced to codes and no provider body, email, address, or
@@ -237,7 +256,8 @@
   approval refreshes OAuth and requires the bounded authenticated `mine=true`
   channel list to contain the exact configured channel ID. The adapter
   repeats that check with the consumer's fresh access token before creating an
-  upload session, hard-pins Google origins, disables redirects, bounds provider
+  upload session, hard-pins Google origins, uses manual redirect handling and
+  rejects every `3xx` without following it, bounds provider
   JSON, streams the conditionally read private R2 body, verifies returned
   channel/privacy, and fails closed if the mode is restored before consumption.
 - Saved marketing links accept only bounded text and the show's existing
@@ -254,6 +274,29 @@
   and announcements use durable delivery-ID idempotency. Redirects fail closed.
   Scheduled maintenance removes expired rate buckets, consumed login tokens,
   and revoked/expired sessions after a one-day diagnostic buffer.
+- Human-action mail for enhanced-master, delivery-audio, transcript review,
+  and alignment review
+  uses a separate secret recipient address and a content-derived idempotency
+  digest. The usable token is deterministically
+  derived with the admin-session secret only while the Worker is running; D1
+  stores its hash, a 15-minute expiry, the target/action digest, bounded retry
+  state, and at most a provider ID. It never stores the address, usable token,
+  login URL, media key, transcript, provider body, or exception text. The
+  return path is same-origin and limited to the English/Spanish Podcast admin.
+- Scheduled delivery rechecks the same current-master/QC predicate used by the
+  promote/reject operation. Delivery-audio and transcript actions additionally
+  require that shared decision to be final and bind their exact render,
+  transcript revision, or alignment evidence. Alignment mail additionally
+  requires the same structural eligibility, current input, pinned runner, and
+  private passing bilingual benchmark evidence enforced by the approval
+  trigger. The configured recipient must hold an allowed
+  role for the show. Delivery leases one action at a time and uses three
+  identical attempts. Approval, rejection, editing, policy drift, or master
+  drift resolves the action; no link can bypass recent-authentication, CSRF,
+  object revalidation, speaker confirmation, benchmark, or exact-revision
+  checks.
+  `ADMIN_ACTION_NOTIFICATION_MODE` is live only in staging and remains disabled
+  in production.
 - Secrets live only in `.dev.vars` or Cloudflare Worker secrets. Existing
   Cloudflare secrets cannot and should not be read back or copied by the
   application.
@@ -301,6 +344,14 @@
   signed routes expose only one exact private source and accept one bounded
   result. The workflow does not retain source audio, transcript projections,
   callback bodies, or raw results as artifacts.
+- Automatic alignment discovery exits before D1 in production. In staging it
+  requires the same explicit final-master predicate as delivery audio and
+  transcription, an exact approved transcript revision/content digest, the
+  current adapter/model/settings/runner identity, and clean source QC. It
+  stores no new content in the scheduler path: the shared queue primitive owns
+  the immutable projection, manifest, job, and content-free audit. One exact
+  active/ready job suppresses reruns; retryable failures reopen only that job
+  and stop after the existing five-attempt ceiling.
 - The Worker treats alignment output as untrusted. It revalidates exact
   source/transcript/projection/adapter/runner hashes, stable word identity and
   order, cue/source bounds, monotonic intervals, confidence, provenance,
@@ -323,12 +374,20 @@
 
 ## Transcription boundary
 
-Only a show-scoped Producer/Admin/Super-admin with a credentialed CSRF-bound
-session can queue transcription. Every job snapshots the current approved
-working-master ID, object ETag/size, source SHA-256, explicit English/Spanish
-source language, model, vocabulary, and settings version. The Queue consumer
-rechecks the master pointer, object identity, and byte digest before calling
-Workers AI. A replacement master makes queued/running work stale.
+A show-scoped Producer/Admin/Super-admin with a credentialed CSRF-bound
+session can queue transcription. The staging scheduler can create the same job
+with a null system actor only after the shared promote-or-reject predicate is
+final; a ready or in-progress enhancement decision blocks it. Production exits
+before D1 access. Both callers reuse one queue primitive, and every job
+snapshots the current approved working-master ID, current-policy zero-blocker
+QC evidence, object ETag/size, source SHA-256, explicit English/Spanish source
+language, model, vocabulary, and settings version. The deterministic input
+fingerprint and unique indexes collapse races to one job. Direct jobs are
+deferred to the existing bounded Queue scheduler so the cron cannot send a
+duplicate message; large jobs reuse the existing chunk processor ledger. The
+Queue consumer rechecks the master pointer, object identity, and byte digest
+before calling Workers AI. A replacement master makes queued/running work
+stale.
 
 Provider output is untrusted. The Worker bounds the raw response, keeps it
 private in R2, strips control/bidirectional characters and active angle
@@ -554,13 +613,28 @@ stable private error on any provider or validation failure. The browser again
 validates the response contract and uses only `textContent` until an explicit
 replace action passes Markdown through the shared sanitized WYSIWYG.
 
-The existing audit table enforces six requests per admin/episode/hour using
-content-free metadata. Audits retain transcript and output digests, revision,
-cue counts, language, model, usage, and error class only—never transcript,
-prompt, provider response, or draft text. The result is not stored server-side
-and cannot save an episode, publish News/RSS/YouTube, contact a directory, or
-change media, billing, ads, or subscriber state. Staging is enabled for
-controlled tests; production is disabled until a separate promotion review.
+The existing audit table enforces six manual requests per admin/episode/hour
+using content-free metadata. Audits retain transcript and output digests,
+revision, cue counts, language, model, prompt version, usage, and error class
+only—never transcript, prompt, provider response, or draft text.
+
+Staging automation stores the validated draft text only in the private
+`editorial_ai_drafts` table. Each row is bound to the final working master,
+approved transcript identity/revision/digest, episode-copy digest, output
+language, model, and prompt version. A unique input fingerprint prevents
+duplicates; a four-minute lease recovers interrupted generation; four claims
+per cron run and three attempts per fingerprint bound cost and retries.
+Ready rows require valid JSON, a draft digest, and completion evidence. Admin
+reads revalidate the bounded draft fields before returning them as private,
+no-store JSON. System audits use a null actor and content-free hashes/counts.
+The browser renders text only, and loading or applying a proposal never issues
+an episode update. Production exits before reading D1 under
+`SHOW_NOTES_AUTOMATION_MODE=disabled`, and Workers AI is independently off.
+
+Neither manual nor automatic generation can save an episode, publish
+News/RSS/YouTube, contact a directory, or change media, billing, ads, or
+subscriber state. An admin must explicitly apply the proposal to the unsaved
+shared editor and then separately save the episode.
 
 ## AI chapter-draft boundary
 
@@ -584,6 +658,18 @@ confirmation before replacing existing unsaved rows. Generation cannot write a
 chapter revision or approval, publish a feed or News page, contact a provider,
 or mutate any other domain. Staging is enabled; production is fail-closed.
 
+Automatic chapter proposals add stricter prerequisites than manual drafting:
+the final working master must remain current, the latest immutable approved
+transcript revision/digest must remain exact, and a human-approved `passed`
+word-alignment revision must pin that same master and transcript. The durable
+private row includes the alignment revision in its foreign key and fingerprint.
+The shared editorial claim/lease/completion/failure primitive bounds retries
+and makes show-notes and chapter recovery identical without sharing business
+eligibility rules. Current-only reads recheck master, transcript, alignment,
+episode title, and duration before returning a proposal. Production exits
+before D1 under `CHAPTER_DRAFT_AUTOMATION_MODE=disabled`; the separate Workers
+AI flag is also off.
+
 ## AI clip-candidate boundary
 
 Clip discovery reuses the Producer+ authentication, trusted-origin CSRF,
@@ -605,7 +691,18 @@ the source digest, full coverage, ordering, duration, and text, renders only DOM
 text nodes, and requires confirmation before replacing populated recipe
 fields. A candidate can fill only a new local segment recipe. The existing clip
 PUT, H1 alignment, render, approval, and publication paths remain independent
-explicit gates. Staging is enabled; production is fail-closed.
+explicit gates.
+
+Automatic discovery is stricter than manual drafting. Chapters and clips
+reuse one aligned-editorial SQL boundary requiring the current final working
+master, latest speaker-confirmed approved transcript, an exact ready alignment
+job, a passed alignment revision, and its human approval. Clip proposals reuse
+the private editorial claim/lease/completion/failure ledger with four claims
+per scheduler run, a four-minute lease, three attempts per exact fingerprint,
+and content-free system audits. Current-only reads recheck the master,
+transcript, alignment, episode title/duration, and every derived cue range.
+Production exits before D1 under `CLIP_DRAFT_AUTOMATION_MODE=disabled`; its
+separate Workers AI flag is also off.
 
 Public transcript reads are slug-addressed and fail closed behind the same
 published/due/public-or-free-or-early-access/ready-media policy as canonical
@@ -876,6 +973,36 @@ same conditional-R2 transport and exact checksum/manifest checks as Admin,
 wildcard read-only CORS, one-minute revalidation, a canonical News-page link,
 and noindex. Production keeps the mode disabled.
 
+## Processor-dispatch boundary
+
+Automatic staging dispatch is a pull boundary: a scheduled GitHub workflow
+uses its short-lived repository token to claim a bounded set of D1 leases from
+the Worker. The Worker never stores a GitHub token and the dispatcher never
+receives media URLs, object keys, listener data, transcript text, or provider
+credentials. Claim and result bodies use the existing timestamped
+media-processor HMAC contract, and the routes remain absent outside the exact
+staging dispatch mode.
+
+The checked-in registry is closed to eight ID-only workflows. D1 source tables
+remain authoritative; the dispatcher ledger stores transport evidence only.
+Conditional leases, per-source uniqueness, target-specific GitHub concurrency,
+five-attempt backoff, manifest-digest equality, and terminal-state
+reconciliation prevent transport retries from becoming competing processor
+state. An accepted GitHub run is never immediately rejected merely because
+its Worker acknowledgement failed. See
+[`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md) for the
+operational contract.
+
+Exhausted staging Queue messages are retained in an environment-specific DLQ
+instead of being silently deleted. A staging-only consumer persists one
+content-free, SHA-256-deduplicated D1 incident and acknowledges only after that
+write succeeds. It cannot produce to either Queue, call a provider, publish,
+send email, or change the source job. Raw bodies, errors, credentials, private
+URLs, listener identity, transcript text, and media are never stored. Invalid
+envelopes retain only their digest and fixed classification. The consumer uses
+long bounded retries for temporary D1 failures; production remains unchanged.
+See [`QUEUE_FAILURE_AUTOMATION.md`](QUEUE_FAILURE_AUTOMATION.md).
+
 ## Source-audio QC boundary
 
 Source-audio QC reuses the clip processor's dedicated staging HMAC secret but
@@ -951,6 +1078,12 @@ one atomic batch creates the immutable replacement, advances the pointer, and
 writes conditional audit evidence. Neither free-form approval text nor object
 keys enter audit metadata.
 
+The readiness predicate for promotion, rejection, and action discovery is one
+shared SQL primitive. This prevents the email path from weakening or drifting
+from the actual decision gate. The email deep link changes navigation only;
+the normal API authorization and exact-evidence checks still decide whether an
+action is available.
+
 ## Delivery-audio and player-peaks boundary
 
 Delivery rendering is absent outside staging and accepts only the exact current
@@ -959,6 +1092,17 @@ bitrate, metadata policy, full-decode evidence, complete MPEG frame accounting,
 and a bounded waveform schema; callers cannot provide FFmpeg filters or output
 locations. A master change makes queued, rendering, completing, and ready jobs
 stale. Replacing episode audio makes the old approval historical.
+
+The staging scheduler may create a delivery render only after the current
+master is either an explicitly approved enhanced derivative or the source
+master retained by an immutable enhanced-derivative rejection. A ready or
+in-progress derivative blocks the scan. Queue creation reuses the same current
+master, QC-policy, R2-head, manifest, multipart, and audit primitive as the
+authenticated Admin route; it does not add a second trust path. Deterministic
+attempt IDs, the D1 one-active-job index, and a maximum of three automatic
+attempts bound concurrent and terminal retries. A system-created audit stores
+only the attempt number and content-free IDs/digests. Production returns before
+any D1 or R2 access, and scan failures cannot block unrelated cron work.
 
 The processor receives no R2 credential. Manifest/source/part/finalization
 requests use purpose-bound timestamped HMACs, bounded bodies, exact

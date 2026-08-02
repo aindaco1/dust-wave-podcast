@@ -1,0 +1,65 @@
+name: Refresh staging virtual-audio evidence
+
+on:
+  schedule:
+    - cron: "17 13 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-virtual-audio-gate
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: podcast-staging
+    steps:
+      - name: Check out exact gate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up locked Podcast runtime
+        uses: ./.github/actions/setup-processor-node
+
+      - name: Rehearse Dust Wave direct and house selection
+        run: npm run gate:sponsor-demo
+
+      - name: Verify media tools
+        run: |
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Run and record the atomic staging gate
+        env:
+          MEDIA_PROCESSOR_CALLBACK_SECRET: ${{ secrets.MEDIA_PROCESSOR_CALLBACK_SECRET }}
+          EVIDENCE_DIRECTORY: ${{ runner.temp }}/virtual-audio-gate-evidence
+        run: |
+          mkdir --mode=700 "$EVIDENCE_DIRECTORY"
+          npm run gate:virtual-audio:staging -- \
+            --output "$EVIDENCE_DIRECTORY" \
+            --pairs 5000 \
+            --concurrency 12 \
+            --publish-evidence
+
+      - name: Add content-free gate summary
+        if: ${{ always() }}
+        env:
+          EVIDENCE_DIRECTORY: ${{ runner.temp }}/virtual-audio-gate-evidence
+        run: node scripts/write-virtual-audio-gate-summary.mjs
+
+      - name: Retain redacted aggregate evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: virtual-audio-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/virtual-audio-gate-evidence/staging-gate.json
+            ${{ runner.temp }}/virtual-audio-gate-evidence/protocol-matrix.json
+            ${{ runner.temp }}/virtual-audio-gate-evidence/paired-load.json
+          if-no-files-found: warn
+          retention-days: 30

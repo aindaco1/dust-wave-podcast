@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalTranscriptContent,
   normalizeTranscriptCues,
-  serializeTranscriptContent
+  serializeTranscriptContent,
+  verifyTranscriptApprovalCommit,
+  verifyTranscriptRevisionCommit
 } from "../src/transcripts";
 
 describe("transcript review contract", () => {
@@ -127,7 +129,119 @@ describe("transcript review contract", () => {
       canonicalTranscriptContent("es", cues)
     )).toThrow(/one-megabyte review limit/);
   });
+
+  it("verifies exact committed revision evidence instead of D1 batch metadata", async () => {
+    const queries: Array<{ query: string; values: unknown[] }> = [];
+    const evidence = transcriptRevisionCommitEvidence();
+
+    await expect(verifyTranscriptRevisionCommit(
+      transcriptRevisionVerificationDatabase(queries, evidence.transcriptId),
+      evidence
+    )).resolves.toBe(true);
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0].query).toContain("JOIN transcript_mutations mutation");
+    expect(queries[0].query).toContain("JOIN transcript_revisions revision");
+    expect(queries[0].query).toContain("JOIN admin_audit_events audit");
+    expect(queries[0].query).toContain("transcript.approved_revision IS NULL");
+    expect(queries[0].values).toEqual([
+      evidence.mutationId,
+      evidence.baseRevision,
+      evidence.targetRevision,
+      evidence.contentSha256,
+      evidence.revisionId,
+      evidence.auditId,
+      evidence.transcriptId,
+      evidence.targetRevision,
+      evidence.contentSha256,
+      1
+    ]);
+  });
+
+  it("fails closed when exact transcript revision evidence is absent", async () => {
+    await expect(verifyTranscriptRevisionCommit(
+      transcriptRevisionVerificationDatabase([], null),
+      transcriptRevisionCommitEvidence()
+    )).resolves.toBe(false);
+  });
+
+  it("verifies exact transcript approval evidence instead of D1 batch metadata", async () => {
+    const queries: Array<{ query: string; values: unknown[] }> = [];
+    const evidence = transcriptApprovalCommitEvidence();
+
+    await expect(verifyTranscriptApprovalCommit(
+      transcriptRevisionVerificationDatabase(queries, evidence.transcriptId),
+      evidence
+    )).resolves.toBe(true);
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0].query).toContain("JOIN transcript_approvals approval");
+    expect(queries[0].query).toContain("JOIN admin_audit_events audit");
+    expect(queries[0].query).toContain("transcript.status = 'approved'");
+    expect(queries[0].query).toContain(
+      "transcript.approved_revision = transcript.revision"
+    );
+    expect(queries[0].values).toEqual([
+      evidence.approvalId,
+      evidence.adminUserId,
+      evidence.auditId,
+      evidence.transcriptId,
+      evidence.revision
+    ]);
+  });
+
+  it("fails closed when exact transcript approval evidence is absent", async () => {
+    await expect(verifyTranscriptApprovalCommit(
+      transcriptRevisionVerificationDatabase([], null),
+      transcriptApprovalCommitEvidence()
+    )).resolves.toBe(false);
+  });
 });
+
+function transcriptRevisionCommitEvidence() {
+  return {
+    transcriptId: "transcript_fixture",
+    mutationId: "mutation_fixture",
+    revisionId: "transcript_revision_fixture",
+    auditId: "audit_fixture",
+    baseRevision: 3,
+    targetRevision: 4,
+    contentSha256: "a".repeat(64),
+    speakerLabelsConfirmed: true
+  };
+}
+
+function transcriptApprovalCommitEvidence() {
+  return {
+    transcriptId: "transcript_fixture",
+    approvalId: "transcript_approval_fixture",
+    auditId: "audit_fixture",
+    revision: 4,
+    adminUserId: "admin_fixture"
+  };
+}
+
+function transcriptRevisionVerificationDatabase(
+  queries: Array<{ query: string; values: unknown[] }>,
+  transcriptId: string | null
+): D1Database {
+  return {
+    prepare(query: string) {
+      let values: unknown[] = [];
+      const statement = {
+        bind(...bound: unknown[]) {
+          values = bound;
+          queries.push({ query, values });
+          return statement;
+        },
+        async first() {
+          return transcriptId ? { id: transcriptId } : null;
+        }
+      };
+      return statement;
+    }
+  } as unknown as D1Database;
+}
 
 function cue(id: string, startsAtMs: number, endsAtMs: number) {
   return {

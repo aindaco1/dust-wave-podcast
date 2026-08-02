@@ -25,11 +25,20 @@ const feedValidationSourcePath = path.resolve(
   "src/feed-validation.ts"
 );
 const requiredDestinations = 10;
+const dynamicAdPilotRequirements = Object.freeze([
+  Object.freeze({ field: "approvedPlans", label: "approved episode ad plan" }),
+  Object.freeze({ field: "selectedDecisions", label: "selected ad decision" }),
+  Object.freeze({
+    field: "directQualifications",
+    label: "qualified direct-sponsor download"
+  })
+]);
 
 const stagingPosture = Object.freeze({
   AD_DECISION_MODE: "staging_validate",
   ANNOUNCEMENT_DELIVERY_MODE: "dry_run",
   CLIP_PUBLICATION_MODE: "staging_preview",
+  DISTRIBUTION_OBSERVATION_MODE: "staging_probe",
   GITHUB_PUBLISH_MODE: "dry_run",
   PUBLICATION_GATE_MODE: "shadow",
   RSS_IMPORT_EXECUTION_MODE: "staging_copy",
@@ -46,6 +55,7 @@ const productionPosture = Object.freeze({
   AD_DECISION_MODE: "disabled",
   ANNOUNCEMENT_DELIVERY_MODE: "disabled",
   CLIP_PUBLICATION_MODE: "disabled",
+  DISTRIBUTION_OBSERVATION_MODE: "disabled",
   GITHUB_PUBLISH_MODE: "dry_run",
   PUBLICATION_GATE_MODE: "legacy",
   RSS_IMPORT_EXECUTION_MODE: "disabled",
@@ -153,6 +163,14 @@ export function evaluateLaunchStagingReadiness(snapshot) {
   );
 
   const youtube = snapshot.youtube ?? {};
+  add(
+    youtube.channelAccessReady === true ? "PASS" : "BLOCK",
+    "youtube_access",
+    "YouTube channel access",
+    youtube.channelAccessReady === true
+      ? "a refresh grant reached the exact configured channel within 24 hours"
+      : "refresh and verify the exact configured channel; credentials, channel mismatch, or evidence freshness require attention"
+  );
   const youtubeReady = boundedCount(youtube.uploadedUnlisted) > 0
     && boundedCount(youtube.unresolved) === 0;
   add(
@@ -179,19 +197,18 @@ export function evaluateLaunchStagingReadiness(snapshot) {
 
   const dynamicAds = snapshot.dynamicAds ?? {};
   const virtualAudioReady = snapshot.virtualAudioEvidence?.passed === true;
+  const missingDynamicAdEvidence = dynamicAdPilotRequirements
+    .filter(({ field }) => boundedCount(dynamicAds[field]) === 0)
+    .map(({ label }) => label);
   const dynamicAdReady = virtualAudioReady
-    && boundedCount(dynamicAds.approvedPlans) > 0
-    && boundedCount(dynamicAds.selectedDecisions) > 0
-    && boundedCount(dynamicAds.directQualifications) > 0;
+    && missingDynamicAdEvidence.length === 0;
   add(
     dynamicAdReady ? "PASS" : "BLOCK",
     "dynamic_ads",
     "Dynamic-ad durable pilot record",
     dynamicAdReady
       ? "current synthetic load plus approved plan, selected decision, and direct completion evidence exist"
-      : virtualAudioReady
-        ? "synthetic protocol/load passed; complete the isolated durable client pilot"
-        : "run the current signed synthetic protocol/load gate, then complete the isolated durable client pilot"
+      : dynamicAdBlockDetail(virtualAudioReady, missingDynamicAdEvidence)
   );
 
   add(
@@ -256,7 +273,7 @@ export function loadLaunchStagingSnapshot(
     "--command",
     launchStateStatements(escapedEpisodeId, escapedValidatorVersion)
   ]);
-  if (!Array.isArray(response) || response.length !== 6) {
+  if (!Array.isArray(response) || response.length !== 7) {
     throw new Error("D1 returned an incomplete launch-state snapshot.");
   }
   const results = response.map((entry) => entry.results ?? []);
@@ -279,8 +296,8 @@ export function loadLaunchStagingSnapshot(
     dynamicAds: presentDynamicAds(results[4][0]),
     virtualAudioEvidence: virtualAudioEvidencePath
       ? loadVirtualAudioEvidence(virtualAudioEvidencePath)
-      : null,
-    foreignKeyViolations: results[5].length,
+      : presentStoredVirtualAudioEvidence(results[5][0]),
+    foreignKeyViolations: results[6].length,
     remoteReadOnly: response.every((entry) =>
       Number(entry.meta?.changes ?? 0) === 0
       && Number(entry.meta?.rows_written ?? 0) === 0
@@ -357,6 +374,7 @@ function addNestedGate(
   const failCount = boundedCount(summary?.failCount);
   const blockCount = boundedCount(summary?.[blockerField]);
   const waitCount = waitField ? boundedCount(summary?.[waitField]) : 0;
+  const deferredCount = boundedCount(summary?.deferredCount);
   const status = failCount > 0
     ? "FAIL"
     : blockCount > 0
@@ -372,7 +390,8 @@ function addNestedGate(
     )
     ?? null;
   const counts = `${boundedCount(summary?.passCount)} pass, `
-    + `${blockCount} block, ${waitCount} wait, ${failCount} fail`;
+    + `${blockCount} block, ${waitCount} wait, `
+    + `${deferredCount} deferred, ${failCount} fail`;
   add(
     status,
     id,
@@ -460,7 +479,14 @@ function launchStateStatements(episodeId, validatorVersion) {
         THEN 1 ELSE 0 END), 0) AS uploaded_unlisted,
       COALESCE(SUM(CASE
         WHEN status IN ('uploading', 'reconciliation_required')
-        THEN 1 ELSE 0 END), 0) AS unresolved
+        THEN 1 ELSE 0 END), 0) AS unresolved,
+      EXISTS (
+        SELECT 1 FROM provider_access_health health
+        WHERE health.provider = 'youtube'
+          AND health.status = 'ready'
+          AND health.account_reference IS NOT NULL
+          AND health.last_success_at >= datetime('now', '-24 hours')
+      ) AS channel_access_ready
     FROM episode_youtube_publications
     WHERE show_id = ${showId};
     SELECT
@@ -494,10 +520,20 @@ function launchStateStatements(episodeId, validatorVersion) {
         SELECT COUNT(*) FROM ad_impression_qualifications qualification
         JOIN ad_decisions decision
           ON decision.id = qualification.decision_id
+        JOIN ad_campaigns campaign
+          ON campaign.id = qualification.campaign_id
         WHERE decision.show_id = ${showId}
-          AND qualification.campaign_id IS NOT NULL
+          AND campaign.campaign_type = 'direct'
           AND qualification.qualification_reason = 'download_complete'
       ) AS direct_qualifications;
+    SELECT
+      source_commit, generated_at, paired_requests,
+      total_measured_requests, protocol_passed, load_passed,
+      cleanup_complete, diagnostic_lease_removed,
+      uploaded_objects_removed, failure_code
+    FROM virtual_audio_gate_runs
+    ORDER BY generated_at DESC, created_at DESC
+    LIMIT 1;
     PRAGMA foreign_key_check;`;
 }
 
@@ -516,7 +552,8 @@ function presentDistribution(row) {
 function presentYoutube(row) {
   return {
     uploadedUnlisted: boundedCount(row?.uploaded_unlisted),
-    unresolved: boundedCount(row?.unresolved)
+    unresolved: boundedCount(row?.unresolved),
+    channelAccessReady: Number(row?.channel_access_ready) === 1
   };
 }
 
@@ -534,6 +571,48 @@ function presentDynamicAds(row) {
     selectedDecisions: boundedCount(row?.selected_decisions),
     directQualifications: boundedCount(row?.direct_qualifications)
   };
+}
+
+export function presentStoredVirtualAudioEvidence(
+  row,
+  sourceCurrent = null
+) {
+  if (!row) return null;
+  const sourceCommit = String(row.source_commit ?? "");
+  return evaluateVirtualAudioEvidence({
+    schemaVersion: "dust-wave-virtual-audio-staging-gate-v1",
+    generatedAt: row.generated_at,
+    sourceCommit,
+    scope: {
+      syntheticProtocolEmulation: true,
+      signedCapability: true,
+      pairs: row.paired_requests,
+      totalMeasuredRequests: row.total_measured_requests
+    },
+    result: {
+      passed:
+        Number(row.protocol_passed) === 1
+        && Number(row.load_passed) === 1,
+      cleanupComplete: Number(row.cleanup_complete) === 1,
+      diagnosticLeaseRemoved: Number(row.diagnostic_lease_removed) === 1,
+      uploadedObjectsRemoved: Number(row.uploaded_objects_removed) === 1,
+      failureCode: row.failure_code ?? null
+    }
+  }, typeof sourceCurrent === "boolean"
+    ? sourceCurrent
+    : /^[a-f0-9]{40}$/.test(sourceCommit)
+      && gitSourceIsCurrent(sourceCommit));
+}
+
+function dynamicAdBlockDetail(virtualAudioReady, missingEvidence) {
+  const requirements = [];
+  if (!virtualAudioReady) {
+    requirements.push("run the current signed synthetic protocol/load gate");
+  }
+  if (missingEvidence.length > 0) {
+    requirements.push(`missing durable evidence: ${missingEvidence.join(", ")}`);
+  }
+  return requirements.join("; ");
 }
 
 function loadVirtualAudioEvidence(filename) {
@@ -560,6 +639,7 @@ function gitSourceIsCurrent(sourceCommit) {
     "scripts/run-virtual-audio-staging-gate.mjs",
     "scripts/run-virtual-audio-protocol-matrix.mjs",
     "scripts/run-virtual-audio-load-gate.mjs",
+    ".github/workflows/virtual-audio-staging-gate.yml",
     "wrangler.jsonc"
   ];
   const result = spawnSync(

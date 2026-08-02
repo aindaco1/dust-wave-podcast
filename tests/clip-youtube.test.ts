@@ -284,11 +284,11 @@ describe("controlled clip YouTube publication", () => {
       fixture.env,
       fixture.queuedJobs[0]
     )).rejects.toMatchObject({
-      code: "youtube_oauth_failed"
+      code: "youtube_oauth_request_rejected"
     });
     expect(fixture.publication?.status).toBe("failed");
     expect(fixture.publication?.failure_code).toBe(
-      "youtube_oauth_failed"
+      "youtube_oauth_request_rejected"
     );
     expect(providerFetch).toHaveBeenCalledTimes(1);
 

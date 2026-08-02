@@ -10,10 +10,14 @@ import {
   type PlayerPeaksDocument
 } from "@dustwave/media-core/delivery-audio";
 import {
-  sha256BytesHex
+  sha256BytesHex,
+  sha256Hex
 } from "@dustwave/worker-core/crypto";
 
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import {
+  prepareResolveDeliveryAudioAction
+} from "./admin-action-notifications";
 import {
   hasAdminRoleForShow,
   requireAdmin,
@@ -23,6 +27,9 @@ import {
 import { prepareAdminAuditAfterSingleChange } from "./audit";
 import type { PodcastEnv } from "./env";
 import {
+  FINAL_WORKING_MASTER_DECISION_SQL
+} from "./final-working-master";
+import {
   privateCorsHeaders,
   privateJson
 } from "./http";
@@ -30,6 +37,7 @@ import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import { describeProcessorAvailability } from "./processor-mode";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
@@ -61,6 +69,7 @@ const MAXIMUM_OUTPUT_BYTES = 2 * 1024 * 1024 * 1024;
 const MAXIMUM_PART_BYTES = 32 * 1024 * 1024;
 const MINIMUM_MULTIPART_PART_BYTES = 5 * 1024 * 1024;
 const RECOMMENDED_PART_BYTES = 33_554_432 as const;
+const AUTOMATED_DELIVERY_AUDIO_MAX_ATTEMPTS = 3;
 const FAILURE_CODES = new Set([
   "processor_failed",
   "source_invalid",
@@ -130,6 +139,66 @@ type DeliveryPartRow = {
   sha256: string;
 };
 
+type EnsureDeliveryAudioJobResult =
+  | {
+    status: "created" | "existing";
+    job: DeliveryJobRow | null;
+    manifest: DeliveryAudioManifest;
+  }
+  | {
+    status:
+      | "job_conflict"
+      | "job_exists"
+      | "source_mismatch"
+      | "source_not_ready";
+    jobId?: string;
+  };
+
+type AutomatedDeliveryAudioCandidate = {
+  episode_id: string;
+  current_master_id: string;
+  automated_attempt_count: number;
+};
+
+export const AUTOMATED_DELIVERY_AUDIO_CANDIDATES_SQL = `WITH eligible AS (
+  SELECT
+    episode.id AS episode_id,
+    state.current_master_id,
+    master.approved_at,
+    (
+      SELECT COUNT(*)
+      FROM delivery_audio_jobs prior
+      WHERE prior.episode_id = episode.id
+        AND prior.source_master_id = master.id
+        AND prior.stream_profile = '${DELIVERY_AUDIO_PROFILE}'
+        AND prior.id LIKE 'delivery_audio_auto_%'
+    ) AS automated_attempt_count
+  FROM episodes episode
+  JOIN episode_working_master_states state
+    ON state.episode_id = episode.id
+  JOIN episode_working_masters master
+    ON master.id = state.current_master_id
+   AND master.episode_id = episode.id
+  WHERE episode.status IN ('draft', 'scheduled')
+    AND episode.audio_key IS NULL
+    AND ${FINAL_WORKING_MASTER_DECISION_SQL}
+    AND NOT EXISTS (
+      SELECT 1
+      FROM delivery_audio_jobs delivery
+      WHERE delivery.episode_id = episode.id
+        AND delivery.source_master_id = master.id
+        AND delivery.stream_profile = '${DELIVERY_AUDIO_PROFILE}'
+        AND delivery.status IN (
+          'queued', 'rendering', 'completing', 'ready', 'approved'
+        )
+    )
+)
+SELECT episode_id, current_master_id, automated_attempt_count
+FROM eligible
+WHERE automated_attempt_count < ?
+ORDER BY approved_at, episode_id
+LIMIT ?`;
+
 export async function listAdminDeliveryAudioJobs(
   request: Request,
   env: PodcastEnv,
@@ -150,12 +219,7 @@ export async function listAdminDeliveryAudioJobs(
   ).bind(access.episode.id).all<DeliveryJobRow>();
   return privateJson(request, env.ALLOWED_ORIGINS, {
     jobs: rows.results.map((row) => presentDeliveryJob(env, row)),
-    processor: {
-      available: processorAvailable(env),
-      mode: env.ENVIRONMENT === "staging"
-        ? "staging_manual"
-        : "unavailable"
-    },
+    processor: describeProcessorAvailability(env, processorAvailable(env)),
     safeguards: {
       currentWorkingMasterRequired: true,
       normalizedStreamProfile: DELIVERY_AUDIO_PROFILE,
@@ -187,13 +251,131 @@ export async function queueAdminDeliveryAudioJob(
     body.workingMasterId,
     "workingMasterId"
   );
-  const source = await loadDeliverySource(env.DB, access.episode.id);
-  if (!source || source.current_master_id !== expectedMasterId) {
+  const result = await ensureDeliveryAudioJob(env, {
+    episodeId: access.episode.id,
+    expectedMasterId,
+    jobId,
+    requestedByAdminUserId: access.authorization.identity.id,
+    automatedAttempt: null
+  });
+  if (result.status === "source_not_ready") {
     return deliveryConflict(
       request,
       env,
       "delivery_audio_working_master_not_ready"
     );
+  }
+  if (result.status === "source_mismatch") {
+    return deliveryConflict(
+      request,
+      env,
+      "delivery_audio_source_mismatch"
+    );
+  }
+  if (result.status === "job_conflict") {
+    return deliveryConflict(
+      request,
+      env,
+      "delivery_audio_job_conflict"
+    );
+  }
+  if (result.status === "job_exists") {
+    return deliveryConflict(
+      request,
+      env,
+      "delivery_audio_job_exists",
+      { jobId: result.jobId }
+    );
+  }
+  if (result.status !== "created" && result.status !== "existing") {
+    return deliveryConflict(
+      request,
+      env,
+      "delivery_audio_job_conflict"
+    );
+  }
+  return privateJson(
+    request,
+    env.ALLOWED_ORIGINS,
+    {
+      job: result.job ? presentDeliveryJob(env, result.job) : null,
+      processor: deliveryDispatch(env, result.manifest),
+      idempotent: result.status === "existing"
+    },
+    { status: result.status === "created" ? 202 : 200 }
+  );
+}
+
+export async function scheduleAutomatedDeliveryAudioJobs(
+  env: PodcastEnv
+): Promise<number> {
+  if (!processorAvailable(env)) return 0;
+  let candidates: D1Result<AutomatedDeliveryAudioCandidate>;
+  try {
+    candidates = await env.DB.prepare(
+      AUTOMATED_DELIVERY_AUDIO_CANDIDATES_SQL
+    ).bind(
+      AUTOMATED_DELIVERY_AUDIO_MAX_ATTEMPTS,
+      10
+    ).all<AutomatedDeliveryAudioCandidate>();
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      event: "delivery_audio_automation_scan_failed",
+      errorName: error instanceof Error ? error.name : "UnknownError"
+    }));
+    return 0;
+  }
+  let created = 0;
+  for (const candidate of candidates.results) {
+    const attempt = candidate.automated_attempt_count + 1;
+    const digest = await sha256Hex([
+      "podcast-delivery-audio-automation-v1",
+      candidate.episode_id,
+      candidate.current_master_id,
+      DELIVERY_AUDIO_PROFILE,
+      String(attempt)
+    ].join(":"));
+    try {
+      const result = await ensureDeliveryAudioJob(env, {
+        episodeId: candidate.episode_id,
+        expectedMasterId: candidate.current_master_id,
+        jobId: `delivery_audio_auto_${digest.slice(0, 32)}`,
+        requestedByAdminUserId: null,
+        automatedAttempt: attempt
+      });
+      if (result.status === "created") created += 1;
+    } catch (error) {
+      console.error(JSON.stringify({
+        level: "error",
+        event: "delivery_audio_automation_failed",
+        episodeId: candidate.episode_id,
+        errorName: error instanceof Error ? error.name : "UnknownError"
+      }));
+    }
+  }
+  return created;
+}
+
+async function ensureDeliveryAudioJob(
+  env: PodcastEnv,
+  {
+    episodeId,
+    expectedMasterId,
+    jobId,
+    requestedByAdminUserId,
+    automatedAttempt
+  }: {
+    episodeId: string;
+    expectedMasterId: string;
+    jobId: string;
+    requestedByAdminUserId: string | null;
+    automatedAttempt: number | null;
+  }
+): Promise<EnsureDeliveryAudioJobResult> {
+  const source = await loadDeliverySource(env.DB, episodeId);
+  if (!source || source.current_master_id !== expectedMasterId) {
+    return { status: "source_not_ready" };
   }
   const sourceObject = await env.MEDIA_BUCKET.head(source.source_object_key);
   if (
@@ -202,11 +384,7 @@ export async function queueAdminDeliveryAudioJob(
     || sourceObject.httpEtag !== source.source_object_etag
     || sourceObject.httpMetadata?.contentType !== source.source_mime_type
   ) {
-    return deliveryConflict(
-      request,
-      env,
-      "delivery_audio_source_mismatch"
-    );
+    return { status: "source_mismatch" };
   }
   const outputPrefix =
     `podcasts/${source.show_id}/${source.episode_id}/`
@@ -222,21 +400,13 @@ export async function queueAdminDeliveryAudioJob(
   const prior = await loadDeliveryJob(env.DB, jobId);
   if (prior) {
     if (
-      prior.episode_id !== access.episode.id
+      prior.episode_id !== episodeId
       || prior.source_master_id !== expectedMasterId
       || prior.processor_manifest_sha256 !== manifest.manifestSha256
     ) {
-      return deliveryConflict(
-        request,
-        env,
-        "delivery_audio_job_conflict"
-      );
+      return { status: "job_conflict" };
     }
-    return privateJson(request, env.ALLOWED_ORIGINS, {
-      job: presentDeliveryJob(env, prior),
-      processor: deliveryDispatch(manifest),
-      idempotent: true
-    });
+    return { status: "existing", job: prior, manifest };
   }
   const active = await env.DB.prepare(
     `SELECT id
@@ -253,14 +423,8 @@ export async function queueAdminDeliveryAudioJob(
     source.current_master_id,
     DELIVERY_AUDIO_PROFILE
   ).first<{ id: string }>();
-  if (active) {
-    return deliveryConflict(
-      request,
-      env,
-      "delivery_audio_job_exists",
-      { jobId: active.id }
-    );
-  }
+  if (active) return { status: "job_exists", jobId: active.id };
+
   const multipart = await env.MEDIA_BUCKET.createMultipartUpload(
     outputObjectKey,
     {
@@ -299,14 +463,16 @@ export async function queueAdminDeliveryAudioJob(
         multipart.uploadId,
         peaksObjectKey,
         manifest.manifestSha256,
-        access.authorization.identity.id
+        requestedByAdminUserId
       ),
       prepareAdminAuditAfterSingleChange(env.DB, {
-        adminUserId: access.authorization.identity.id,
+        adminUserId: requestedByAdminUserId,
         action: "delivery_audio.queued",
         targetType: "delivery_audio_job",
         targetId: jobId,
         metadata: {
+          automated: requestedByAdminUserId === null,
+          automatedAttempt,
           episodeId: source.episode_id,
           sourceMasterId: source.current_master_id,
           streamProfile: DELIVERY_AUDIO_PROFILE,
@@ -316,27 +482,17 @@ export async function queueAdminDeliveryAudioJob(
     ]);
     if (Number(results[0]?.meta?.changes ?? 0) !== 1) {
       await multipart.abort();
-      return deliveryConflict(
-        request,
-        env,
-        "delivery_audio_job_conflict"
-      );
+      return { status: "job_conflict" };
     }
   } catch (error) {
     await multipart.abort().catch(() => {});
     throw error;
   }
-  const job = await loadDeliveryJob(env.DB, jobId);
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    {
-      job: job ? presentDeliveryJob(env, job) : null,
-      processor: deliveryDispatch(manifest),
-      idempotent: false
-    },
-    { status: 202 }
-  );
+  return {
+    status: "created",
+    job: await loadDeliveryJob(env.DB, jobId),
+    manifest
+  };
 }
 
 export async function getDeliveryAudioProcessorManifest(
@@ -922,76 +1078,100 @@ export async function approveAdminDeliveryAudioJob(
     1,
     Math.round(job.output_duration_ms / 1_000)
   );
-  const results = await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE episodes
-       SET
-         audio_key = ?,
-         audio_mime_type = 'audio/mpeg',
-         audio_bytes = ?,
-         audio_etag = ?,
-         audio_filename = ?,
-         duration_seconds = ?,
-         media_status = 'ready',
-         updated_at = datetime('now')
-       WHERE id = ?
-         AND EXISTS (
-           SELECT 1
-           FROM episode_working_master_states state
-           WHERE state.episode_id = episodes.id
-             AND state.current_master_id = ?
-         )`
-    ).bind(
-      job.output_object_key,
-      job.output_object_bytes,
-      job.output_object_etag,
-      safeDownloadFilename(`${job.episode_slug}.mp3`),
-      durationSeconds,
-      job.episode_id,
-      job.source_master_id
-    ),
-    env.DB.prepare(
-      `UPDATE delivery_audio_jobs
-       SET
-         status = 'approved',
-         approved_by_admin_user_id = ?,
-         approval_reason = ?,
-         approved_at = datetime('now'),
-         updated_at = datetime('now')
-       WHERE id = ?
-         AND status = 'ready'
-         AND source_master_id = ?`
-    ).bind(
-      auth.authorization.identity.id,
-      approvalReason,
-      jobId,
-      job.source_master_id
-    ),
-    prepareAdminAuditAfterSingleChange(env.DB, {
-      adminUserId: auth.authorization.identity.id,
-      action: "delivery_audio.approved",
-      targetType: "delivery_audio_job",
-      targetId: jobId,
-      metadata: {
-        episodeId: job.episode_id,
-        sourceMasterId: job.source_master_id,
-        streamProfile: DELIVERY_AUDIO_PROFILE,
-        outputBytes: job.output_object_bytes,
-        outputSha256: job.output_sha256,
-        peaksSha256: job.peaks_sha256,
-        processorReportSha256: job.processor_report_sha256
-      }
-    })
-  ]);
-  if (
-    Number(results[0]?.meta?.changes ?? 0) !== 1
-    || Number(results[1]?.meta?.changes ?? 0) !== 1
-  ) {
-    return deliveryConflict(
-      request,
-      env,
-      "delivery_audio_approval_conflict"
-    );
+  const episodeGuardId =
+    `delivery_episode_guard_${crypto.randomUUID().replace(/-/g, "")}`;
+  const jobGuardId =
+    `delivery_job_guard_${crypto.randomUUID().replace(/-/g, "")}`;
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE episodes
+         SET
+           audio_key = ?,
+           audio_mime_type = 'audio/mpeg',
+           audio_bytes = ?,
+           audio_etag = ?,
+           audio_filename = ?,
+           duration_seconds = ?,
+           media_status = 'ready',
+           updated_at = datetime('now')
+         WHERE id = ?
+           AND EXISTS (
+             SELECT 1
+             FROM episode_working_master_states state
+             WHERE state.episode_id = episodes.id
+               AND state.current_master_id = ?
+           )`
+      ).bind(
+        job.output_object_key,
+        job.output_object_bytes,
+        job.output_object_etag,
+        safeDownloadFilename(`${job.episode_slug}.mp3`),
+        durationSeconds,
+        job.episode_id,
+        job.source_master_id
+      ),
+      env.DB.prepare(
+        `INSERT INTO publication_batch_guards (id, update_succeeded)
+         VALUES (?, changes())`
+      ).bind(episodeGuardId),
+      env.DB.prepare(
+        `UPDATE delivery_audio_jobs
+         SET
+           status = 'approved',
+           approved_by_admin_user_id = ?,
+           approval_reason = ?,
+           approved_at = datetime('now'),
+           updated_at = datetime('now')
+         WHERE id = ?
+           AND status = 'ready'
+           AND source_master_id = ?`
+      ).bind(
+        auth.authorization.identity.id,
+        approvalReason,
+        jobId,
+        job.source_master_id
+      ),
+      env.DB.prepare(
+        `INSERT INTO publication_batch_guards (id, update_succeeded)
+         VALUES (?, changes())`
+      ).bind(jobGuardId),
+      prepareAdminAuditAfterSingleChange(env.DB, {
+        adminUserId: auth.authorization.identity.id,
+        action: "delivery_audio.approved",
+        targetType: "delivery_audio_job",
+        targetId: jobId,
+        metadata: {
+          episodeId: job.episode_id,
+          sourceMasterId: job.source_master_id,
+          streamProfile: DELIVERY_AUDIO_PROFILE,
+          outputBytes: job.output_object_bytes,
+          outputSha256: job.output_sha256,
+          peaksSha256: job.peaks_sha256,
+          processorReportSha256: job.processor_report_sha256
+        }
+      }),
+      prepareResolveDeliveryAudioAction(env.DB, jobId),
+      env.DB.prepare(
+        `DELETE FROM publication_batch_guards WHERE id = ?`
+      ).bind(episodeGuardId),
+      env.DB.prepare(
+        `DELETE FROM publication_batch_guards WHERE id = ?`
+      ).bind(jobGuardId)
+    ]);
+  } catch (error) {
+    const message = String(error);
+    if (
+      message.includes("publication_batch_guards")
+      || message.includes("update_succeeded")
+    ) {
+      return deliveryConflict(
+        request,
+        env,
+        "delivery_audio_approval_conflict"
+      );
+    }
+    throw error;
   }
   const approved = await loadDeliveryJob(env.DB, jobId);
   return privateJson(request, env.ALLOWED_ORIGINS, {
@@ -1730,13 +1910,19 @@ function presentDeliveryJob(
 }
 
 function deliveryDispatch(
+  env: PodcastEnv,
   manifest: DeliveryAudioManifest
 ): Record<string, unknown> {
+  const processor = describeProcessorAvailability(
+    env,
+    processorAvailable(env)
+  );
   return {
     workflow: "process-delivery-audio.yml",
     jobId: manifest.jobId,
     manifestSha256: manifest.manifestSha256,
-    manualDispatchOnly: true
+    dispatchMode: processor.mode,
+    manualDispatchOnly: processor.mode !== "staging_automatic"
   };
 }
 

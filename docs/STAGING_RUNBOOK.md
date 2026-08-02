@@ -36,6 +36,22 @@ structured `job_failed` event before retrying; never log a job payload or
 private URL. Add automatic tracing only after a redacting Tail Worker or
 token-free route passes an independent security gate.
 
+Processor transport is automated through the signed pull boundary documented
+in [`PROCESSOR_DISPATCH_AUTOMATION.md`](PROCESSOR_DISPATCH_AUTOMATION.md).
+Before enabling its scheduled workflow, run its focused tests and confirm
+production keeps `PROCESSOR_DISPATCH_MODE=disabled`.
+
+The staging job consumer sends a message to
+`dust-wave-podcast-jobs-staging-dlq` only after its three ordinary delivery
+retries are exhausted. A second consumer on the same staging Worker writes one
+content-free, digest-deduplicated incident to D1, then acknowledges the
+message. It has no producer binding and never replays a job or calls a
+provider. Temporary D1 failures retry every five minutes with a bounded retry
+ceiling. Confirm the DLQ exists and run the focused verification in
+[`QUEUE_FAILURE_AUTOMATION.md`](QUEUE_FAILURE_AUTOMATION.md) before deploying
+staging. Production retains its prior queue configuration and unapplied
+migration until an independent promotion and recovery review.
+
 ## 2. Back up and migrate staging
 
 ```sh
@@ -75,6 +91,25 @@ per show/directory pair, the show/setup index exists, and foreign-key checks are
 empty. Keep every owner state `not_started` until an authorized operator
 actually completes that platform's one-time setup; do not mark a directory
 `verified` merely because its submission page or RSS feed is reachable.
+
+Migration `0077` is the provider-semantic exception to that default. Verify the
+Overcast information URL is `https://overcast.fm/podcasterinfo`, and untouched
+Overcast show rows move from `not_started` to `not_required`. Confirm a fixture
+already marked `pending` or `verified` keeps its complete operator-authored state.
+Overcast still needs current feed validation, observed ingestion, and a real
+failed-to-observed recovery sequence before certification; `not_required`
+alone must not increase the public 10+ platform count. Run `PRAGMA quick_check`
+and `PRAGMA foreign_key_check` after the staging apply.
+
+For migration `0078`, verify the exact first-party action URLs for Spotify for
+Creators, Amazon Music's RSS submission form, Player FM's add form, Castbox's
+current podcaster-tools page, and iHeartRadio's add-podcast form. Compare all
+show-scoped directory setup rows before and after the apply; this registry-only
+migration must not change owner, submission, listing, error, or operational-note
+evidence. Use table-scoped `PRAGMA quick_check('distribution_destinations')` if
+the bounded remote D1
+request cannot run a database-wide quick check, and still require an empty
+`PRAGMA foreign_key_check` result.
 
 For migration `0028`, verify `distribution_jobs.publication_revision` exists,
 the episode/revision/destination index is present, every existing job received
@@ -355,8 +390,12 @@ policy revision, and resource/version evidence. Change the current source ETag
 or policy revision and confirm a new run is required. Never upload a fabricated
 episode to shared staging merely to make this path green.
 
-If the approved working master is larger than 16 MiB, queue transcription,
-copy the displayed chunk run ID, and dispatch:
+After the enhanced-master decision is final, allow the next five-minute
+scheduler run to create any missing source-language transcription job. Direct
+jobs must enter the existing Queue once; masters larger than 16 MiB must create
+one immutable chunk run and let the normalized processor dispatcher claim it.
+A second scheduler run must be idempotent. The Admin queue control and the
+following workflow command are recovery-only staging paths:
 
 ```sh
 gh workflow run process-transcription-chunks.yml \
@@ -364,7 +403,7 @@ gh workflow run process-transcription-chunks.yml \
   -f run_id="transcription_chunks_REPLACE_WITH_QUEUED_ID"
 ```
 
-GitHub accepts a manual dispatch only after the workflow file exists on the
+GitHub accepts a recovery dispatch only after the workflow file exists on the
 repository's default branch, even when `--ref` selects the reviewed release
 branch for the run. Before queueing a billable long-source rehearsal, verify
 that `process-transcription-chunks.yml` appears in the repository Actions
@@ -422,11 +461,19 @@ With existing notes present, cancel the replacement confirmation and verify
 the WYSIWYG is unchanged. Accept it and verify only the unsaved editor changes;
 the normal Update draft button remains the sole persistence path.
 
+Migration `0071` adds private, review-only `editorial_ai_drafts`. Before the
+Worker deploy, replay all migrations locally and prepare
+`AUTOMATED_SHOW_NOTES_SOURCES_SQL` against the real schema. On staging, record
+content-free counts by status and attempt count before and after migration;
+never select `draft_json`, transcript text, prompt text, provider output, email,
+or login material. Confirm the table is empty before the first eligible
+approval and that production remains unmigrated.
+
 Then deploy the exact Worker commit to staging only. The current rights-cleared
 fixture transcript is still `needs_review`, so a real request must fail closed
 with `show_notes_approved_transcript_required` and must not call Workers AI.
 After a human separately approves a suitable transcript, generate no more than
-one controlled draft and verify:
+one controlled manual draft and verify:
 
 - the response is private/no-store and reports `reviewRequired: true`,
   `saved: false`, exact revision/digest, and full or partial cue coverage;
@@ -437,6 +484,27 @@ one controlled draft and verify:
 - no episode, media, News, RSS, YouTube, directory, subscriber, ad, billing, or
   publication row changes; and
 - the production bundle retains `SHOW_NOTES_AI_ENABLED=false`.
+
+At the next five-minute boundary, automatic discovery may create proposals for
+the approved transcript language and the show language when different. Verify
+only aggregate evidence: one ready row per exact input fingerprint, no active
+expired lease, attempt count at most three, and one system completion audit per
+new ready row. A second boundary must create no duplicate row or audit. The
+Admin should load the newest ready proposal automatically, leave the WYSIWYG
+unchanged, keep manual regeneration collapsed, and remain responsive at 320,
+768, and 1440 CSS pixels. Invalid provider output must move only that proposal
+to `failed`; retries reuse the same row and stop at attempt three. No episode,
+News, RSS, YouTube, distribution, media, billing, ad, or subscriber row may
+change.
+
+Migration `0073` losslessly extends the same private proposal ledger with the
+`chapters` kind and an exact alignment-revision foreign key. Before deploying,
+prepare `AUTOMATED_CHAPTER_SOURCES_SQL` against a zero-to-current schema and
+confirm existing show-notes rows survive the rebuild. Record only aggregate
+kind/status/attempt counts and `PRAGMA foreign_key_check`; never select draft,
+transcript, prompt, provider, email, or token content. Production must remain
+unmigrated with `CHAPTER_DRAFT_AUTOMATION_MODE=disabled` and
+`CHAPTER_DRAFT_AI_ENABLED=false`.
 
 Exercise the companion chapter assistant first against the local mock. Select
 the same episode in Production, generate English and Spanish proposals, and
@@ -455,6 +523,17 @@ request/completion audits, no chapter revision/approval write, and the
 separate six-request rate limit. A transcript over 48,000 prompt characters
 must return `chapter_draft_full_transcript_required` before an audit claim.
 The production dry bundle must retain `CHAPTER_DRAFT_AI_ENABLED=false`.
+
+After an exact transcript has separately passed human alignment review, the
+next five-minute staging boundary may create at most one chapter proposal per
+output language and exact input fingerprint. Verify that every row pins the
+current master, transcript revision/digest, and passed alignment revision;
+attempts never exceed three; expired leases recover in place; and system audit
+metadata contains only identifiers, digests, counts, model/version, usage, and
+error class. A second boundary must not duplicate the row or audit. The Admin
+must load but not apply the newest proposal, and saving/approving the chapter
+set must remain separate explicit actions. Before any qualifying alignment,
+the scheduler must create zero chapter rows, audits, or model calls.
 
 Exercise the social clip-candidate assistant against the local mock with
 `PODCAST_ADMIN_MOCK_TRANSCRIPT_CUES=24` and
@@ -477,6 +556,24 @@ no clip/revision/render/publication write, and the separate six-request rate
 limit. Oversized complete input must fail before the claim with
 `clip_draft_full_transcript_required`. The production dry bundle must retain
 `CLIP_DRAFT_AI_ENABLED=false`.
+
+Migration `0074` losslessly extends the private proposal ledger with the
+`clips` kind and requires its exact alignment-revision foreign key. Before
+deploying, prepare `AUTOMATED_CLIP_SOURCES_SQL` against a zero-to-current
+schema, confirm existing show-notes and chapter rows survive the rebuild, and
+record only aggregate kind/status/attempt counts plus
+`PRAGMA foreign_key_check`. Production must remain unmigrated with
+`CLIP_DRAFT_AUTOMATION_MODE=disabled` and `CLIP_DRAFT_AI_ENABLED=false`.
+
+After an exact transcript separately passes human alignment review, the next
+five-minute staging boundary may create at most one clip proposal per output
+language and exact fingerprint. Verify current master, transcript
+revision/digest, passed alignment revision, episode-copy digest, three-attempt
+ceiling, lease recovery, and content-free system audits. A second boundary
+must not duplicate the proposal or audit. The Admin must load but not apply the
+newest proposal; clip save, alignment, render, approval, public publication,
+and YouTube remain separate explicit actions. Before any qualifying alignment,
+the scheduler must create zero clip proposals, audits, or model calls.
 
 On that saved synthetic transcript, download both WebVTT and SubRip from the
 Production workbench in English and Spanish. Confirm the filenames identify
@@ -666,9 +763,12 @@ warning, error, or inspector issue. Site run `30477544602` and shared run
 `30477269242` passed their exact commits. Production Pages, Worker, routes,
 data, and DNS remained untouched.
 
-After both reviewed transcript languages and an exact working master exist,
-queue an alignment from the Production workbench in isolated staging. Copy the
-displayed job ID and dispatch only from the reviewed release branch:
+After either reviewed transcript language and an exact final working master
+exist, wait through one staging schedule boundary. The Worker should queue the
+exact alignment automatically and the durable processor dispatcher should
+claim it without an Admin click or CLI dispatch. Use the following only as an
+audited break-glass recovery from a dispatcher outage, with the displayed job
+ID and reviewed release branch:
 
 ```sh
 gh workflow run process-alignment.yml \
@@ -676,10 +776,10 @@ gh workflow run process-alignment.yml \
   -f job_id="alignment_job_REPLACE_WITH_QUEUED_ID"
 ```
 
-Before dispatch, confirm the parent pins the green runner `release/0.2.0`
+Before dispatch, confirm the parent pins the green runner `release/0.2.2`
 submodule containing the private benchmark-bundle assembler. The API must
 display execution revision
-`3c5ab054fdad375901eb186f32d7aed6cdb40413`; the workflow must validate that
+`e611801d2af82dcdb079444b7e8a7eea4309d1a6`; the workflow must validate that
 constant, verify the expected GitHub remote, and detach the submodule at that
 exact content-addressed commit before installing an adapter. The repository
 secret must still be only `MEDIA_PROCESSOR_CALLBACK_SECRET`. The run must use
@@ -696,6 +796,30 @@ request and confirm no duplicate word rows or new billable job. Force one
 bounded retryable failure and confirm the same job reopens; force five claimed
 attempts and confirm the sixth claim fails closed. Change the transcript or
 working master and confirm the original job becomes stale.
+
+For an explicitly approved private source, prepare candidate corpus windows
+locally before any transcript or alignment work. The output directory must not
+already exist, all media and references remain outside Git, and the rights
+record must identify the actual approval rather than inferring it from a public
+URL:
+
+```sh
+npm run prepare:alignment-benchmark-source -- \
+  --audio /private/source.m4a \
+  --reference /private/source.es-orig.json3 \
+  --output /private/alignment-benchmark/source-id/candidates \
+  --source-id source-id \
+  --language es \
+  --source-url https://www.youtube.com/watch?v=source-id \
+  --source-title "Approved interview" \
+  --rights-approved-by "Approver" \
+  --rights-approved-at YYYY-MM-DD
+```
+
+The command reports only aggregate counts, paths, and hashes. Inspect the
+private inventory and independently review/correct the transcript before
+creating runner requests. A successful preparation is sourcing evidence, not
+an H1 pass.
 
 Do not click approval or claim H1 until the 24 rights-cleared English/Spanish
 fixtures, 100 unclipped preview reviews, both 60-minute resource runs,
@@ -777,6 +901,37 @@ playback/download, current-policy and digest-match indicators, and that the
 promote and reject forms appear only to a recently authenticated Super-admin
 after zero-blocker QC.
 
+With `ADMIN_ACTION_NOTIFICATION_MODE=live`, install `PODCAST_ACTION_EMAIL` as
+a staging Worker secret containing an existing Super-admin address. Keep the
+raw address out of D1, logs, screenshots, and this repository. The next
+five-minute trigger discovers the same exact ready/QC evidence, creates one
+content-free `admin_action_notifications` row, and sends a bilingual Resend
+link to `?show=...&episode=...&step=media&target=working_master`. After that
+decision, the same ledger must create only the actions that become ready:
+`target=delivery_audio` for the normalized player asset and
+`step=transcript&target=transcript_review` for the exact initial transcript
+revision. After an exact alignment result and matching private bilingual
+benchmark become approval-ready, the same ledger may add only
+`step=transcript&target=alignment`. Migration `0072` must preserve every
+existing action row before this fourth kind is enabled. Confirm:
+
+- one accepted request uses `podcast-admin-action/<action-digest>` as its
+  idempotency key and a 15-minute single-use magic link;
+- repeated scheduled runs do not send a second accepted message;
+- the link selects the expected show/episode and focuses Working master without
+  horizontal overflow at phone, tablet, and desktop sizes;
+- non-Super-admin or unknown recipient setup fails closed without disclosing
+  whether an account exists;
+- three provider failures reuse byte-identical content and end in `failed`;
+- promote/reject, current-master change, QC-policy drift, transcript drift, or
+  benchmark drift moves the applicable row to `resolved`; alignment approval
+  resolves its reminder in the same atomic batch; and
+- D1 contains no email, usable token, login URL, media key, transcript, or
+  provider response body.
+
+Production keeps `ADMIN_ACTION_NOTIFICATION_MODE=disabled`; do not install its
+recipient secret or enable the mode during this staging exercise.
+
 Exercise both terminal choices against separate disposable candidates:
 
 - Promote with the exact displayed base revision and a bounded operational
@@ -798,14 +953,28 @@ change or audit row. A same-reason rejection retry must be idempotent.
 Anonymous derivative media is `401`; production queue, processor, and object
 state remain untouched.
 
-With the final working master selected, queue Delivery audio and player
-waveform from Production and dispatch the returned job ID:
+With the final working master selected, allow the next five-minute scheduler
+run to create Delivery audio and player waveform automatically. Confirm one
+`delivery_audio_auto_…` job and one `delivery_audio.queued` audit event with a
+null admin actor, `automated: true`, and attempt `1`. The existing processor
+dispatcher must claim that same manifest without a manual GitHub action. A
+second scheduler run must create neither another multipart upload nor another
+active job.
+
+The Production-tab queue action and the following workflow dispatch remain a
+recovery-only staging path if scheduler/dispatcher diagnosis requires an
+explicit fixture:
 
 ```sh
 gh workflow run process-delivery-audio.yml \
   --ref agent/launch-configuration \
   -f job_id="delivery_audio_REPLACE_WITH_QUEUED_ID"
 ```
+
+After a terminal processor failure, confirm a later scheduler run derives a
+new attempt ID and never exceeds three automatic attempts for the same
+episode/master/profile. Active, ready, or approved work must suppress retries.
+Production must read neither D1 nor R2 and keeps its processor routes at `404`.
 
 Confirm the run fetches only the exact signed master, emits raw complete
 44.1 kHz stereo 128 kbps MP3 frames without ID3/Xing metadata, fully decodes
@@ -1103,9 +1272,15 @@ Before the first controlled Checkout:
 
 1. Back up D1 and apply every pending migration.
 2. Confirm the test Product/Prices are active and mode-matched.
-3. Enter an accountant-approved, effective test tax version and assign it to
-   the show; confirm its Stripe manual Tax Rate has the identical
-   percentage/inclusive/country/state evidence.
+3. Review `GET /v1/admin/shows/{id}/tax-policy`. If its checked-in candidate
+   exactly matches the approved jurisdiction, rate, inclusive behavior,
+   effective period, and source revision, submit that unchanged candidate and
+   the displayed exact confirmation to `PUT` on the same path from a session
+   authenticated within 15 minutes. Confirm the response reports an assigned,
+   provider-ready test policy. The route creates and re-reads the manual Stripe
+   Tax Rate idempotently, verifies its complete safe evidence, and commits the
+   D1 policy/audit/assignment atomically; it does not enable Checkout. Stop if
+   the candidate is stale or broader than the underlying Store evidence.
 4. Confirm the signed webhook subscribes to `checkout.session.completed`,
    `checkout.session.expired`, and `customer.subscription.*`.
 5. Verify `GET /v1/admin/billing/readiness` shows every dependency and zero
@@ -1256,6 +1431,15 @@ npm run gate:virtual-audio:staging -- \
   --pairs 5000 --concurrency 12
 ```
 
+Set `MEDIA_PROCESSOR_CALLBACK_SECRET` in the process environment. The wrapper
+creates and deletes its exact D1 lease through the staging-only signed gate
+endpoint and uploads fixtures only through the capability-bound Worker R2
+binding. It must not receive a Cloudflare account/API token. The protected
+`Refresh staging virtual-audio evidence` workflow runs this command every
+three days with `--publish-evidence`, retains redacted aggregate artifacts for
+30 days, and writes the successful current-source result to
+`virtual_audio_gate_runs`.
+
 The wrapper refuses the production origin, a nonempty evidence directory, or
 any non-matching pre-existing fixture object. It inserts one exact hashed lease
 in the dedicated D1 table, exchanges the raw token once, and keeps the returned
@@ -1281,11 +1465,11 @@ prefix-wide R2 delete. The scheduled Worker cleanup also removes expired
 leases, but it does not replace the manual object audit.
 
 The complete wrapper passed on July 31, 2026 against source commit
-`af1ef817466d646aad6ca9ed64fb611813d4f20f`. All 24 protocol probes passed;
+`b0e5799ca7285b6518ccf6d38d7a5d1c3a14225e`. All 24 protocol probes passed;
 5,000 paired requests produced 10,000 successful measured requests with zero
-errors and zero content mismatches. Virtual p95 was 838.34 ms, the
-byte-identical private-R2 baseline was 794.47 ms, and the added p95 was
-43.87 ms against the 250 ms ceiling. The wrapper reported both exact-object
+errors and zero content mismatches. Virtual p95 was 282.93 ms, the
+byte-identical private-R2 baseline was 206.27 ms, and the added p95 was
+76.66 ms against the 250 ms ceiling. The wrapper reported both exact-object
 and exact-lease cleanup complete, and a follow-up aggregate query returned
 zero diagnostic leases. The redacted evidence deliberately records
 `nativeClientValidation: false`; keep `AD_DECISION_MODE=staging_validate`,
@@ -1293,9 +1477,9 @@ both episode/show dynamic-ad flags false, and production disabled until the
 native-client, equal-length inventory/fallback, and reviewed sponsor-pilot
 gates also pass.
 
-Use least-privilege staging credentials. Cloudflare does not expose existing
-secret values, so rotate or enter them rather than attempting to copy them from
-Pool or Store.
+Use only the purpose-bound staging callback secret for routine gate runs.
+Cloudflare account credentials remain limited to recovery inspection and
+deployment; do not copy a broader Pool or Store token into this workflow.
 
 The verified `dustwave.xyz` Resend domain may be reused, but Podcast requires
 its own domain-restricted sending key. Do not reuse the existing Pool or Store
@@ -1680,22 +1864,19 @@ status; it never returns caption text, object keys, hashes, URLs, provider
 identifiers, recipient identity, or secret values. `BLOCK` is expected while
 human/provider evidence remains outstanding. Use `--require-ready` only as the
 final promotion check; do not change data merely to make that mode exit zero.
+The report uses the newest signed `virtual_audio_gate_runs` row by default.
 Pass a successful gate artifact with
 `--virtual-audio-evidence=/absolute/path/staging-gate.json` to bind the
-dynamic-ad node to the current runtime-sensitive source. Evidence is accepted
+dynamic-ad node to an independently retained run instead. Evidence is accepted
 only for the signed 5,000-pair/10,000-request exercise, full cleanup, a
 seven-day freshness window, and no relevant source drift.
 
-The 2026-07-31 current-source rerun passed all 24 protocol probes and 10,000
-paired requests with zero errors, zero content mismatches, and 43.87 ms p95
-added latency. The signed diagnostic lease and every temporary object were
-removed. A transient operator-side IPv6 connection failure during an earlier
-attempt left three exact synthetic fixture objects after the lease was removed;
-each object was downloaded, matched byte-for-byte to the generated contract,
-deleted by exact key, and rechecked as absent before the clean IPv4-preferred
-rerun. The composed report then returned six safe passes, six expected
-promotion blocks, and zero failures. The dynamic-ad block narrowed to the real
-isolated client pilot; production remained disabled.
+The 2026-07-29 isolated rerun passed all 24 protocol probes and 10,000 paired
+requests with zero errors, zero content mismatches, and 27.97 ms p95 added
+latency. The signed diagnostic lease and every temporary object were removed.
+The composed report then returned six safe passes, six expected promotion
+blocks, and zero failures. The dynamic-ad block narrowed to the real isolated
+client pilot; production remained disabled.
 
 Live GitHub publication targets only the release branch and requires a reviewed
 fixture.
@@ -1720,6 +1901,24 @@ Before any external clip upload, exercise the first-party public clip preview:
    `CLIP_PUBLICATION_MODE`, DNS, routes, or media bindings.
 
 For the YouTube clip test:
+
+The five-minute Worker scheduler checks a configured YouTube refresh grant on
+a bounded cadence before any controlled test: every 12 hours after success and
+hourly after failure. It uses an expiring D1 lease so overlapping cron
+invocations cannot duplicate the provider read. The composed launch gate
+requires a successful exact-channel check from the last 24 hours as its own
+node; that node never substitutes for the separately required inspected
+unlisted upload. A failed check stores only a bounded failure code. Reauthorize
+the dedicated staging consent grant when it reports `youtube_oauth_invalid_grant`;
+repair the dedicated client when it reports `youtube_oauth_invalid_client` or
+`youtube_oauth_unauthorized_client`. Network, rejected-request, and malformed-
+response states remain distinct; timeouts are separated from other transport
+failures. The adapter never stores Google's error
+description or response body, and a browser access token must never be copied
+into Worker configuration or evidence.
+Google requests use manual redirect handling because the Cloudflare runtime
+throws before exposing Google's ordinary response with `redirect: error`;
+every `3xx` is still rejected without following or forwarding credentials.
 
 1. Leave `YOUTUBE_PUBLISH_MODE=dry_run`, prepare the immutable current-render
    draft in Marketing, and have a recently authenticated super-admin approve
@@ -1816,3 +2015,6 @@ For the full-episode YouTube test, use a separate fixture publication:
 - A Worker-code rollback after migration `0059` must leave the immutable
   cutover-packet table and triggers in place. Older code ignores the packet;
   it cannot activate a redirect or authorize a provider action.
+- A Worker-code rollback after migration `0069` must leave the content-free
+  admin action ledger in place. Disable `ADMIN_ACTION_NOTIFICATION_MODE` first;
+  older code ignores the additive table and cannot issue a link from it.

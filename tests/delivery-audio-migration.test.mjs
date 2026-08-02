@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
+import { AUTOMATED_DELIVERY_AUDIO_CANDIDATES_SQL } from
+  "../src/delivery-audio";
+
 const migrationsDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url)
 );
@@ -58,6 +61,9 @@ describe("delivery-audio migration", () => {
         "delivery_audio_jobs_working_master_stale",
         "delivery_audio_manual_upload_guard"
       ]);
+      expect(() => db.prepare(
+        AUTOMATED_DELIVERY_AUDIO_CANDIDATES_SQL
+      ).all(3, 10)).not.toThrow();
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"

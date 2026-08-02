@@ -61,6 +61,16 @@ iHeartRadio, and Deezer.
 
 ### H1 — launch production workbench
 
+Launch scope was narrowed on August 1, 2026: reviewed public transcripts,
+bilingual transcript completion, H1 word alignment, and chapters are
+post-launch enhancements. Audio, canonical News, RSS, premium delivery, and
+the existing segment player may launch without them. An unapproved transcript
+remains private, public transcript/chapter resources remain absent until their
+existing approval gates pass, and word-level controls stay disabled until the
+real bilingual H1 benchmark and exact human alignment approval succeed. The
+readiness graph keeps these nodes visible as warnings instead of representing
+them as launch blockers.
+
 - Build the common admin shell at `/admin/podcasts/` around six task-oriented
   sections: Episodes, Distribution, Marketing, Audience, Monetization, and
   Settings. Episodes opens first and contains contextual Production tools;
@@ -164,22 +174,41 @@ iHeartRadio, and Deezer.
   JSON/Markdown response, and audits only content-free digests/counts. The
   separate review card never saves or publishes; “Replace editor notes” is
   still only an unsaved local edit, with confirmation when notes already
-  exist. Staging is rate-limited and enabled; production remains disabled.
+  exist. Staging now discovers final-master, checksum-verified approved
+  transcripts and persists exact-version private proposals automatically for
+  the transcript language and, when different, the show language. The
+  fingerprint includes the working master, transcript revision/digest,
+  episode-copy digest, model, and prompt version. Four claims per scheduler
+  run, three lifetime attempts, expiring leases, strict output validation, and
+  content-minimal conditional audits bound recovery. The Admin loads the
+  newest proposal automatically; manual generation is secondary. Neither path
+  applies or publishes content. Production exits before D1 and remains
+  disabled.
 - The companion Hilite-value chapter assistant reuses the same verified
   transcript, Workers AI, audit, language, and rate-limit primitives without a
   new provider. It requires complete bounded cue coverage, accepts only ordered
   exact cue identities, derives times server-side, and reruns the normal
   chapter contract. The bilingual review card can replace only unsaved editor
   state; versioned save and Admin approval remain separate. Staging is enabled
-  and production remains disabled.
+  and production remains disabled. Staging automation waits for the final
+  working master, exact approved transcript, and its human-approved passing
+  word-alignment revision. It reuses the show-notes private proposal ledger,
+  exact fingerprints, four-claim cron budget, four-minute leases, three-attempt
+  ceiling, content-minimal system audits, and current-only Admin reads. It
+  never saves or approves chapter rows.
 - The first Hilite-value social discovery assistant now reuses that same
   verified-transcript and Workers AI core. It proposes at most six
   chronological, non-overlapping 15–90 second ranges using exact cue
   identities; the Worker derives every timestamp and audits no generated text.
   A bilingual review card can fill only a new unsaved vertical segment recipe.
   Existing versioned save, H1 word alignment, private rendering, approval, and
-  publication controls remain the only state-changing path. Staging is enabled
-  and production remains disabled.
+  publication controls remain the only state-changing path. Staging automation
+  now waits for the final working master, exact approved speaker-confirmed
+  transcript, and its human-approved passing word alignment. It shares the
+  chapter eligibility SQL and private proposal lease/retry ledger, but retains
+  clip-specific prompt, output validation, fingerprint, and audit policy.
+  Current-only Admin reads never apply candidates. Production exits before D1
+  and both automation and AI remain disabled.
 - The first transcript-review slice now reuses its restricted timed-text mode
   for versioned English/Spanish cues, optimistic/idempotent saves, confirmed
   speaker labels, Admin approval, and matching-alignment readiness. Canonical
@@ -266,6 +295,23 @@ iHeartRadio, and Deezer.
   evidence, retains the private render and QC result, frees the selection for
   another candidate, and leaves the working master untouched. A candidate
   cannot replace delivery audio by itself.
+- Exact ready/current/QC evidence now creates one durable, content-free human
+  action in staging. A bilingual Resend message uses a stable idempotency key
+  and a 15-minute single-use Super-admin link that reuses the existing
+  episode-centered navigator to focus Working master. Delivery is leased and
+  retried three times; promotion, rejection, master drift, or policy drift
+  resolves it automatically. The recipient remains a Worker secret and
+  production mode is disabled.
+- The same ledger now covers normalized delivery-audio approval, initial
+  transcript review, and benchmark-qualified word-alignment review. All
+  downstream actions require the shared final-master
+  predicate, preserve the original master-action digest, use allowlisted
+  episode-centered deep links, and resolve in the approval transaction or when
+  revision/evidence drift makes them obsolete. Alignment discovery additionally
+  reuses the exact current transcript/master, structural eligibility, pinned
+  adapter/runner, and private bilingual benchmark predicate enforced by the
+  approval trigger. Existing action rows migrate losslessly; no recipient,
+  content, object key, or usable token enters D1.
 - The delivery boundary now snapshots that exact current master into one
   deterministic 44.1 kHz stereo 128 kbps MP3 and bounded
   `dustwave-player-peaks-v1` document. The staging-only workflow fully decodes
@@ -274,7 +320,13 @@ iHeartRadio, and Deezer.
   approval atomically selects them for the episode. News/RSS publication now
   fails closed unless the selected audio and player peaks still descend from
   the current master. The bilingual workbench uses the existing Digest player
-  for authenticated waveform preview and download.
+  for authenticated waveform preview and download. After promotion or
+  rejection finalizes the enhanced-master decision, the scheduler now queues
+  the eligible delivery render without another operator action. It reuses the
+  manual queue primitive, writes a system audit row, dispatches through the
+  existing normalized processor ledger, permits only one active job, and
+  bounds terminal automatic retries to three. The production scheduler exits
+  before reading D1 or R2.
 - Keep operator launch checks content-free and replayable. The staging episode
   gate now reads only bounded statuses, revisions, counts, and D1 integrity;
   rejects an episode that has already escaped the isolated-draft boundary;
@@ -288,13 +340,30 @@ iHeartRadio, and Deezer.
   staging and production kill switches, required installed secret names,
   current 10-directory certification, controlled YouTube and Resend records,
   durable dynamic-ad pilot state, and referential integrity without returning
-  content, URLs, object/provider identity, recipient identity, hashes, or
-  secret values. Its dynamic-ad node accepts synthetic performance evidence
-  only when the signed 5,000-pair/10,000-request gate is fresh, fully cleaned
-  up, and unchanged across runtime-sensitive source; that evidence still
-  cannot substitute for the real isolated client pilot.
-- Transcribe Spanish and English and expose bounded confidence/provenance. The
-  signed staging alignment bridge now binds the exact approved transcript,
+  content, URLs, recipient identity, hashes, or secret values. YouTube access
+  is now refreshed on a leased 12-hour success / one-hour failure cadence and
+  recorded as content-free exact-channel health; the report keeps that node
+  separate from the inspected unlisted-upload requirement. The first live
+  scheduled check passed against the exact staging channel at
+  `2026-08-02 02:40:13 UTC` without uploading. Its dynamic-ad node
+  accepts synthetic performance evidence only when the signed
+  5,000-pair/10,000-request gate is fresh, fully cleaned up, and unchanged
+  across runtime-sensitive source; that evidence still cannot substitute for
+  the real isolated client pilot.
+- Transcribe Spanish and English and expose bounded confidence/provenance.
+  Staging now creates a missing source-language job after the shared final
+  working-master decision, using the same fingerprint, current-policy QC,
+  immutable artifact, chunking, Queue-retry, and conditional audit primitive
+  as the Admin route. Direct jobs flow through the existing Queue scheduler;
+  large jobs flow through the existing normalized processor dispatcher.
+  Production exits before reading D1. Staging now discovers approved
+  English/Spanish transcript revisions after that same final-master decision,
+  reuses the existing immutable alignment queue primitive with a null system
+  actor, and defers execution to the durable normalized processor dispatcher.
+  Exact input fingerprints, current runner identity, retry ceilings, and
+  conditional audits keep scheduled reruns idempotent; the Admin action is
+  retained as audited recovery. The signed staging alignment bridge binds the
+  exact approved transcript,
   working master, normalized projection, adapter, and pinned runner; validates
   every returned word; and stops at human review. Approval has no override:
   it requires a matching real English/Spanish benchmark and clean-environment
@@ -303,7 +372,7 @@ iHeartRadio, and Deezer.
   operational import path now requires recent Super-admin authentication,
   re-evaluates the closed pinned-runner submission server-side, stores raw
   evidence privately by input digest, and exposes only replay-safe,
-  content-free summaries. The parent now pins the green runner `release/0.2.0`
+  content-free summaries. The parent now pins the green runner `release/0.2.2`
   benchmark-bundle assembler while the staging workflow separately verifies,
   fetches, and detaches at the exact reviewed model-execution commit selected
   by the Worker; updating benchmark tooling cannot silently change execution
@@ -392,6 +461,11 @@ iHeartRadio, and Deezer.
   benefit periods.
 - Reuse the versioned Store tax calculator and manual Stripe Tax Rates only
   after accountant approval; Stripe Tax automatic calculation remains off.
+- The first staging policy candidate now imports the Store's exact
+  `US-NM-87120` fallback evidence through one recent-auth Super-admin action.
+  Provider creation/attestation and immutable D1 approval/assignment are
+  idempotent and automated; the candidate remains unapproved and Checkout
+  remains disabled until that explicit review.
 - Keep Checkout behind an explicit kill switch. Use idempotent Stripe
   Customer/Checkout calls, webhook-projected source entitlements, and a scoped
   Customer Portal; retain only email/destination HMACs and immutable tax
@@ -448,6 +522,12 @@ iHeartRadio, and Deezer.
 
 - Track setup, submission, ingestion, observation, and failure state for each
   directory rather than implying direct file upload to RSS-following apps.
+- Keep provider-specific setup semantics in the shared directory registry.
+  Overcast requires no separate owner setup and normally discovers shows after
+  Apple Podcasts lists them; its manual-add path is a recovery action, not a
+  launch submission. Castbox uses its current first-party podcaster/ownership
+  page. Provider URL and workflow changes ship as forward-only migrations so
+  all shows stay DRY without rewriting completed operator evidence.
 - Keep a credential-free owner-action checklist per show/directory: responsible
   account label, verification state, submission date, provider receipt or
   dashboard URL, public listing, and bounded notes. Never store provider
@@ -501,9 +581,11 @@ iHeartRadio, and Deezer.
   staleness, and non-enforcing readiness before a later publication gate.
 - Keep the implemented read-only publication snapshot DRY with the current
   Publish prerequisites while explaining strict launch-candidate state across
-  release timing, bilingual transcript/alignment, chapters, every current
-  review target, clip/ad freshness, News/RSS/YouTube, and directory setup.
-  Preserve stable evidence hashing and no external I/O.
+  release timing, launch-critical production reviews, ad freshness,
+  News/RSS/YouTube, and directory setup. Keep transcript/alignment/chapter
+  state visible as post-launch warnings, prove that unapproved resources are
+  absent from public projections, and preserve stable evidence hashing with no
+  external I/O.
 - Keep the implemented exact-snapshot gate behind `legacy|shadow|enforce`:
   staging observes digest/revision matches in shadow; production remains
   legacy. Bind the final D1 batch to monotonic episode/show/global evidence,
@@ -519,10 +601,18 @@ iHeartRadio, and Deezer.
   terminal; atomically cancel retryable superseded jobs and revalidate every
   Queue message against its durable revision, show, and destination before a
   provider adapter can run.
+- Keep the implemented virtual-audio evidence refresh automatic: the
+  protected workflow runs the 5,000-pair staging gate every three days using
+  only the purpose-bound signed callback secret, verifies exact lease/object
+  cleanup, retains redacted artifacts, and makes the current seven-day result
+  available to the composed launch gate from D1 without a manual file handoff.
 
 ### Post-launch
 
 - Expose the multi-show/network interface already supported by the data model.
+- Review and approve public Spanish/English transcripts, complete the
+  bilingual H1 benchmark and exact alignment approval, then enable word-level
+  controls and transcript-dependent chapter/clip publication.
 - Add saved and scheduled reports, richer campaign pacing, live/video clips,
   collaboration workflows, listener Q&A, and deeper transcript
   discovery.

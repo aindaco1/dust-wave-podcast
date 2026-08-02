@@ -53,7 +53,7 @@ describe("AI chapter review drafts", () => {
     });
     expect(fixture.aiRun).toHaveBeenCalledTimes(1);
     expect(fixture.aiRun.mock.calls[0][0]).toBe(
-      "@cf/meta/llama-3.2-3b-instruct"
+      "@cf/meta/llama-3.1-8b-instruct-fast"
     );
     expect(fixture.aiRun.mock.calls[0][1]).toMatchObject({
       max_tokens: 1_200,
@@ -92,7 +92,7 @@ describe("AI chapter review drafts", () => {
   it("requires complete bounded transcript coverage", async () => {
     const fixture = await chapterDraftFixture({
       cueCount: 100,
-      cueTextLength: 700
+      cueTextLength: 900
     });
     const response = await handleRequest(fixture.request(), fixture.env);
 
@@ -152,6 +152,100 @@ describe("AI chapter review drafts", () => {
       )
     ).toBe(true);
   });
+
+  it("lists only current alignment-pinned private proposals", async () => {
+    const source = await chapterDraftFixture();
+    const episodeEvidenceSha256 = await sha256Hex(JSON.stringify({
+      title: "Ópera en la Selva",
+      durationSeconds: 90
+    }));
+    const readyRow = {
+      id: "editorial_chapter_draft_fixture",
+      source_alignment_revision_id: "alignment_revision_fixture",
+      source_language: "es",
+      source_transcript_revision: 3,
+      source_transcript_sha256: source.transcriptSha256,
+      included_cue_count: 3,
+      total_cue_count: 3,
+      transcript_truncated: 0,
+      episode_evidence_sha256: episodeEvidenceSha256,
+      current_episode_title: "Ópera en la Selva",
+      current_duration_seconds: 90,
+      output_language: "es",
+      model: "@cf/meta/llama-3.1-8b-instruct-fast",
+      prompt_version: "chapter-draft-v1",
+      draft_json: JSON.stringify({
+        chapters: [
+          {
+            id: "chapter_ai_aaaaaaaaaaaaaaaaaaaaaaaa",
+            startsAtMs: 0,
+            title: "Apertura",
+            url: "",
+            imageUrl: "",
+            toc: true
+          },
+          {
+            id: "chapter_ai_bbbbbbbbbbbbbbbbbbbbbbbb",
+            startsAtMs: 60_000,
+            title: "Proceso creativo",
+            url: "",
+            imageUrl: "",
+            toc: true
+          }
+        ]
+      }),
+      draft_sha256: "b".repeat(64),
+      completed_at: "2026-07-30 10:05:00"
+    };
+    const fixture = await chapterDraftFixture({
+      transcriptSha256: source.transcriptSha256,
+      savedRows: [
+        {
+          ...readyRow,
+          id: "editorial_chapter_draft_stale",
+          episode_evidence_sha256: "c".repeat(64)
+        },
+        readyRow
+      ]
+    });
+    const response = await handleRequest(new Request(
+      "https://feeds.dustwave.xyz/v1/admin/episodes/"
+      + "episode_fixture/chapters/drafts",
+      {
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE}=session_fixture`,
+          origin: "https://dustwave.xyz"
+        }
+      }
+    ), fixture.env);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      episodeId: "episode_fixture",
+      drafts: [{
+        id: "editorial_chapter_draft_fixture",
+        draft: {
+          chapters: [
+            { startsAtMs: 0, title: "Apertura" },
+            { startsAtMs: 60_000, title: "Proceso creativo" }
+          ]
+        },
+        source: {
+          language: "es",
+          revision: 3,
+          contentSha256: source.transcriptSha256,
+          alignmentRevisionId: "alignment_revision_fixture",
+          includedCueCount: 3,
+          totalCueCount: 3,
+          truncated: false
+        },
+        outputLanguage: "es",
+        promptVersion: "chapter-draft-v1",
+        reviewRequired: true,
+        saved: true
+      }]
+    });
+  });
 });
 
 describe("AI chapter output validation", () => {
@@ -198,6 +292,7 @@ async function chapterDraftFixture({
   transcriptSha256,
   cueCount = 3,
   cueTextLength = 24,
+  savedRows = [],
   providerResponse = {
     response: JSON.stringify({
       chapters: [
@@ -217,6 +312,7 @@ async function chapterDraftFixture({
   transcriptSha256?: string;
   cueCount?: number;
   cueTextLength?: number;
+  savedRows?: Array<Record<string, unknown>>;
   providerResponse?: unknown;
 } = {}) {
   const sessionSecret = "session_fixture";
@@ -292,6 +388,9 @@ async function chapterDraftFixture({
                 approved_at: "2026-07-29T06:00:00.000Z"
               }]
             };
+          }
+          if (query.includes("FROM editorial_ai_drafts")) {
+            return { results: savedRows };
           }
           return { results: [] };
         },

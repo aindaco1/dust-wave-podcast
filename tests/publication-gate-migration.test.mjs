@@ -17,6 +17,14 @@ describe("publication gate migration", () => {
         .sort()) {
         db.exec(readFileSync(join(migrationsDirectory, filename), "utf8"));
       }
+      const evidenceBaseline = db.prepare(`
+        SELECT
+          show_evidence.version AS show_version,
+          global_evidence.version AS global_version
+        FROM publication_show_evidence_versions show_evidence
+        CROSS JOIN publication_global_evidence_versions global_evidence
+        WHERE show_evidence.show_id = 'show_opera_en_la_selva'
+      `).get();
       db.exec(`
         INSERT INTO episodes (
           id, show_id, slug, title, summary, content_html, canonical_url
@@ -54,8 +62,8 @@ describe("publication gate migration", () => {
         WHERE episode.id = 'episode_gate_fixture'
       `).get()).toMatchObject({
         episode_version: 2,
-        show_version: 1,
-        global_version: 1
+        show_version: evidenceBaseline.show_version + 1,
+        global_version: evidenceBaseline.global_version + 1
       });
 
       expect(() => db.exec(`
@@ -87,12 +95,12 @@ describe("publication gate migration", () => {
             SELECT version
             FROM publication_show_evidence_versions
             WHERE show_id = episodes.show_id
-          ) = 1
+          ) = ${evidenceBaseline.show_version + 1}
           AND (
             SELECT version
             FROM publication_global_evidence_versions
             WHERE id = 'distribution'
-          ) = 1;
+          ) = ${evidenceBaseline.global_version + 1};
         INSERT INTO publication_batch_guards (id, update_succeeded)
         VALUES ('guard_success', changes());
         DELETE FROM publication_batch_guards WHERE id = 'guard_success';

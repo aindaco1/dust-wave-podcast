@@ -58,6 +58,39 @@ describe("virtual-audio diagnostic lease migration", () => {
       expect(db.prepare("PRAGMA quick_check").get()).toEqual({
         quick_check: "ok"
       });
+
+      db.prepare(`
+        INSERT INTO virtual_audio_gate_runs (
+          id, source_commit, generated_at, paired_requests,
+          total_measured_requests, protocol_probe_count,
+          protocol_failed_count, failed_requests, error_rate,
+          content_mismatches, p95_added_ms, protocol_passed, load_passed,
+          cleanup_complete, diagnostic_lease_removed,
+          uploaded_objects_removed, failure_code, github_repository,
+          github_run_id, github_run_attempt
+        ) VALUES (
+          ?, ?, datetime('now'), 5000, 10000, 24, 0, 0, 0, 0, 58.28,
+          1, 1, 1, 1, 1, NULL, 'aindaco1/dust-wave-podcast', '12345', 1
+        )
+      `).run("virtual_audio_gate_12345_1", "b".repeat(40));
+      expect(db.prepare(
+        "SELECT COUNT(*) AS count FROM virtual_audio_gate_runs"
+      ).get()).toEqual({ count: 1 });
+      expect(() => db.prepare(`
+        INSERT INTO virtual_audio_gate_runs (
+          id, source_commit, generated_at, paired_requests,
+          total_measured_requests, protocol_probe_count,
+          protocol_failed_count, failed_requests, error_rate,
+          content_mismatches, p95_added_ms, protocol_passed, load_passed,
+          cleanup_complete, diagnostic_lease_removed,
+          uploaded_objects_removed, failure_code, github_repository,
+          github_run_id, github_run_attempt
+        ) VALUES (
+          ?, ?, datetime('now'), 4999, 9998, 24, 0, 0, 0, 0, 0,
+          1, 1, 1, 1, 1, NULL, 'aindaco1/dust-wave-podcast', '12346', 1
+        )
+      `).run("virtual_audio_gate_12346_1", "c".repeat(40)))
+        .toThrow(/CHECK constraint failed/);
     } finally {
       db.close();
     }
