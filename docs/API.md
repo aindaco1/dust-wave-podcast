@@ -1620,3 +1620,10 @@ recipient identity, media, transcripts, or credentials from the caller.
 Expected outcomes come only from `config/launch-lab-matrix.json`; fixture rows
 are excluded from public and billable routes and can never satisfy the launch
 gate.
+
+`GET /v1/admin/launch-lab` is a staging-only, super-admin view of the same
+content-free ledger. It returns the fixture boundary, the latest five runs,
+and allowlisted scenario outcomes with private no-store headers. It is absent
+in production, excludes provider identifiers and listener data, and performs
+no Launch Lab writes. Normal `GET /v1/admin/shows` results exclude test
+fixtures so the rehearsal cannot be mistaken for a publishable show.

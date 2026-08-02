@@ -30,6 +30,12 @@ export type LaunchLabResendScenario =
   | "complained"
   | "suppressed";
 
+export type LaunchLabResendDeliveryStatus =
+  | "accepted"
+  | "delivered"
+  | "suppressed"
+  | "failed";
+
 export async function sendAdminMagicLink(
   env: PodcastEnv,
   {
@@ -224,6 +230,35 @@ export async function sendLaunchLabResendScenario(
   );
 }
 
+export async function getLaunchLabResendDeliveryStatus(
+  env: PodcastEnv,
+  providerId: string
+): Promise<LaunchLabResendDeliveryStatus | null> {
+  if (
+    !env.RESEND_API_KEY
+    || !/^[A-Za-z0-9_-]{1,160}$/.test(providerId)
+  ) {
+    return null;
+  }
+  const url = RESEND_EMAIL_URL + "/" + encodeURIComponent(providerId);
+  try {
+    const response = await fetchWithTimeout(url, {
+      method: "GET",
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}` },
+      redirect: "manual"
+    }, RESEND_TIMEOUT_MS);
+    if (!response.ok || response.status >= 300) {
+      await response.body?.cancel();
+      return null;
+    }
+    const payload = await readBoundedProviderObject(response);
+    if (payload?.id !== providerId) return null;
+    return launchLabDeliveryStatus(payload.last_event);
+  } catch {
+    return null;
+  }
+}
+
 function adminActionCopy(
   actionKind:
     | "alignment_review"
@@ -376,7 +411,7 @@ async function sendResendPayload(
         diagnosticCode: "fetch_redirect_rejected"
       };
     }
-    const providerPayload = await readBoundedProviderResponse(response);
+    const providerPayload = await readBoundedProviderObject(response);
     if (!response.ok) {
       return {
         sent: false,
@@ -386,7 +421,9 @@ async function sendResendPayload(
     }
     return {
       sent: true,
-      ...(providerPayload.id ? { providerId: providerPayload.id } : {})
+      ...(typeof providerPayload?.id === "string"
+        ? { providerId: providerPayload.id.slice(0, 160) }
+        : {})
     };
   } catch (error) {
     const name = error instanceof Error ? error.name : "";
@@ -404,10 +441,10 @@ async function sendResendPayload(
   }
 }
 
-async function readBoundedProviderResponse(
+async function readBoundedProviderObject(
   response: Response
-): Promise<{ id?: string }> {
-  if (!response.body) return {};
+): Promise<Record<string, unknown> | null> {
+  if (!response.body) return null;
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let length = 0;
@@ -418,7 +455,7 @@ async function readBoundedProviderResponse(
       length += value.byteLength;
       if (length > 32_768) {
         await reader.cancel("provider_response_too_large").catch(() => {});
-        return {};
+        return null;
       }
       chunks.push(value);
     }
@@ -433,12 +470,26 @@ async function readBoundedProviderResponse(
   }
   try {
     const value = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    const id = (value as Record<string, unknown>).id;
-    return typeof id === "string" ? { id: id.slice(0, 160) } : {};
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
   } catch {
-    return {};
+    return null;
   }
+}
+
+function launchLabDeliveryStatus(
+  value: unknown
+): LaunchLabResendDeliveryStatus | null {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (["queued", "scheduled", "sent"].includes(status)) return "accepted";
+  if (status === "delivered") return "delivered";
+  if (["bounced", "complained", "suppressed"].includes(status)) {
+    return "suppressed";
+  }
+  if (status === "failed") return "failed";
+  return null;
 }
 
 function trustedResendRedirect(value: string | null): string | null {
