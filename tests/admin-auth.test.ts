@@ -160,6 +160,8 @@ describe("admin authentication privacy", () => {
     const resendBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(resendBody.to).toEqual(["admin@example.com"]);
     expect(resendBody.text).toContain("#magic-link=");
+    expect(resendBody.text).toContain("/es/admin/podcasts/#magic-link=");
+    expect(resendBody.text).not.toContain("dustwave.xyz/admin/podcasts/#magic-link=");
     expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
       "idempotency-key": expect.stringMatching(
         /^podcast-admin-login\/[a-f0-9]{64}$/

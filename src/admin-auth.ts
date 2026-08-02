@@ -284,9 +284,14 @@ export async function startAdminLogin(
     );
   }
   let exposedLoginUrl: string | undefined;
-  const issued = await issueAdminLoginToken(env, { email });
+  const language = normalizeLoginLanguage(body.preferredLanguage);
+  const issued = await issueAdminLoginToken(env, {
+    email,
+    returnPath: language === "es"
+      ? "/es/admin/podcasts/"
+      : "/admin/podcasts/"
+  });
   if (issued) {
-    const language = normalizeLoginLanguage(body.preferredLanguage);
     const exposeLink = env.ENVIRONMENT === "staging"
       && isTruthy(env.ADMIN_AUTH_EXPOSE_LOGIN_LINK);
     if (exposeLink) {

@@ -49,13 +49,33 @@ describe("listener Stripe Billing Portal", () => {
     });
     expect(provider.idempotencyKeys).toHaveLength(1);
     expect(provider.idempotencyKeys[0]).toMatch(
-      /^podcast-portal-listener_portal_fixture-portal-fixture-\d+$/
+      /^podcast-portal-listener_portal_fixture-portal-fixture-en-\d+$/
     );
     expect(fixture.sqlite.prepare(
       `SELECT action, attempt_count
        FROM subscription_billing_rate_limits`
     ).all()).toEqual([{ action: "portal_session", attempt_count: 1 }]);
     expect(fixture.sqlite.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("returns Spanish listeners to the Spanish account page", async () => {
+    fixture = await portalFixture();
+    const provider = providerFixture();
+    vi.stubGlobal("fetch", provider.fetch);
+
+    const response = await createListenerBillingPortal(
+      portalRequest({ language: "es" }),
+      fixture.env,
+      showSlug
+    );
+
+    expect(response.status).toBe(200);
+    expect(provider.params?.return_url).toBe(
+      `${siteOrigin}/es/podcasts/account/`
+    );
+    expect(provider.idempotencyKeys[0]).toMatch(
+      /^podcast-portal-listener_portal_fixture-portal-fixture-es-\d+$/
+    );
   });
 
   it("fails closed before Stripe for missing entitlement and invalid CSRF", async () => {
@@ -203,7 +223,10 @@ async function portalFixture({
   };
 }
 
-function portalRequest({ csrf = csrfToken }: { csrf?: string } = {}) {
+function portalRequest({
+  csrf = csrfToken,
+  language
+}: { csrf?: string; language?: "en" | "es" } = {}) {
   return new Request(
     `https://feeds.dustwave.xyz/v1/member/shows/${showSlug}/billing/portal`,
     {
@@ -211,8 +234,10 @@ function portalRequest({ csrf = csrfToken }: { csrf?: string } = {}) {
       headers: {
         origin: siteOrigin,
         cookie: `${LISTENER_SESSION_COOKIE}=${sessionToken}`,
-        "x-podcast-csrf": csrf
-      }
+        "x-podcast-csrf": csrf,
+        ...(language ? { "content-type": "application/json" } : {})
+      },
+      ...(language ? { body: JSON.stringify({ language }) } : {})
     }
   );
 }

@@ -213,9 +213,12 @@ export async function startListenerLogin(
       .bind(tokenHash, listener.id)
       .run();
     const language = normalizeLoginLanguage(body.preferredLanguage);
+    const accountPath = language === "es"
+      ? "/es/podcasts/account/"
+      : "/podcasts/account/";
     const loginUrl = `${
       env.SITE_ORIGIN.replace(/\/$/, "")
-    }/podcasts/account/#magic-link=${token}`;
+    }${accountPath}#magic-link=${token}`;
     const exposeLink = env.ENVIRONMENT === "staging"
       && isTruthy(env.LISTENER_AUTH_EXPOSE_LOGIN_LINK);
     if (exposeLink) {

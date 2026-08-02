@@ -588,6 +588,7 @@ export async function processAnnouncementDelivery(
     deliveryKey: deliveryId,
     email,
     heading: delivery.heading,
+    language: delivery.language,
     subject: delivery.subject,
     unsubscribeUrl
   });

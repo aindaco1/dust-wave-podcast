@@ -92,6 +92,7 @@ export async function sendPodcastAnnouncementEmail(
     deliveryKey,
     email,
     heading,
+    language,
     subject,
     unsubscribeUrl
   }: {
@@ -102,16 +103,20 @@ export async function sendPodcastAnnouncementEmail(
     deliveryKey: string;
     email: string;
     heading: string;
+    language: LoginLanguage;
     subject: string;
     unsubscribeUrl: string;
   }
 ): Promise<MagicLinkDelivery> {
   const textBody = markdownToPlainText(bodyMarkdown);
+  const unsubscribe = language === "es"
+    ? "Cancelar suscripción"
+    : "Unsubscribe";
   const text = [
     heading,
     textBody,
     ctaLabel && ctaUrl ? `${ctaLabel}: ${ctaUrl}` : "",
-    `Unsubscribe: ${unsubscribeUrl}`
+    `${unsubscribe}: ${unsubscribeUrl}`
   ].filter(Boolean).join("\n\n");
   const html = [
     heading ? `<h1>${escapeHtml(heading)}</h1>` : "",
@@ -119,7 +124,7 @@ export async function sendPodcastAnnouncementEmail(
     ctaLabel && ctaUrl
       ? `<p><a href="${escapeAttribute(ctaUrl)}">${escapeHtml(ctaLabel)}</a></p>`
       : "",
-    `<p><a href="${escapeAttribute(unsubscribeUrl)}">Unsubscribe / Cancelar suscripción</a></p>`
+    `<p><a href="${escapeAttribute(unsubscribeUrl)}">${unsubscribe}</a></p>`
   ].filter(Boolean).join("");
   return sendResendPayload(
     env,

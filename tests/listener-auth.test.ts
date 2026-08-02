@@ -52,7 +52,8 @@ describe("listener passwordless authentication", () => {
     ).toBe(true);
     const resendBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(resendBody.to).toEqual(["listener@example.com"]);
-    expect(resendBody.text).toContain("/podcasts/account/#magic-link=");
+    expect(resendBody.text).toContain("/es/podcasts/account/#magic-link=");
+    expect(resendBody.text).not.toContain("dustwave.xyz/podcasts/account/#magic-link=");
     expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
       "idempotency-key": expect.stringMatching(
         /^podcast-listener-login\/[a-f0-9]{64}$/
