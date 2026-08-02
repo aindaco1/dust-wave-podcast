@@ -77,11 +77,23 @@ describe("Launch Lab hosted Checkout", () => {
     });
 
     expect(fixture.sqlite.prepare(
-      `SELECT state, observed_status
+      `SELECT scenario, state, observed_status
        FROM launch_lab_provider_scenarios
        WHERE run_id = ? AND provider = 'stripe'
-         AND scenario = 'checkout_success'`
-    ).get(runId)).toEqual({ state: "passed", observed_status: "active" });
+         AND scenario IN ('cancellation', 'checkout_success')
+       ORDER BY scenario`
+    ).all(runId)).toEqual([
+      {
+        scenario: "cancellation",
+        state: "passed",
+        observed_status: "canceled"
+      },
+      {
+        scenario: "checkout_success",
+        state: "passed",
+        observed_status: "active"
+      }
+    ]);
     for (const table of [
       "subscription_checkout_attempts",
       "subscription_entitlement_sources",

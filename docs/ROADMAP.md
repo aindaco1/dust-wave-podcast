@@ -506,8 +506,9 @@ them as launch blockers.
   and provider-signed Checkout projection, then cancels, deletes the Customer,
   and removes exact local fixtures. A CSRF-authenticated staging Super-admin
   can obtain the ephemeral hosted URL; failure cleanup expires it automatically.
-  The adapter and browser boundary are implemented, while the first protected
-  browser completion remains pending evidence.
+  The protected staging browser rehearsal now verifies the exact podcast-admin
+  return path, signed activation and cancellation projections, both allowlisted
+  scenario observations, provider deletion, and zero local fixture residue.
 - The same real-schema Launch Lab rehearsal now drives the actual signed Pool
   grant and redemption adapters, duplicate handling, Stripe/Pool overlap
   projection, private-feed issue/rotation and bearer invalidation, scheduled
