@@ -5,7 +5,6 @@ import {
   randomToken
 } from "@dustwave/worker-core/crypto";
 import {
-  createStripeClient,
   StripeApiError
 } from "@dustwave/worker-core/stripe";
 import { verifyTurnstile } from "@dustwave/worker-core/turnstile";
@@ -22,6 +21,12 @@ import {
   subscriptionCheckoutConfigured
 } from "./tax-quotes";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
+import {
+  createPodcastStripeClient,
+  logStripeBoundaryError,
+  stripeErrorStatus,
+  validStripeId
+} from "./stripe-client";
 import {
   readJsonObject,
   RequestValidationError,
@@ -557,25 +562,6 @@ async function findActiveAttempt(
     .first<CheckoutAttemptRow>();
 }
 
-function createPodcastStripeClient(env: PodcastEnv) {
-  return createStripeClient(env.STRIPE_SECRET_KEY || "", {
-    userAgent: "dust-wave-podcast/0.1.0",
-    onRequest(event) {
-      console.log(JSON.stringify({
-        level: event.success ? "info" : "warn",
-        event: "stripe_api_request",
-        method: event.method,
-        path: event.path,
-        status: event.status,
-        success: event.success,
-        requestId: event.requestId,
-        errorType: event.errorType,
-        errorCode: event.errorCode
-      }));
-    }
-  });
-}
-
 function randomLowercaseLetters(length: number): string {
   if (!Number.isSafeInteger(length) || length < 1 || length > 32) {
     throw new RangeError("Random label length is out of range");
@@ -623,30 +609,6 @@ function safeStripeFailureCode(error: unknown): string {
   return String(
     error.code || error.type || "stripe_api_error"
   ).replace(/[^a-z0-9_]/gi, "_").slice(0, 80);
-}
-
-function stripeErrorStatus(error: unknown): 502 | 503 {
-  return error instanceof StripeApiError && error.retryable ? 503 : 502;
-}
-
-function logStripeBoundaryError(event: string, error: unknown): void {
-  console.error(JSON.stringify({
-    level: "error",
-    event,
-    type: error instanceof StripeApiError ? error.type : "invalid_response",
-    code: error instanceof StripeApiError ? error.code : "",
-    status: error instanceof StripeApiError ? error.statusCode : 0,
-    requestId: error instanceof StripeApiError ? error.requestId : "",
-    retryable: error instanceof StripeApiError ? error.retryable : false
-  }));
-}
-
-function validStripeId(value: unknown, prefix: "cus" | "cs" | "bpc"): string {
-  const text = String(value ?? "");
-  if (!new RegExp(`^${prefix}_[A-Za-z0-9_]{6,128}$`).test(text)) {
-    throw new Error("Invalid Stripe object identifier");
-  }
-  return text;
 }
 
 function validStripeHostedUrl(value: unknown, hostname: string): string {

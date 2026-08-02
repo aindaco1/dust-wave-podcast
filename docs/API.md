@@ -339,6 +339,8 @@ including under concurrent requests.
 | `POST` | `/v1/admin/shows/{id}/site-projection` | recently authenticated super-admin | Recompute and SHA-bind the reviewed site-catalog projection; dry-run unless GitHub publishing is explicitly live |
 | `GET` | `/v1/admin/shows/{id}/premium-prices` | super-admin | Read the non-secret monthly/annual USD configuration, provider readiness, and pre-launch mutation blockers |
 | `PATCH` | `/v1/admin/shows/{id}/premium-prices` | recently authenticated super-admin | Atomically configure both pre-launch USD prices with optimistic values and exact confirmation; clears stale provider Price links but never mutates Stripe |
+| `GET` | `/v1/admin/shows/{id}/tax-policy` | super-admin | Read assigned, mode-bound tax-policy evidence and any checked-in unapproved candidate without exposing Stripe Tax Rate IDs |
+| `PUT` | `/v1/admin/shows/{id}/tax-policy` | recently authenticated super-admin | Idempotently create and attest an exact manual Stripe Tax Rate, then atomically approve and assign its immutable policy version after exact typed confirmation; does not enable Checkout |
 | `POST` | `/v1/admin/shows/{id}/rss-import/preview` | recently authenticated super-admin | Fetch and sanitize one explicitly authorized public HTTPS RSS feed without importing episodes or media |
 | `POST` | `/v1/admin/shows/{id}/rss-import/podcast-guid` | recently authenticated super-admin | Deliberately assign a previewed source channel GUID once to an empty coming-soon show |
 | `GET` | `/v1/admin/shows/{id}/rss-import/plans` | analyst+ | List the ten most recent show-scoped immutable migration plans and selected evidence |

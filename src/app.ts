@@ -227,6 +227,10 @@ import {
   getAdminShowPremiumPrices
 } from "./show-premium-prices";
 import {
+  configureAdminShowTaxPolicy,
+  getAdminShowTaxPolicy
+} from "./tax-policies";
+import {
   createListenerBillingPortal,
   createSubscriptionCheckout
 } from "./subscription-checkout";
@@ -342,6 +346,8 @@ const ADMIN_SHOW_SITE_PROJECTION_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/site-projection$/;
 const ADMIN_SHOW_PREMIUM_PRICES_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/premium-prices$/;
+const ADMIN_SHOW_TAX_POLICY_PATH =
+  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/tax-policy$/;
 const ADMIN_SHOW_AUDIO_QC_POLICY_PATH =
   /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/audio-qc-policy$/;
 const ADMIN_SHOW_CLIPS_PATH =
@@ -1057,6 +1063,25 @@ async function routeRequest(
         request,
         env,
         adminShowPremiumPricesMatch[1]
+      );
+    }
+  }
+  const adminShowTaxPolicyMatch = url.pathname.match(
+    ADMIN_SHOW_TAX_POLICY_PATH
+  );
+  if (adminShowTaxPolicyMatch) {
+    if (method === "GET") {
+      return getAdminShowTaxPolicy(
+        request,
+        env,
+        adminShowTaxPolicyMatch[1]
+      );
+    }
+    if (method === "PUT") {
+      return configureAdminShowTaxPolicy(
+        request,
+        env,
+        adminShowTaxPolicyMatch[1]
       );
     }
   }
