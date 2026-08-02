@@ -493,9 +493,12 @@ them as launch blockers.
   scenarios are recorded; they remain non-launch evidence.
 - Resend complaint rehearsal treats provider delivery as an intermediate state
   because a complaint follows successful delivery. The same read-only provider
-  retrieval may recover an older premature mismatch without sending again;
-  passed evidence remains immutable and provider failures remain terminal
-  unless the exact expected later event is observed.
+  retrieval may recover an older premature mismatch without sending again.
+  Because Resend's special non-labelable suppression address may omit the
+  scenario tag, reconciliation first reuses the signed, content-free webhook
+  journal by exact provider ID; only then may it retrieve the already-sent
+  provider object. Passed evidence remains immutable and provider failures
+  remain terminal unless the exact expected later event is observed.
 - The scheduled RSS rehearsal now runs the production feed/media contract: a
   body-free enclosure `HEAD`, one streamed byte range, and approved-only
   Podcasting 2.0 transcript/chapter declarations. Tampered transcript evidence

@@ -2067,6 +2067,11 @@ may recover to the checked-in expectation, Resend uses stable idempotency keys,
 and run/source collisions fail closed.
 
 Resend terminal evidence normally arrives through the signed webhook adapter.
+The special `suppressed@resend.dev` address does not support labeling. If its
+signed event arrives without the Launch Lab scenario tag, a rerun correlates
+the content-free webhook journal by the exact stored provider ID and gives a
+terminal suppression event precedence over earlier/later delivery events.
+Migration `0083` adds the partial covering lookup index for that bounded read.
 When a synthetic message remains accepted, a rerun may retrieve that exact
 already-sent provider object through the bounded read-only adapter. This
 fallback does not resend, follow redirects, or retain recipient identity.

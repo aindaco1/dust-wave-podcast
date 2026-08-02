@@ -77,6 +77,22 @@ const WEBHOOK_QUERY = [
   "  AND (provider_id IS NULL OR provider_id = ?)",
   "RETURNING id, run_id"
 ].join("\n");
+const WEBHOOK_JOURNAL_QUERY = [
+  "SELECT CASE",
+  "  WHEN MAX(CASE WHEN event_type IN (",
+  "    'email.suppressed', 'email.complained'",
+  "  ) THEN 1 ELSE 0 END) = 1 THEN 'suppressed'",
+  "  WHEN MAX(CASE WHEN event_type = 'email.failed'",
+  "    THEN 1 ELSE 0 END) = 1 THEN 'failed'",
+  "  WHEN MAX(CASE WHEN event_type = 'email.delivered'",
+  "    THEN 1 ELSE 0 END) = 1 THEN 'delivered'",
+  "  WHEN MAX(CASE WHEN event_type = 'email.sent'",
+  "    THEN 1 ELSE 0 END) = 1 THEN 'accepted'",
+  "  ELSE NULL",
+  "END AS observed_status",
+  "FROM podcast_resend_webhook_events",
+  "WHERE provider_id = ?"
+].join("\n");
 
 type ScenarioRow = {
   id: string;
@@ -137,10 +153,10 @@ export async function runLaunchLabResendMatrix(
       (row.state !== "running" && !recoverableMismatch)
       || !row.provider_id
     ) return;
-    const status = await getLaunchLabResendDeliveryStatus(
-      env,
+    const status = await recordedLaunchLabResendDeliveryStatus(
+      env.DB,
       row.provider_id
-    );
+    ) ?? await getLaunchLabResendDeliveryStatus(env, row.provider_id);
     if (!status) return;
     await recordLaunchLabResendWebhook(env.DB, {
       providerId: row.provider_id,
@@ -150,6 +166,25 @@ export async function runLaunchLabResendMatrix(
   }));
   await refreshLaunchLabRunStatus(env.DB, runId);
   return presentMatrix(await loadRows(env.DB, runId), runId);
+}
+
+async function recordedLaunchLabResendDeliveryStatus(
+  db: D1Database,
+  providerId: string
+): Promise<"accepted" | "delivered" | "suppressed" | "failed" | null> {
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(providerId)) return null;
+  const row = await db.prepare(WEBHOOK_JOURNAL_QUERY)
+    .bind(providerId)
+    .first<{ observed_status: string | null }>();
+  switch (row?.observed_status) {
+    case "accepted":
+    case "delivered":
+    case "suppressed":
+    case "failed":
+      return row.observed_status;
+    default:
+      return null;
+  }
 }
 
 function expectedStatus(scenario: LaunchLabResendScenario): string {
