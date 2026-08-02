@@ -499,6 +499,12 @@ them as launch blockers.
 
 - Track setup, submission, ingestion, observation, and failure state for each
   directory rather than implying direct file upload to RSS-following apps.
+- Keep provider-specific setup semantics in the shared directory registry.
+  Overcast requires no separate owner setup and normally discovers shows after
+  Apple Podcasts lists them; its manual-add path is a recovery action, not a
+  launch submission. Castbox uses its current first-party podcaster/ownership
+  page. Provider URL and workflow changes ship as forward-only migrations so
+  all shows stay DRY without rewriting completed operator evidence.
 - Keep a credential-free owner-action checklist per show/directory: responsible
   account label, verification state, submission date, provider receipt or
   dashboard URL, public listing, and bounded notes. Never store provider
