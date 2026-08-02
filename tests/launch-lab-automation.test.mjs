@@ -34,6 +34,23 @@ describe("Launch Lab automation", () => {
     }
   });
 
+  it("runs each provider-independent gate before recording its evidence", () => {
+    for (const testFile of [
+      "tests/distribution.test.ts",
+      "tests/feed-validation.test.ts",
+      "tests/publication-intent.test.ts"
+    ]) {
+      expect(workflow).toContain(testFile);
+    }
+    const observations = buildLaunchLabContractObservations().observations;
+    expect(observations).toEqual(expect.arrayContaining([
+      { provider: "directory", scenario: "packet_generation", observedStatus: "verified" },
+      { provider: "directory", scenario: "canonical_feed_validation", observedStatus: "verified" },
+      { provider: "youtube", scenario: "early_access_hold", observedStatus: "held" },
+      { provider: "youtube", scenario: "premium_bonus_exclusion", observedStatus: "excluded" }
+    ]));
+  });
+
   it("uses one purpose-bound secret without broad Cloudflare credentials", () => {
     expect(workflow).toContain("secrets.LAUNCH_LAB_CALLBACK_SECRET");
     expect(workflow).not.toContain("CLOUDFLARE_API_TOKEN");

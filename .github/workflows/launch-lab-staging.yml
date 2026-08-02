@@ -40,6 +40,9 @@ jobs:
           tests/launch-lab-resend-ordering.test.mjs
           tests/stripe-webhook-lifecycle.test.mjs
           tests/feed-media.test.ts
+          tests/distribution.test.ts
+          tests/feed-validation.test.ts
+          tests/publication-intent.test.ts
           tests/launch-lab-public-boundary.test.mjs
           tests/launch-lab-ledger.test.mjs
 

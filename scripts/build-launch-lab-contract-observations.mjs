@@ -26,7 +26,11 @@ export function buildLaunchLabContractObservations() {
       { provider: "stripe", scenario: "webhook_contract", observedStatus: "verified" },
       { provider: "rss", scenario: "private_directory_block", observedStatus: "blocked" },
       { provider: "rss", scenario: "enclosure_head_range", observedStatus: "verified" },
-      { provider: "rss", scenario: "transcript_chapter_contract", observedStatus: "verified" }
+      { provider: "rss", scenario: "transcript_chapter_contract", observedStatus: "verified" },
+      { provider: "directory", scenario: "packet_generation", observedStatus: "verified" },
+      { provider: "directory", scenario: "canonical_feed_validation", observedStatus: "verified" },
+      { provider: "youtube", scenario: "early_access_hold", observedStatus: "held" },
+      { provider: "youtube", scenario: "premium_bonus_exclusion", observedStatus: "excluded" }
     ]
   };
 }
