@@ -508,6 +508,12 @@ them as launch blockers.
   YouTube intent. These four synthetic outcomes remain non-launch evidence;
   real owner verification, ingestion/recovery, and unlisted uploads stay
   pending.
+- Launch Lab now reuses the scheduled YouTube access-health row for channel
+  identity instead of adding a second provider check. It advances only when
+  the stored account reference exactly matches the configured channel, the
+  success is less than 24 hours old, and no health-check lease is active. The
+  rehearsal exposes only `verified`; channel identity and OAuth material stay
+  outside the ledger and response.
 - The first Subscribers workbench boundary now exposes only Super-admin,
   private/no-store, keyset-paginated aggregate/source state, feed and consent
   booleans, and bounded formula-safe CSV. It intentionally excludes every

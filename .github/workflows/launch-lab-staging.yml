@@ -26,11 +26,6 @@ jobs:
       - name: Set up locked Podcast runtime
         uses: ./.github/actions/setup-processor-node
 
-      - name: Reconcile the immutable staging fixture
-        env:
-          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
-        run: npm run launch-lab -- reconcile
-
       - name: Rehearse DRY contract adapters
         run: >-
           npm test -- --run
@@ -43,8 +38,14 @@ jobs:
           tests/distribution.test.ts
           tests/feed-validation.test.ts
           tests/publication-intent.test.ts
+          tests/launch-lab-youtube-health.test.mjs
           tests/launch-lab-public-boundary.test.mjs
           tests/launch-lab-ledger.test.mjs
+
+      - name: Reconcile the immutable staging fixture
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab -- reconcile
 
       - name: Record contract observations
         env:

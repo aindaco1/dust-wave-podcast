@@ -10,6 +10,8 @@ import {
 } from "./launch-lab-ledger";
 import { runLaunchLabResendMatrix } from "./launch-lab-resend";
 import { runLaunchLabStripeReadiness } from "./launch-lab-stripe";
+import { reconcileLaunchLabYouTubeChannelIdentity } from
+  "./launch-lab-youtube";
 import { readSignedJsonBody } from "./signed-callback";
 
 const TIMESTAMP_HEADER = "x-podcast-launch-lab-timestamp";
@@ -228,6 +230,7 @@ export async function manageLaunchLab(
     return launchLabJson({ error: "launch_lab_run_collision" }, 409);
   }
   await seedLaunchLabScenarios(env.DB, runId);
+  await reconcileLaunchLabYouTubeChannelIdentity(env, runId);
 
   return launchLabJson({
     schemaVersion: "dust-wave-launch-lab-response-v1",
