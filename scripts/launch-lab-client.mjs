@@ -85,11 +85,13 @@ async function main() {
     "stripe-lifecycle": "run_stripe_lifecycle",
     "stripe-checkout": "run_stripe_checkout",
     "stripe-checkout-cleanup": "cleanup_stripe_checkout",
+    "stripe-portal": "run_stripe_portal",
+    "stripe-portal-cleanup": "cleanup_stripe_portal",
     status: "status"
   })[command];
   if (!action) {
     throw new Error(
-      "Usage: launch-lab-client.mjs <reconcile|record|resend|stripe|stripe-lifecycle|stripe-checkout|stripe-checkout-cleanup|status> "
+      "Usage: launch-lab-client.mjs <reconcile|record|resend|stripe|stripe-lifecycle|stripe-checkout|stripe-checkout-cleanup|stripe-portal|stripe-portal-cleanup|status> "
       + "[observations.json]"
     );
   }

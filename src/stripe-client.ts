@@ -7,7 +7,7 @@ import type { PodcastEnv } from "./env";
 
 export function createPodcastStripeClient(env: PodcastEnv) {
   return createStripeClient(env.STRIPE_SECRET_KEY || "", {
-    userAgent: "dust-wave-podcast/0.2.16",
+    userAgent: "dust-wave-podcast/0.2.18",
     onRequest(event) {
       console.log(JSON.stringify({
         level: event.success ? "info" : "warn",
@@ -52,4 +52,25 @@ export function validStripeId(
     throw new Error("Invalid Stripe object identifier");
   }
   return text;
+}
+
+export function validStripeHostedUrl(
+  value: unknown,
+  hostname: "billing.stripe.com" | "checkout.stripe.com"
+): string {
+  try {
+    const url = new URL(String(value ?? ""));
+    if (
+      url.protocol !== "https:"
+      || url.hostname !== hostname
+      || url.port
+      || url.username
+      || url.password
+    ) {
+      throw new Error("Unexpected Stripe URL");
+    }
+    return url.toString();
+  } catch {
+    throw new Error("Invalid Stripe hosted URL");
+  }
 }

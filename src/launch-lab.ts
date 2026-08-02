@@ -16,6 +16,10 @@ import {
   advanceLaunchLabHostedCheckout,
   requestLaunchLabHostedCheckoutCleanup
 } from "./launch-lab-stripe-checkout";
+import {
+  advanceLaunchLabStripePortal,
+  cleanupLaunchLabStripePortal
+} from "./launch-lab-stripe-portal";
 import { reconcileLaunchLabYouTubeChannelIdentity } from
   "./launch-lab-youtube";
 import { readSignedJsonBody } from "./signed-callback";
@@ -155,6 +159,8 @@ export async function manageLaunchLab(
   if (
     action === "run_stripe_checkout"
     || action === "cleanup_stripe_checkout"
+    || action === "run_stripe_portal"
+    || action === "cleanup_stripe_portal"
   ) {
     const fixtureReady = await loadExactFixture(env.DB);
     if (!fixtureReady) {
@@ -168,11 +174,14 @@ export async function manageLaunchLab(
       return launchLabJson({ error: "launch_lab_run_collision" }, 409);
     }
     await seedLaunchLabScenarios(env.DB, runId);
-    return launchLabJson(
-      action === "run_stripe_checkout"
-        ? await advanceLaunchLabHostedCheckout(env, runId)
-        : await requestLaunchLabHostedCheckoutCleanup(env, runId)
-    );
+    const result = action === "run_stripe_checkout"
+      ? await advanceLaunchLabHostedCheckout(env, runId)
+      : action === "cleanup_stripe_checkout"
+        ? await requestLaunchLabHostedCheckoutCleanup(env, runId)
+        : action === "run_stripe_portal"
+          ? await advanceLaunchLabStripePortal(env, runId)
+          : await cleanupLaunchLabStripePortal(env, runId);
+    return launchLabJson(result);
   }
   if (action === "record_observations") {
     const fixtureReady = await loadExactFixture(env.DB);
