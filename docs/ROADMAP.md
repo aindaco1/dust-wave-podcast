@@ -498,8 +498,10 @@ them as launch blockers.
   clock/customer/subscription simulation and removes its local
   listener/checkout/source fixtures when complete. It uses one reusable active
   $1 test-only Product/Price that is tainted to the hidden Launch Lab show and
-  never applies tax; hosted Checkout success and provider-originated
-  duplicate/out-of-order delivery remain separate pending evidence.
+  never applies tax. Before refund and cleanup, it asks Stripe to redeliver the
+  exact current active event and then an older `past_due` event to the exact
+  staging webhook. Only the provider-signed duplicate callbacks may record
+  idempotent and newest-state-wins evidence.
 - The on-demand hosted Checkout adapter now creates an isolated test Customer,
   $1 no-tax subscription Session, and content-hashed attempt without changing
   the public Checkout switch. It waits for the real hosted browser completion
