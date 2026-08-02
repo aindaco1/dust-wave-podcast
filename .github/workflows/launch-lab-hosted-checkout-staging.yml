@@ -1,0 +1,77 @@
+name: Rehearse staging hosted Checkout
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-launch-lab-hosted-checkout
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    environment: podcast-staging
+    steps:
+      - name: Check out exact rehearsal source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Set up locked Podcast runtime
+        uses: ./.github/actions/setup-processor-node
+
+      - name: Verify hosted Checkout and signed webhook contracts
+        run: >-
+          npm test -- --run
+          tests/launch-lab-stripe-checkout.test.mjs
+          tests/launch-lab-admin.test.ts
+          tests/billing.test.ts
+          tests/stripe-webhook-lifecycle.test.mjs
+
+      - name: Reconcile the immutable staging fixture
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab -- reconcile
+
+      - name: Verify Stripe test-mode contracts
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab -- stripe
+
+      - name: Rehearse hosted Checkout
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab:stripe-checkout
+
+      - name: Clean up exact hosted Checkout fixtures
+        if: ${{ always() }}
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+        run: npm run launch-lab:stripe-checkout-cleanup
+
+      - name: Read content-free rehearsal status
+        if: ${{ always() }}
+        env:
+          LAUNCH_LAB_CALLBACK_SECRET: ${{ secrets.LAUNCH_LAB_CALLBACK_SECRET }}
+          LAUNCH_LAB_REPORT: ${{ runner.temp }}/launch-lab-status.json
+        run: >-
+          node scripts/launch-lab-client.mjs status > "$LAUNCH_LAB_REPORT"
+
+      - name: Add bounded rehearsal summary
+        if: ${{ always() }}
+        env:
+          LAUNCH_LAB_REPORT: ${{ runner.temp }}/launch-lab-status.json
+        run: node scripts/write-launch-lab-summary.mjs
+
+      - name: Retain content-free rehearsal evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: launch-lab-hosted-checkout-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/launch-lab-status.json
+          if-no-files-found: error
+          retention-days: 30

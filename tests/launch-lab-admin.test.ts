@@ -1,11 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import { ADMIN_SESSION_COOKIE } from "../src/admin-auth";
 import { listAdminShows } from "../src/admin";
-import { getAdminLaunchLab } from "../src/launch-lab-admin";
+import {
+  getAdminLaunchLab,
+  openAdminLaunchLabHostedCheckout
+} from "../src/launch-lab-admin";
 import type { PodcastEnv } from "../src/env";
 
 describe("Launch Lab admin boundary", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("is absent in production before authentication or database access", async () => {
     let databaseAccessed = false;
     const env = {
@@ -75,6 +83,95 @@ describe("Launch Lab admin boundary", () => {
     expect(fixture.queries.find((query) =>
       query.includes("FROM shows s")
     )).toContain("WHERE s.test_fixture = 0");
+  });
+
+  it("hands an open hosted session only to a CSRF-authenticated super-admin", async () => {
+    const secret = "admin_session_secret_fixture";
+    const sessionToken = "session_fixture";
+    const csrfToken = "csrf_fixture";
+    const csrfHash = await sha256Hex(`${secret}:${csrfToken}`);
+    const queries: string[] = [];
+    const db = databaseFixture(queries, {
+      first(query) {
+        if (query.includes("FROM launch_lab_stripe_checkouts")) {
+          return {
+            run_id: "launch_admin_checkout_0001",
+            phase: "session_open",
+            checkout_attempt_id: "checkout_launch_lab_hosted_admin_0001",
+            provider_customer_id: "cus_admin_hosted_fixture",
+            provider_session_id: "cs_test_admin_hosted_fixture",
+            provider_subscription_id: null,
+            cleanup_requested: 0,
+            customer_deleted: 0,
+            transition_count: 3
+          };
+        }
+        return undefined;
+      }
+    }, csrfHash);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      id: "cs_test_admin_hosted_fixture",
+      object: "checkout.session",
+      livemode: false,
+      mode: "subscription",
+      status: "open",
+      customer: "cus_admin_hosted_fixture",
+      client_reference_id: "checkout_launch_lab_hosted_admin_0001",
+      metadata: {
+        dustwave_checkout_attempt_id: "checkout_launch_lab_hosted_admin_0001",
+        dustwave_show_id: "show_dust_wave_launch_lab",
+        launch_lab_fixture: "hosted_checkout_v1",
+        launch_lab_run_id: "launch_admin_checkout_0001"
+      },
+      url: "https://checkout.stripe.com/c/pay/admin_hosted_fixture",
+      expires_at: 1_796_227_200
+    }), {
+      headers: { "content-type": "application/json" }
+    })));
+    const response = await openAdminLaunchLabHostedCheckout(new Request(
+      "https://feeds.dustwave.xyz/v1/admin/launch-lab/stripe-checkout",
+      {
+        method: "POST",
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE}=${sessionToken}`,
+          origin: "https://dustwave.xyz",
+          "x-podcast-csrf": csrfToken
+        }
+      }
+    ), {
+      ...adminEnv(db, "staging"),
+      STRIPE_MODE: "test",
+      STRIPE_SECRET_KEY: "sk_test_admin_hosted"
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      schemaVersion: "dust-wave-launch-lab-checkout-handoff-v1",
+      checkout: {
+        url: "https://checkout.stripe.com/c/pay/admin_hosted_fixture",
+        expiresAt: "2026-12-02T16:00:00.000Z"
+      }
+    });
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+
+  it("keeps the hosted handoff absent in production before D1", async () => {
+    let touched = false;
+    const response = await openAdminLaunchLabHostedCheckout(new Request(
+      "https://feeds.dustwave.xyz/v1/admin/launch-lab/stripe-checkout",
+      { method: "POST" }
+    ), {
+      ENVIRONMENT: "production",
+      ALLOWED_ORIGINS: "https://dustwave.xyz",
+      DB: {
+        prepare() {
+          touched = true;
+          throw new Error("production D1 must remain untouched");
+        }
+      }
+    } as unknown as PodcastEnv);
+    expect(response.status).toBe(404);
+    expect(touched).toBe(false);
   });
 });
 
@@ -179,7 +276,8 @@ function databaseFixture(
   handlers: {
     first?: (query: string, values: unknown[]) => unknown;
     all?: (query: string, values: unknown[]) => unknown[] | undefined;
-  }
+  },
+  csrfTokenHash = "unused"
 ): D1Database {
   return {
     prepare(query: string) {
@@ -194,7 +292,7 @@ function databaseFixture(
           if (query.includes("SELECT s.admin_user_id")) {
             return {
               admin_user_id: "admin_launch_lab",
-              csrf_token_hash: "unused"
+              csrf_token_hash: csrfTokenHash
             };
           }
           return handlers.first?.(query, values) ?? null;

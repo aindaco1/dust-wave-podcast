@@ -257,6 +257,16 @@
   test clock and associated provider objects, then removes its exact D1
   listener, attempt, source, and aggregate fixtures. Production, live mode,
   and public Checkout remain inert.
+- Hosted Checkout rehearsal uses a separate on-demand staging workflow and the
+  hidden Launch Lab show. The signed workflow creates only a test Customer,
+  content-hashed D1 attempt, and test Session; it never enables the public
+  Checkout kill switch or imports the unapproved tax candidate. A Super-admin
+  with a valid session, exact same-origin CSRF token, and staging origin can
+  retrieve the open hosted URL through a private/no-store handoff. D1 and
+  workflow artifacts never contain the URL, email, address, payment method, or
+  provider payload. The `always()` cleanup expires an abandoned open Session,
+  deletes the exact test Customer, and removes its local attempt, source,
+  aggregate, and synthetic listener.
 - Customer Portal requires an authenticated listener, same-origin CSRF,
   show-scoped Stripe customer, rate limit, and explicit
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must

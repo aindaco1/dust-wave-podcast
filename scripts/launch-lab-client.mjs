@@ -83,11 +83,13 @@ async function main() {
     resend: "run_resend_matrix",
     stripe: "run_stripe_readiness",
     "stripe-lifecycle": "run_stripe_lifecycle",
+    "stripe-checkout": "run_stripe_checkout",
+    "stripe-checkout-cleanup": "cleanup_stripe_checkout",
     status: "status"
   })[command];
   if (!action) {
     throw new Error(
-      "Usage: launch-lab-client.mjs <reconcile|record|resend|stripe|stripe-lifecycle|status> "
+      "Usage: launch-lab-client.mjs <reconcile|record|resend|stripe|stripe-lifecycle|stripe-checkout|stripe-checkout-cleanup|status> "
       + "[observations.json]"
     );
   }

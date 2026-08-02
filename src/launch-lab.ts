@@ -12,6 +12,10 @@ import { runLaunchLabResendMatrix } from "./launch-lab-resend";
 import { runLaunchLabStripeReadiness } from "./launch-lab-stripe";
 import { advanceLaunchLabStripeLifecycle } from
   "./launch-lab-stripe-lifecycle";
+import {
+  advanceLaunchLabHostedCheckout,
+  requestLaunchLabHostedCheckoutCleanup
+} from "./launch-lab-stripe-checkout";
 import { reconcileLaunchLabYouTubeChannelIdentity } from
   "./launch-lab-youtube";
 import { readSignedJsonBody } from "./signed-callback";
@@ -146,6 +150,28 @@ export async function manageLaunchLab(
     await seedLaunchLabScenarios(env.DB, runId);
     return launchLabJson(
       await advanceLaunchLabStripeLifecycle(env, runId)
+    );
+  }
+  if (
+    action === "run_stripe_checkout"
+    || action === "cleanup_stripe_checkout"
+  ) {
+    const fixtureReady = await loadExactFixture(env.DB);
+    if (!fixtureReady) {
+      return launchLabJson({ error: "launch_lab_fixture_missing" }, 409);
+    }
+    if (!await ensureLaunchLabRun(env.DB, {
+      runId,
+      showId: launchLabFixture.show.id,
+      sourceCommit
+    })) {
+      return launchLabJson({ error: "launch_lab_run_collision" }, 409);
+    }
+    await seedLaunchLabScenarios(env.DB, runId);
+    return launchLabJson(
+      action === "run_stripe_checkout"
+        ? await advanceLaunchLabHostedCheckout(env, runId)
+        : await requestLaunchLabHostedCheckoutCleanup(env, runId)
     );
   }
   if (action === "record_observations") {

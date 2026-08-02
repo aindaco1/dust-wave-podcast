@@ -4,6 +4,8 @@ import { requireAdmin } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import { privateJson } from "./http";
 import { presentLaunchLabRun } from "./launch-lab-ledger";
+import { getLatestLaunchLabHostedCheckoutUrl } from
+  "./launch-lab-stripe-checkout";
 
 const RECENT_RUNS_QUERY = [
   "SELECT id",
@@ -58,4 +60,36 @@ export async function getAdminLaunchLab(
     latest: runs[0] ?? null,
     runs
   });
+}
+
+export async function openAdminLaunchLabHostedCheckout(
+  request: Request,
+  env: PodcastEnv
+): Promise<Response> {
+  if (env.ENVIRONMENT !== "staging") {
+    return privateJson(request, env.ALLOWED_ORIGINS, {
+      error: "not_found"
+    }, { status: 404 });
+  }
+  const auth = await requireAdmin(request, env, {
+    allowedRoles: ["super_admin"],
+    requireCsrf: true
+  });
+  if (!auth.ok) return auth.response;
+  try {
+    const checkout = await getLatestLaunchLabHostedCheckoutUrl(env);
+    if (!checkout) {
+      return privateJson(request, env.ALLOWED_ORIGINS, {
+        error: "launch_lab_checkout_not_ready"
+      }, { status: 409 });
+    }
+    return privateJson(request, env.ALLOWED_ORIGINS, {
+      schemaVersion: "dust-wave-launch-lab-checkout-handoff-v1",
+      checkout
+    });
+  } catch {
+    return privateJson(request, env.ALLOWED_ORIGINS, {
+      error: "launch_lab_checkout_unavailable"
+    }, { status: 503 });
+  }
 }
