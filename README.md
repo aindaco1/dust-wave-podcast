@@ -358,7 +358,9 @@ disabled.
 
 Pool supporter benefits use a separately gated, signed grant/revoke bridge and
 email-bound one-time codes redeemed through the authenticated Dust Wave member
-site. The bridge is disabled in every environment by default.
+site. The existing scheduler reconciles fixed-duration expiry and aggregate
+access, and private-feed rotation atomically invalidates the prior bearer URL.
+The bridge is disabled in every environment by default.
 
 The first Marketing boundary reuses the versioned Pool/Store tagged-link and
 QR primitives without creating a second implementation. Producer+ can now

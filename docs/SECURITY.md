@@ -232,6 +232,12 @@
 - Pool revocation is an irreversible tombstone for one provider grant ID and
   cancels only a matching current Pool source. It cannot mutate Stripe/manual
   sources, and an out-of-order grant cannot revive the tombstoned benefit.
+- A bounded scheduled reconciliation marks due entitlement sources expired and
+  recomputes their aggregate projection. Indexed due-state queries avoid a
+  growing cron scan; a stale active aggregate remains eligible for repair if a
+  previous run stopped after updating its source. Expired subscriptions fail
+  both member feed issuance and bearer-feed lookup, while rotated raw bearer
+  tokens are never persisted.
 - Customer Portal requires an authenticated listener, same-origin CSRF,
   show-scoped Stripe customer, rate limit, and explicit
   `STRIPE_PORTAL_CONFIGURATION_ID`. The matching Stripe Portal profile must

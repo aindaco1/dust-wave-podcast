@@ -644,6 +644,52 @@ export async function recomputeSubscriptionProjection(
     .run();
 }
 
+export async function reconcileExpiredSubscriptionProjections(
+  db: D1Database,
+  maximum = 500
+): Promise<number> {
+  const targets = await db
+    .prepare(
+      `SELECT listener_id, show_id
+       FROM subscription_entitlement_sources
+       WHERE
+         status = 'active'
+         AND current_period_end IS NOT NULL
+         AND current_period_end <= ${SQL_UTC_NOW_RFC3339}
+       UNION
+       SELECT listener_id, show_id
+       FROM subscriptions
+       WHERE
+         status = 'active'
+         AND current_period_end IS NOT NULL
+         AND current_period_end <= ${SQL_UTC_NOW_RFC3339}
+       LIMIT ?`
+    )
+    .bind(maximum)
+    .all<{ listener_id: string; show_id: string }>();
+  for (const target of targets.results) {
+    await db
+      .prepare(
+        `UPDATE subscription_entitlement_sources
+         SET status = 'expired', updated_at = datetime('now')
+         WHERE
+           listener_id = ?
+           AND show_id = ?
+           AND status = 'active'
+           AND current_period_end IS NOT NULL
+           AND current_period_end <= ${SQL_UTC_NOW_RFC3339}`
+      )
+      .bind(target.listener_id, target.show_id)
+      .run();
+    await recomputeSubscriptionProjection(
+      db,
+      target.listener_id,
+      target.show_id
+    );
+  }
+  return targets.results.length;
+}
+
 function sourceRank(
   source: {
     provider: "stripe" | "pool" | "manual";

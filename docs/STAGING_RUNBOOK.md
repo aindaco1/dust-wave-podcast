@@ -1265,7 +1265,13 @@ non-production Pool benefit mapping with an explicit show and duration, then:
    canceled; an unrelated Stripe/manual fixture must remain active.
 5. Exercise revoke-before-grant ordering and confirm a later grant with the
    same grant ID remains revoked.
-6. Disable the bridge again and delete the synthetic Pool mapping after saving
+6. Issue and rotate a private feed, confirm the original bearer URL returns
+   `404`, and confirm only an HMAC of the replacement token is stored.
+7. Move the synthetic benefit end into the past, run the scheduled expiry
+   reconciliation, and confirm the aggregate is `expired` and both member feed
+   issuance and the prior bearer URL are denied. Rerun it to confirm the pass
+   is idempotent.
+8. Disable the bridge again and delete the synthetic Pool mapping after saving
    redacted evidence.
 
 Before the first controlled Checkout:
@@ -2029,6 +2035,13 @@ clean foreign keys. A signed `charge.refunded` fixture is intentionally
 journaled as ignored until a refund-access policy is approved; it must not
 revoke or extend access implicitly.
 
+Migration `0082` adds partial indexes for bounded entitlement-expiry scans.
+Replay the Pool lifecycle test against every migration from zero and confirm a
+signed grant/replay and authenticated redemption/replay, Stripe overlap,
+private-feed rotation, scheduled expiry, interrupted-pass recovery, and signed
+revocation all finish with clean foreign keys and no raw email, code, or bearer
+token persisted.
+
 The Launch Lab turns provider-dependent prelaunch blockers into repeatable
 staging rehearsals without requiring a publishable episode or broad provider
 credentials in GitHub Actions.
@@ -2064,11 +2077,12 @@ mutate the ledger, and the fixture stays absent from normal show selectors.
 
 The initial matrix contains 41 scenarios across Resend, Stripe, YouTube, RSS,
 directories, ads, and Pool. The scheduled real-schema lifecycle replay may
-mark only Stripe's synthetic `webhook_contract` as verified. Scenarios needing
-a real Checkout, test-clock renewal/refund, native client, unlisted YouTube
-object, or directory ingestion remain `pending` until their adapters produce
-truthful evidence. A pending or passing synthetic scenario never counts as
-launch evidence.
+mark Stripe's synthetic `webhook_contract` and Pool's seven synthetic
+grant/redeem/duplicate/revoke/expiry/overlap/feed-rotation scenarios only.
+Scenarios needing a real Checkout, test-clock renewal/refund, native client,
+unlisted YouTube object, or directory ingestion remain `pending` until their
+adapters produce truthful evidence. A pending or passing synthetic scenario
+never counts as launch evidence.
 
 Before accepting a run, confirm the public probe returns `404` for both the
 fixture show API and fixture RSS URL, the private fixture feed emits
