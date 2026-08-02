@@ -16,6 +16,10 @@ describe("virtual-audio staging gate workflow", () => {
     expect(workflow).toContain(
       "uses: ./.github/actions/setup-processor-node"
     );
+    expect(workflow).toContain(
+      "- name: Rehearse Dust Wave direct and house selection"
+    );
+    expect(workflow).toContain("run: npm run gate:sponsor-demo");
     expect(workflow).not.toContain("sudo apt-get install --yes ffmpeg");
     expect(workflow).toContain("ffprobe -version");
     for (const line of workflow.split("\n").filter((value) => value.includes("uses:"))) {

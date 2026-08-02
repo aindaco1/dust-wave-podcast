@@ -187,6 +187,10 @@ through the production byte-layout primitive and requires the
 The command performs no D1, R2, Analytics Engine, email, or provider mutation.
 Its output always records zero qualified impressions and explicitly marks the
 result ineligible for billing, native-client validation, and the launch gate.
+The existing protected virtual-audio workflow reruns the same command every
+three days before its signed staging protocol/load exercise, so selector or
+equal-byte house-fill drift fails the recurring job without adding another
+scheduler or secret.
 This closes the repeatable synthetic campaign/fallback rehearsal only; one
 reviewed staging campaign and one real native-client qualified download remain
 separate evidence.
