@@ -93,14 +93,23 @@ actually completes that platform's one-time setup; do not mark a directory
 `verified` merely because its submission page or RSS feed is reachable.
 
 Migration `0077` is the provider-semantic exception to that default. Verify the
-Castbox submission URL is `https://castbox.fm/podcasters.html`, the Overcast
-information URL is `https://overcast.fm/podcasterinfo`, and untouched Overcast
-show rows move from `not_started` to `not_required`. Confirm a fixture already
-marked `pending` or `verified` keeps its complete operator-authored state.
+Overcast information URL is `https://overcast.fm/podcasterinfo`, and untouched
+Overcast show rows move from `not_started` to `not_required`. Confirm a fixture
+already marked `pending` or `verified` keeps its complete operator-authored state.
 Overcast still needs current feed validation, observed ingestion, and a real
 failed-to-observed recovery sequence before certification; `not_required`
 alone must not increase the public 10+ platform count. Run `PRAGMA quick_check`
 and `PRAGMA foreign_key_check` after the staging apply.
+
+For migration `0078`, verify the exact first-party action URLs for Spotify for
+Creators, Amazon Music's RSS submission form, Player FM's add form, Castbox's
+current podcaster-tools page, and iHeartRadio's add-podcast form. Compare all
+show-scoped directory setup rows before and after the apply; this registry-only
+migration must not change owner, submission, listing, error, or operational-note
+evidence. Use table-scoped `PRAGMA quick_check('distribution_destinations')` if
+the bounded remote D1
+request cannot run a database-wide quick check, and still require an empty
+`PRAGMA foreign_key_check` result.
 
 For migration `0028`, verify `distribution_jobs.publication_revision` exists,
 the episode/revision/destination index is present, every existing job received
