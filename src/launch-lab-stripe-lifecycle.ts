@@ -47,6 +47,7 @@ type LifecycleRow = {
   provider_failure_payment_method_id: string | null;
   provider_recovery_payment_method_id: string | null;
   provider_recovery_invoice_id: string | null;
+  provider_refund_id: string | null;
   initial_period_end: number | null;
   renewal_period_end: number | null;
   transition_count: number;
@@ -77,6 +78,15 @@ type StripeObject = Record<string, unknown> & {
   test_clock?: string;
   latest_invoice?: unknown;
   metadata?: Record<string, unknown>;
+  object?: string;
+  data?: unknown[];
+  has_more?: boolean;
+  invoice?: unknown;
+  amount_paid?: number;
+  amount?: number;
+  payment?: Record<string, unknown>;
+  payment_intent?: unknown;
+  reason?: string;
   recurring?: Record<string, unknown>;
   invoice_settings?: Record<string, unknown>;
   items?: Record<string, unknown>;
@@ -418,19 +428,63 @@ async function advanceOnePhase(
   }
 
   if (lifecycle.phase === "recovered") {
-    const subscription = await stripe.subscriptions.cancel(subscriptionId);
-    if (subscription.status !== "canceled") {
-      throw new Error("launch_lab_subscription_not_canceled");
+    const invoiceId = providerId(
+      lifecycle.provider_recovery_invoice_id,
+      "in"
+    );
+    const invoicePayments = await stripe.invoicePayments.list({
+      invoice: invoiceId,
+      status: "paid",
+      limit: 10
+    });
+    const paymentIntentId = paidInvoicePaymentIntent(
+      invoicePayments,
+      invoiceId
+    );
+    if (!lifecycle.provider_refund_id) {
+      const refund = await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        amount: FIXTURE_AMOUNT_CENTS,
+        reason: "requested_by_customer",
+        metadata: {
+          ...PROVIDER_METADATA,
+          launch_lab_run_id: lifecycle.run_id
+        }
+      }, { idempotencyKey: `${lifecycle.run_id}:refund` });
+      assertTestRefund(refund, paymentIntentId, lifecycle.run_id);
+      return persistRefundId(
+        env.DB,
+        lifecycle,
+        providerId(refund.id, "re")
+      );
     }
+    const refund = await stripe.refunds.retrieve(
+      providerId(lifecycle.provider_refund_id, "re")
+    );
+    assertTestRefund(refund, paymentIntentId, lifecycle.run_id);
+    if (refund.status === "pending") return lifecycle;
+    if (refund.status !== "succeeded") {
+      throw new Error("launch_lab_refund_not_succeeded");
+    }
+    await recordLaunchLabObservations(env.DB, lifecycle.run_id, [{
+      provider: "stripe",
+      scenario: "refund",
+      observedStatus: "refunded"
+    }]);
     return transition(env.DB, lifecycle, "cancellation_requested");
   }
 
   if (lifecycle.phase === "cancellation_requested") {
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     const source = await loadSource(env.DB, subscriptionId);
-    if (subscription.status !== "canceled" || source?.status !== "canceled") {
+    if (subscription.status !== "canceled") {
+      const canceled = await stripe.subscriptions.cancel(subscriptionId);
+      if (canceled.status !== "canceled") {
+        throw new Error("launch_lab_subscription_not_canceled");
+      }
       return lifecycle;
     }
+    if (source?.status !== "canceled") return lifecycle;
     await recordLaunchLabObservations(env.DB, lifecycle.run_id, [{
       provider: "stripe",
       scenario: "cancellation",
@@ -602,7 +656,8 @@ async function loadLifecycle(
             provider_customer_id, provider_subscription_id,
             provider_failure_payment_method_id,
             provider_recovery_payment_method_id,
-            provider_recovery_invoice_id, initial_period_end,
+            provider_recovery_invoice_id, provider_refund_id,
+            initial_period_end,
             renewal_period_end, transition_count
      FROM launch_lab_stripe_lifecycles
      WHERE run_id = ?`
@@ -644,6 +699,7 @@ async function transition(
     "provider_failure_payment_method_id",
     "provider_recovery_payment_method_id",
     "provider_recovery_invoice_id",
+    "provider_refund_id",
     "initial_period_end",
     "renewal_period_end",
     "completed_at"
@@ -669,6 +725,35 @@ async function transition(
   const next = await loadLifecycle(db, lifecycle.run_id);
   if (!next || next.phase !== phase) {
     throw new Error("launch_lab_stripe_transition_failed");
+  }
+  return next;
+}
+
+async function persistRefundId(
+  db: D1Database,
+  lifecycle: LifecycleRow,
+  refundId: string
+): Promise<LifecycleRow> {
+  const result = await db.prepare(
+    `UPDATE launch_lab_stripe_lifecycles
+     SET provider_refund_id = ?,
+         transition_count = transition_count + 1,
+         last_error_code = NULL,
+         updated_at = datetime('now')
+     WHERE run_id = ? AND phase = 'recovered'
+       AND transition_count = ? AND provider_refund_id IS NULL
+       AND transition_count < 40`
+  ).bind(
+    refundId,
+    lifecycle.run_id,
+    lifecycle.transition_count
+  ).run();
+  if ((result.meta?.changes ?? 0) !== 1) {
+    throw new Error("launch_lab_stripe_refund_conflict");
+  }
+  const next = await loadLifecycle(db, lifecycle.run_id);
+  if (!next || next.phase !== "recovered" || next.provider_refund_id !== refundId) {
+    throw new Error("launch_lab_stripe_refund_persist_failed");
   }
   return next;
 }
@@ -737,6 +822,64 @@ function assertTestSubscription(
       !== PROVIDER_METADATA.launch_lab_fixture
     || !subscriptionPeriodEnd(subscription)
   ) throw new Error("launch_lab_test_subscription_mismatch");
+}
+
+function paidInvoicePaymentIntent(
+  response: StripeObject,
+  invoiceId: string
+): string {
+  if (
+    response.object !== "list"
+    || response.has_more !== false
+    || !Array.isArray(response.data)
+  ) throw new Error("launch_lab_invoice_payments_mismatch");
+  const matches = response.data.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const payment = item as StripeObject;
+    const paymentIntentId = nestedId(
+      payment.payment?.payment_intent,
+      "pi"
+    );
+    if (
+      payment.object !== "invoice_payment"
+      || payment.livemode !== false
+      || payment.status !== "paid"
+      || nestedId(payment.invoice, "in") !== invoiceId
+      || payment.amount_paid !== FIXTURE_AMOUNT_CENTS
+      || payment.currency !== "usd"
+      || payment.payment?.type !== "payment_intent"
+      || !paymentIntentId
+    ) return [];
+    return [paymentIntentId];
+  });
+  if (matches.length !== 1) {
+    throw new Error("launch_lab_invoice_payment_not_unique");
+  }
+  return matches[0];
+}
+
+function assertTestRefund(
+  refund: StripeObject,
+  paymentIntentId: string | null,
+  runId: string
+): void {
+  const resolvedPaymentIntentId = nestedId(refund.payment_intent, "pi");
+  if (
+    refund.object !== "refund"
+    || refund.livemode !== false
+    || refund.amount !== FIXTURE_AMOUNT_CENTS
+    || refund.currency !== "usd"
+    || !resolvedPaymentIntentId
+    || (paymentIntentId !== null && resolvedPaymentIntentId !== paymentIntentId)
+    || refund.reason !== "requested_by_customer"
+    || refund.metadata?.platform !== PROVIDER_METADATA.platform
+    || refund.metadata?.launch_lab_fixture
+      !== PROVIDER_METADATA.launch_lab_fixture
+    || refund.metadata?.launch_lab_run_id !== runId
+    || !["pending", "succeeded", "failed", "canceled"].includes(
+      String(refund.status)
+    )
+  ) throw new Error("launch_lab_stripe_refund_mismatch");
 }
 
 function subscriptionPeriodEnd(subscription: StripeObject): number {
@@ -817,6 +960,7 @@ function presentLifecycle(
       "renewal_advancing",
       "failure_advancing",
       "recovery_payment_requested",
+      "recovered",
       "cancellation_requested"
     ].includes(lifecycle.phase)
   };

@@ -18,6 +18,8 @@ const subscriptionId = "sub_launch_lab_provider";
 const clockId = "clock_launch_lab_provider";
 const productId = "prod_launch_lab_provider";
 const priceId = "price_launch_lab_provider";
+const paymentIntentId = "pi_launch_lab_recovery";
+const refundId = "re_launch_lab_refund";
 const periodOne = 1_790_870_400;
 const periodTwo = 1_793_548_800;
 const periodThree = 1_796_227_200;
@@ -30,7 +32,7 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
     fixture?.sqlite.close();
   });
 
-  it("waits for real signed projections, records four outcomes, and cleans up", async () => {
+  it("waits for signed projections, records five outcomes, and cleans up", async () => {
     fixture = await lifecycleFixture();
     const provider = providerFixture();
     vi.stubGlobal("fetch", provider.fetch);
@@ -83,6 +85,10 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
     );
     expect((await advance()).phase).toBe("recovered");
 
+    expect((await advance()).phase).toBe("recovered");
+    expect((await advance()).phase).toBe("recovered");
+    provider.refundStatus = "succeeded";
+    expect((await advance()).phase).toBe("cancellation_requested");
     expect((await advance()).phase).toBe("cancellation_requested");
     expect((await advance()).phase).toBe("cancellation_requested");
     await sendSubscriptionEvent(
@@ -104,13 +110,15 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
        FROM launch_lab_provider_scenarios
        WHERE run_id = ? AND provider = 'stripe'
          AND scenario IN (
-           'renewal', 'payment_failure', 'payment_recovery', 'cancellation'
+           'renewal', 'payment_failure', 'payment_recovery', 'refund',
+           'cancellation'
          )
        ORDER BY scenario`
     ).all(runId)).toEqual([
       { scenario: "cancellation", state: "passed", observed_status: "canceled" },
       { scenario: "payment_failure", state: "passed", observed_status: "past_due" },
       { scenario: "payment_recovery", state: "passed", observed_status: "active" },
+      { scenario: "refund", state: "passed", observed_status: "refunded" },
       { scenario: "renewal", state: "passed", observed_status: "active" }
     ]);
     for (const table of [
@@ -128,6 +136,8 @@ describe("Launch Lab Stripe test-clock lifecycle", () => {
     expect(provider.paths).toContain(
       `/v1/test_helpers/test_clocks/${clockId}`
     );
+    expect(provider.paths.filter((path) => path === "/v1/refunds"))
+      .toHaveLength(1);
     expect(provider.bodies.join("&")).not.toMatch(/email|address|card%5B/);
   });
 
@@ -236,7 +246,8 @@ function providerFixture() {
     clockStatus: "ready",
     subscriptionStatus: "active",
     periodEnd: periodOne,
-    latestInvoice: null
+    latestInvoice: null,
+    refundStatus: "pending"
   };
   provider.fetch = vi.fn(async (input, init = {}) => {
     const url = new URL(String(input));
@@ -314,6 +325,26 @@ function providerFixture() {
         status: "paid",
         subscription: subscriptionId
       };
+    } else if (url.pathname === "/v1/invoice_payments") {
+      object = {
+        object: "list",
+        url: "/v1/invoice_payments",
+        has_more: false,
+        data: [{
+          id: "inpay_launch_lab_recovery",
+          object: "invoice_payment",
+          amount_paid: 100,
+          currency: "usd",
+          invoice: "in_launch_lab_failed",
+          livemode: false,
+          payment: { type: "payment_intent", payment_intent: paymentIntentId },
+          status: "paid"
+        }]
+      };
+    } else if (url.pathname === "/v1/refunds" && method === "POST") {
+      object = refundObject(provider);
+    } else if (url.pathname === `/v1/refunds/${refundId}`) {
+      object = refundObject(provider);
     }
     return new Response(JSON.stringify(object ?? { error: { code: "missing" } }), {
       status: object ? 200 : 404,
@@ -377,6 +408,24 @@ function subscriptionObject(provider) {
       platform: "dust_wave_podcast",
       launch_lab_fixture: "subscription_monthly_v1"
     }
+  };
+}
+
+function refundObject(provider) {
+  return {
+    id: refundId,
+    object: "refund",
+    amount: 100,
+    currency: "usd",
+    livemode: false,
+    metadata: {
+      platform: "dust_wave_podcast",
+      launch_lab_fixture: "subscription_monthly_v1",
+      launch_lab_run_id: runId
+    },
+    payment_intent: paymentIntentId,
+    reason: "requested_by_customer",
+    status: provider.refundStatus
   };
 }
 
