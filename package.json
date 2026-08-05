@@ -50,6 +50,10 @@
     "vitest": "4.1.10",
     "wrangler": "4.115.0"
   },
+  "overrides": {
+    "postcss": "8.5.23",
+    "undici": "7.29.0"
+  },
   "engines": {
     "node": ">=22"
   }
