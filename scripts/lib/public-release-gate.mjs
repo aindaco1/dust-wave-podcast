@@ -131,8 +131,15 @@ function assertHeaderEquals(response, name, expected, label) {
 
 function assertPublicCache(response, label) {
   const cacheControl = (response.headers.get("cache-control") || "").toLowerCase();
-  if (!/(?:^|,)\s*public(?:\s*,|$)/.test(cacheControl) || !/max-age=\d+/.test(cacheControl)) {
-    throw new Error(`${label} is missing its bounded public cache policy.`);
+  const directives = cacheControl.split(",").map((value) => value.trim());
+  const maxAge = directives.find((value) => /^max-age=\d+$/.test(value));
+  if (
+    directives.includes("private")
+    || directives.includes("no-store")
+    || !maxAge
+    || Number(maxAge.slice("max-age=".length)) < 1
+  ) {
+    throw new Error(`${label} is missing its safe shared-cache policy.`);
   }
 }
 
