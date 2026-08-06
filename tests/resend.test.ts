@@ -29,6 +29,35 @@ describe("Resend magic-link delivery evidence", () => {
       authorization: "Bearer resend_fixture",
       "idempotency-key": `podcast-admin-login/${"a".repeat(64)}`
     });
+    const payload = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body)
+    ) as Record<string, unknown>;
+    expect(payload.subject).toBe("Tu enlace de acceso a Dust Wave Podcasts");
+    expect(String(payload.html)).toContain("Acceder a Podcasts");
+    expect(String(payload.html)).not.toContain("Sign in to Podcasts");
+  });
+
+  it("keeps English magic-link copy in one selected language", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "email_english" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    await sendAdminMagicLink(
+      {
+        RESEND_API_KEY: "resend_fixture",
+        PODCAST_EMAIL_FROM:
+          "Dust Wave Podcasts <podcasts@dustwave.xyz>"
+      } as PodcastEnv,
+      { ...deliveryInput(), language: "en", deliveryKey: "b".repeat(64) }
+    );
+    const payload = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body)
+    ) as Record<string, unknown>;
+    expect(payload.subject).toBe("Your Dust Wave Podcasts sign-in link");
+    expect(String(payload.html)).toContain("Sign in to Podcasts");
+    expect(String(payload.html)).not.toContain("Acceder a Podcasts");
   });
 
   it("retains only a bounded provider status when Resend rejects", async () => {
@@ -165,6 +194,7 @@ describe("Resend magic-link delivery evidence", () => {
         deliveryKey: deliveryId,
         email: "listener@example.com",
         heading: "New episode",
+        language: "en",
         subject: "Episode 1",
         unsubscribeUrl:
           `https://feeds.dustwave.xyz/v1/notifications/unsubscribe/${
@@ -199,6 +229,46 @@ describe("Resend magic-link delivery evidence", () => {
     });
     expect(String(payload.html)).not.toContain("<script>");
     expect(String(payload.html)).toContain("&lt;script");
+    expect(String(payload.html)).toContain(">Unsubscribe<");
+    expect(String(payload.html)).not.toContain("Cancelar suscripción");
+  });
+
+  it("keeps Spanish announcement controls in the recipient language", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "email_anuncio" }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    const deliveryId = `delivery_${"c".repeat(32)}`;
+    await sendPodcastAnnouncementEmail(
+      {
+        RESEND_API_KEY: "resend_fixture",
+        PODCAST_EMAIL_FROM:
+          "Dust Wave Podcasts <podcasts@dustwave.xyz>"
+      } as PodcastEnv,
+      {
+        bodyMarkdown: "Escucha el episodio.",
+        ctaLabel: "Escuchar",
+        ctaUrl: "https://dustwave.xyz/es/podcasts/show/episode/",
+        deliveryId,
+        deliveryKey: deliveryId,
+        email: "oyente@example.com",
+        heading: "Nuevo episodio",
+        language: "es",
+        subject: "Episodio 1",
+        unsubscribeUrl:
+          `https://feeds.dustwave.xyz/v1/notifications/unsubscribe/${
+            "d".repeat(43)
+          }`
+      }
+    );
+    const payload = JSON.parse(
+      String(fetchMock.mock.calls[0][1]?.body)
+    ) as Record<string, unknown>;
+    expect(String(payload.html)).toContain(">Cancelar suscripción<");
+    expect(String(payload.html)).not.toContain(">Unsubscribe<");
+    expect(String(payload.text)).toContain("Cancelar suscripción:");
   });
 });
 

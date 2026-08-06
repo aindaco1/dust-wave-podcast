@@ -96,6 +96,13 @@ describe("subscription checkout", () => {
     expect(stripeRequests[1].form.has(
       "line_items[0][dynamic_tax_rates][0]"
     )).toBe(false);
+    expect(stripeRequests[1].form.get("locale")).toBe("es");
+    expect(stripeRequests[1].form.get("success_url")).toBe(
+      "https://dustwave.xyz/es/podcasts/account/?checkout=success"
+    );
+    expect(stripeRequests[1].form.get("cancel_url")).toBe(
+      "https://dustwave.xyz/es/podcasts/opera-en-la-selva/?checkout=canceled"
+    );
     expect(stripeRequests.every(({ headers }) =>
       headers.get("stripe-version") === "2026-06-24.dahlia"
     )).toBe(true);
@@ -144,7 +151,7 @@ describe("subscription checkout", () => {
   });
 });
 
-function checkoutRequest(): Request {
+function checkoutRequest(language: "en" | "es" = "es"): Request {
   return new Request(
     "https://feeds.dustwave.xyz/v1/shows/opera-en-la-selva/checkout",
     {
@@ -156,6 +163,7 @@ function checkoutRequest(): Request {
       },
       body: JSON.stringify({
         email: "Listener@Example.com",
+        language,
         priceId: "price_opera_monthly",
         destination: {
           country: "US",

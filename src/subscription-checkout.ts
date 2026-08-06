@@ -14,6 +14,7 @@ import { privateJson } from "./http";
 import { requireListener } from "./listener-auth";
 import {
   isValidEmailAddress,
+  normalizeLoginLanguage,
   trustedSiteOrigin
 } from "./passwordless-security";
 import {
@@ -30,6 +31,7 @@ import {
 } from "./stripe-client";
 import {
   readJsonObject,
+  readOptionalJsonObject,
   RequestValidationError,
   validIdentifier
 } from "./validation";
@@ -112,6 +114,7 @@ export async function createSubscriptionCheckout(
   }
 
   const body = await readJsonObject(request, 16_384);
+  const language = normalizeLoginLanguage(body.language);
   const email = normalizeEmail(body.email);
   if (!isValidEmailAddress(email)) {
     throw new RequestValidationError("email is invalid");
@@ -180,7 +183,8 @@ export async function createSubscriptionCheckout(
       postalCode: normalized.destination.postalCode,
       city: normalized.destination.city,
       line1: normalized.destination.line1,
-      line2: normalized.destination.line2
+      line2: normalized.destination.line2,
+      language
     }),
     env.TAX_QUOTE_HASH_SECRET || "",
     "hex"
@@ -371,10 +375,11 @@ export async function createSubscriptionCheckout(
           },
           success_url: `${
             env.SITE_ORIGIN.replace(/\/$/, "")
-          }/podcasts/account/?checkout=success`,
+          }${language === "es" ? "/es" : ""}/podcasts/account/?checkout=success`,
           cancel_url: `${
             env.SITE_ORIGIN.replace(/\/$/, "")
-          }/podcasts/${showSlug}/?checkout=canceled`,
+          }${language === "es" ? "/es" : ""}/podcasts/${showSlug}/?checkout=canceled`,
+          locale: language,
           expires_at: Math.floor(Date.now() / 1_000) + CHECKOUT_TTL_SECONDS
         },
         { idempotencyKey: `${attempt.idempotency_key}-session` }
@@ -452,6 +457,8 @@ export async function createListenerBillingPortal(
       { status: 503 }
     );
   }
+  const body = await readOptionalJsonObject(request, 1_024);
+  const language = normalizeLoginLanguage(body.language);
   if (!await consumeSubscriptionRateLimit(
     env.DB,
     PORTAL_LIMIT,
@@ -505,12 +512,12 @@ export async function createListenerBillingPortal(
         ),
         return_url: `${
           env.SITE_ORIGIN.replace(/\/$/, "")
-        }/podcasts/account/`
+        }${language === "es" ? "/es" : ""}/podcasts/account/`
       },
       {
         idempotencyKey: `podcast-portal-${
           auth.authorization.identity.id
-        }-${showSlug}-${minute}`
+        }-${showSlug}-${language}-${minute}`
       }
     );
     return privateJson(request, env.ALLOWED_ORIGINS, {
