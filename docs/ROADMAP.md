@@ -232,7 +232,7 @@ them as launch blockers.
   finds caption or public-speaker text with English/Spanish case and accent
   folding, excludes hidden Markdown link destinations, stores nothing, calls
   no API, and changes no cue or approval state.
-  The review workbench also shares the `@dustwave/admin-shell` 0.8.2 lifecycle
+  The review workbench also shares the `@dustwave/admin-shell` 0.10.2 lifecycle
   guard characterized from Pool. Podcast retains transcript/chapter dirty
   baselines and localized policy while show, episode, language, chapter,
   logout, and browser-exit transitions fail closed against accidental loss.

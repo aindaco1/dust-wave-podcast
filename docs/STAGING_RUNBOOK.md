@@ -752,7 +752,7 @@ origin and immutable deployment
 reused the production CI image pipeline and generated every one of 124
 referenced WebP assets; the show wordmark and artwork returned `200 image/webp`
 instead of the earlier missing sources. The public checkout loaded
-`@dustwave/admin-shell` 0.8.2 with `credentials: "omit"`, and the real
+`@dustwave/admin-shell` 0.10.2 with `credentials: "omit"`, and the real
 credential-free `GET /v1/shows/opera-en-la-selva` returned `200` without
 broadening the Worker's CORS response.
 
