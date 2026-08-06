@@ -465,11 +465,15 @@ the open podcast ecosystem.
 
 ## Local setup
 
-This consumer pins Dust Wave Platform `v0.15.0` at commit
-`2e79a8d70cb6d30805ea141e53d32f9387441756`. Package links are exact and the
+This consumer pins Dust Wave Platform `v0.16.0` at commit
+`d075c3e1a29134d3ba6e4631b76dc63212347d14`. Package links are exact and the
 pin contract fails when the gitlink, local manifests, or lockfile drift. The
 Podcast Worker retains its D1/R2/Queue bindings, sessions, provider keys,
 publishing rules, deployment, and one-commit rollback authority.
+
+Podcast consumes Platform's bounded raw-body Resend/Svix verifier while
+retaining its templates, recipients, consent, delivery journal, suppression,
+provider transport, retry policy, credentials, routes, and webhook effects.
 
 ```sh
 git submodule update --init --recursive

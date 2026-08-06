@@ -1,6 +1,6 @@
 {
   "name": "@dustwave/podcast",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "private": true,
   "description": "Dust Wave podcast API, media orchestration, premium feeds, and publishing jobs",
   "type": "module",

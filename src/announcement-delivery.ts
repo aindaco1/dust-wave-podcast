@@ -4,6 +4,7 @@ import {
   sha256Hex,
   timingSafeEqual
 } from "@dustwave/worker-core/crypto";
+import { verifyResendWebhook } from "@dustwave/worker-core/resend";
 
 import {
   requireAdmin,
@@ -1152,58 +1153,6 @@ function presentAnnouncement(row: AnnouncementRow): Record<string, unknown> {
   };
 }
 
-async function verifyResendWebhook(
-  rawBody: string,
-  headers: Headers,
-  secret: string,
-  now = new Date()
-): Promise<{ valid: boolean; id: string }> {
-  const id = headers.get("svix-id") ?? "";
-  const timestamp = headers.get("svix-timestamp") ?? "";
-  const signature = headers.get("svix-signature") ?? "";
-  const timestampSeconds = Number(timestamp);
-  if (
-    !id
-    || id.length > 160
-    || !Number.isSafeInteger(timestampSeconds)
-    || Math.abs(now.getTime() / 1_000 - timestampSeconds) > 5 * 60
-    || !signature
-  ) {
-    return { valid: false, id };
-  }
-  try {
-    const secretValue = secret.startsWith("whsec_")
-      ? secret.slice(6)
-      : secret;
-    const key = await crypto.subtle.importKey(
-      "raw",
-      base64ToBytes(secretValue),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    const digest = new Uint8Array(await crypto.subtle.sign(
-      "HMAC",
-      key,
-      new TextEncoder().encode(`${id}.${timestamp}.${rawBody}`)
-    ));
-    let binary = "";
-    for (const byte of digest) binary += String.fromCharCode(byte);
-    const expected = btoa(binary);
-    const candidates = signature.split(/\s+/)
-      .map((value) => value.startsWith("v1,") ? value.slice(3) : "")
-      .filter(Boolean);
-    return {
-      valid: candidates.some((candidate) =>
-        timingSafeEqual(candidate, expected)
-      ),
-      id
-    };
-  } catch {
-    return { valid: false, id };
-  }
-}
-
 function webhookDeliveryStatus(
   eventType: string,
   data: Record<string, unknown> | null
@@ -1256,12 +1205,6 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  return Uint8Array.from(atob(value), (character) =>
-    character.charCodeAt(0)
-  );
 }
 
 function unsubscribeNotFound(): Response {
