@@ -153,7 +153,7 @@ requires exact render approval plus the same episode visibility boundary.
 The private workbench can also download the exact current saved revision as
 WebVTT or SubRip after recomputing its D1 digest; unsaved edits and unconfirmed
 speaker labels never silently enter those files.
-The workbench consumes `@dustwave/admin-shell` 0.8.2 for one fail-closed
+The workbench consumes `@dustwave/admin-shell` 0.10.2 for one fail-closed
 unsaved-change lifecycle boundary. Transcript and chapter dirty state remains
 Podcast-owned; show, episode, language, chapter, logout, and browser-exit
 transitions cannot silently discard a local review draft. The same shared
@@ -504,8 +504,12 @@ non-secret human inputs that gate production are kept in
 npm run check
 npm run deploy:staging:dry
 npm run deploy:production:dry
+npm run gate:public:staging
 ```
 
 Remote migrations and deploys are intentionally separate commands. Apply and
 exercise staging first; production promotion requires an explicit release
-decision.
+decision. After an authorized production migration or deploy, run
+`npm run gate:public:production`. The public gates are read-only and verify the
+canonical RSS body, artwork response and size budget, security/cache headers,
+and conditional ETag behavior.

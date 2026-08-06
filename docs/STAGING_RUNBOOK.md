@@ -13,10 +13,14 @@ npm ci
 npm run check
 npm run deploy:staging:dry
 npm run deploy:production:dry
+npm run gate:public:staging
 ```
 
 The production dry run validates packaging only. It is not authorization to
-deploy production.
+deploy production. `gate:public:staging` is a read-only live canary for the
+canonical RSS and feed artwork. Run `gate:public:production` only as a
+post-migration/post-deploy verification after the exact production snapshot is
+authorized.
 
 Run the focused timestamp contract whenever release, entitlement, tax, or
 publication scheduling SQL changes:
@@ -752,7 +756,7 @@ origin and immutable deployment
 reused the production CI image pipeline and generated every one of 124
 referenced WebP assets; the show wordmark and artwork returned `200 image/webp`
 instead of the earlier missing sources. The public checkout loaded
-`@dustwave/admin-shell` 0.8.2 with `credentials: "omit"`, and the real
+`@dustwave/admin-shell` 0.10.2 with `credentials: "omit"`, and the real
 credential-free `GET /v1/shows/opera-en-la-selva` returned `200` without
 broadening the Worker's CORS response.
 

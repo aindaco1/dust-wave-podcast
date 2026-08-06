@@ -141,6 +141,9 @@ describe("deployment configuration", () => {
     expect(config.env.production.vars.ADMIN_ACTION_NOTIFICATION_MODE).toBe(
       "disabled"
     );
+    expect(config.env.production.secrets.required).not.toContain(
+      "PODCAST_ACTION_EMAIL"
+    );
   });
 
   it("declares every production launch secret without storing values", () => {
@@ -158,7 +161,6 @@ describe("deployment configuration", () => {
       "LISTENER_EMAIL_LOOKUP_PEPPER",
       "LISTENER_SESSION_SECRET",
       "MEDIA_PROCESSOR_CALLBACK_SECRET",
-      "PODCAST_ACTION_EMAIL",
       "RESEND_API_KEY",
       "RESEND_WEBHOOK_SECRET",
       "RSS_IMPORT_URL_SECRET",

@@ -1,6 +1,6 @@
 {
   "name": "@dustwave/podcast",
-  "version": "0.2.18",
+  "version": "0.2.22",
   "private": true,
   "description": "Dust Wave podcast API, media orchestration, premium feeds, and publishing jobs",
   "type": "module",
@@ -20,6 +20,8 @@
     "gate:episode:staging": "node scripts/check-episode-staging-gate.mjs",
     "gate:stripe:staging": "node scripts/check-stripe-staging-readiness.mjs",
     "gate:launch:staging": "node scripts/check-launch-staging-readiness.mjs",
+    "gate:public:staging": "node scripts/verify-public-release.mjs staging",
+    "gate:public:production": "node scripts/verify-public-release.mjs production",
     "launch-lab": "node scripts/launch-lab-client.mjs",
     "launch-lab:stripe-lifecycle": "node scripts/run-launch-lab-stripe-lifecycle.mjs",
     "launch-lab:stripe-checkout": "node scripts/run-launch-lab-stripe-checkout.mjs",
@@ -33,6 +35,8 @@
     "deploy:staging:dry": "wrangler deploy --env staging --dry-run",
     "deploy:production:dry": "wrangler deploy --env production --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --env staging",
+    "db:migrations:staging:list": "wrangler d1 migrations list DB --remote --env staging",
+    "db:migrations:production:list": "wrangler d1 migrations list DB --remote --env production",
     "db:migrate:staging": "wrangler d1 migrations apply DB --remote --env staging",
     "db:migrate:production": "wrangler d1 migrations apply DB --remote --env production"
   },
@@ -49,6 +53,10 @@
     "typescript": "5.9.3",
     "vitest": "4.1.10",
     "wrangler": "4.115.0"
+  },
+  "overrides": {
+    "postcss": "8.5.23",
+    "undici": "7.29.0"
   },
   "engines": {
     "node": ">=22"
