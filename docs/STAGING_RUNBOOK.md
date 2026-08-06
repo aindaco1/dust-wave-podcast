@@ -13,10 +13,14 @@ npm ci
 npm run check
 npm run deploy:staging:dry
 npm run deploy:production:dry
+npm run gate:public:staging
 ```
 
 The production dry run validates packaging only. It is not authorization to
-deploy production.
+deploy production. `gate:public:staging` is a read-only live canary for the
+canonical RSS and feed artwork. Run `gate:public:production` only as a
+post-migration/post-deploy verification after the exact production snapshot is
+authorized.
 
 Run the focused timestamp contract whenever release, entitlement, tax, or
 publication scheduling SQL changes:

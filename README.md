@@ -504,8 +504,12 @@ non-secret human inputs that gate production are kept in
 npm run check
 npm run deploy:staging:dry
 npm run deploy:production:dry
+npm run gate:public:staging
 ```
 
 Remote migrations and deploys are intentionally separate commands. Apply and
 exercise staging first; production promotion requires an explicit release
-decision.
+decision. After an authorized production migration or deploy, run
+`npm run gate:public:production`. The public gates are read-only and verify the
+canonical RSS body, artwork response and size budget, security/cache headers,
+and conditional ETag behavior.
