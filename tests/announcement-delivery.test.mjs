@@ -74,6 +74,69 @@ describe("durable announcement delivery", () => {
     });
   });
 
+  it("rejects stale Resend signatures and accepts one valid v1 candidate", async () => {
+    const secretBytes = new TextEncoder().encode(
+      "resend_webhook_test_secret_123456"
+    );
+    const webhookSecret = `whsec_${bytesToBase64(secretBytes)}`;
+    const nowSeconds = Math.floor(Date.now() / 1_000);
+    const body = JSON.stringify({
+      type: "email.delivered",
+      data: { email_id: "email_signature_fixture", tags: [] }
+    });
+    const request = async (eventId, timestamp, signatureHeader) =>
+      new Request("https://feeds.dustwave.xyz/v1/webhooks/resend", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "svix-id": eventId,
+          "svix-timestamp": String(timestamp),
+          "svix-signature": signatureHeader
+        },
+        body
+      });
+
+    const staleTimestamp = nowSeconds - 301;
+    const staleSignature = await signWebhook(
+      "evt_resend_stale",
+      String(staleTimestamp),
+      body,
+      secretBytes
+    );
+    const stale = await handleResendWebhook(
+      await request(
+        "evt_resend_stale",
+        staleTimestamp,
+        `v1,${staleSignature}`
+      ),
+      { DB: db, RESEND_WEBHOOK_SECRET: webhookSecret }
+    );
+    expect(stale.status).toBe(401);
+
+    const currentSignature = await signWebhook(
+      "evt_resend_multiple",
+      String(nowSeconds),
+      body,
+      secretBytes
+    );
+    const current = await handleResendWebhook(
+      await request(
+        "evt_resend_multiple",
+        nowSeconds,
+        `v1,invalid v1,${currentSignature}`
+      ),
+      { DB: db, RESEND_WEBHOOK_SECRET: webhookSecret }
+    );
+    expect(current.status).toBe(200);
+    await expect(current.json()).resolves.toEqual({
+      received: true,
+      matched: false
+    });
+    expect(sqlite.prepare(
+      "SELECT COUNT(*) AS count FROM podcast_resend_webhook_events"
+    ).get()).toEqual({ count: 1 });
+  });
+
   it("withdraws one show, suppresses pending work, and erases its last destination", async () => {
     const token = await notificationUnsubscribeToken(
       "listener_fixture",
