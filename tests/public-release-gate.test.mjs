@@ -72,6 +72,16 @@ describe("public release gate", () => {
     })).rejects.toThrow("feed artwork exceeds its 1500000-byte release budget");
   });
 
+  it("rejects private artwork even when it declares max-age", async () => {
+    const fetchImpl = releaseFetchFixture({
+      artworkCacheControl: "private, max-age=14400"
+    });
+    await expect(runPublicReleaseGate({
+      environment: "production",
+      fetchImpl
+    })).rejects.toThrow("feed artwork is missing its safe shared-cache policy");
+  });
+
   it("rejects a feed that points at noncanonical artwork", async () => {
     const fetchImpl = releaseFetchFixture({
       xml: feedXml.replace(artworkUrl, "https://example.com/artwork.jpg")
@@ -83,13 +93,17 @@ describe("public release gate", () => {
   });
 });
 
-function releaseFetchFixture({ xml = feedXml, artworkBytes = 209_373 } = {}) {
+function releaseFetchFixture({
+  xml = feedXml,
+  artworkBytes = 209_373,
+  artworkCacheControl = "max-age=14400"
+} = {}) {
   return vi.fn(async (url, init = {}) => {
     if (url === artworkUrl) {
       return new Response(new Uint8Array(artworkBytes), {
         status: 200,
         headers: {
-          "cache-control": "public, max-age=14400",
+          "cache-control": artworkCacheControl,
           "content-length": String(artworkBytes),
           "content-type": "image/jpeg",
           "x-content-type-options": "nosniff"
