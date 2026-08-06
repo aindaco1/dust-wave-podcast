@@ -33,7 +33,7 @@ iHeartRadio, and Deezer.
 
 ### H0 — shared foundations and safe staging
 
-- Keep the consumer pin current at immutable Dust Wave Platform `v0.20.0` and
+- Keep the consumer pin current at immutable Dust Wave Platform `v0.23.0` and
   enforce the gitlink, package versions, and lockfile through an executable
   contract. Podcast retains its data, sessions, provider policy, and deploys.
 
