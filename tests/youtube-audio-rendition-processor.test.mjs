@@ -7,6 +7,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
@@ -226,14 +227,18 @@ describe("YouTube audio rendition processor", () => {
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
-    cwd: path.resolve(new URL("..", import.meta.url).pathname),
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     encoding: "utf8",
     maxBuffer: 20 * 1024 * 1024,
     ...options
   });
   if (result.status !== 0) {
+    const detail = result.error?.message
+      || result.stderr
+      || result.stdout
+      || `status ${String(result.status)}, signal ${String(result.signal)}`;
     throw new Error(
-      `${command} failed: ${String(result.stderr || result.stdout).slice(0, 8_000)}`
+      `${command} failed: ${String(detail).slice(0, 8_000)}`
     );
   }
 }
