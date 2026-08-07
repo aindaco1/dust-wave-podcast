@@ -4,6 +4,11 @@ Cloudflare Worker runtime for Dust Wave's multi-show podcast platform. The first
 release keeps a single-show public UI while the schema and API remain
 multi-show-ready.
 
+Current release: `v0.2.26`. It pins Dust Wave Platform `v0.23.0` at exact
+commit `a0006c3e0c3f8ab814387491753989956adbbe94`; a newer Platform release is
+adopted only through a reviewed Podcast release with its own checks and
+one-commit rollback.
+
 ## Responsibilities
 
 - public and premium RSS orchestration;
@@ -484,6 +489,14 @@ transport for public reads and credentialed publication. Podcast retains live
 publish mode, repository and branch selection, publication schemas, commit
 messages, authorization, credentials, effects, deployment, and rollback.
 
+| Shared package | Pinned version | Podcast use |
+|---|---:|---|
+| `@dustwave/admin-shell` | `0.10.2` | Characterized admin browser primitives and codecs |
+| `@dustwave/media-core` | `0.4.0` | Media catalog, QC, and processor evidence contracts |
+| `@dustwave/tax-core` | `0.2.0` | Bounded tax-provider transport |
+| `@dustwave/timed-text` | `0.5.0` | Transcript/chunk/alignment evidence contracts |
+| `@dustwave/worker-core` | `0.11.0` | HTTP, provider, GitHub, Resend, session, and Worker primitives |
+
 ```sh
 git submodule update --init --recursive
 npm ci
@@ -499,6 +512,7 @@ Architecture and promotion decisions live in [`docs/adr`](docs/adr). The
 non-secret human inputs that gate production are kept in
 [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md).
 
+- [`CHANGELOG.md`](CHANGELOG.md) — released consumer and shared-foundation changes
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — implementation sequence and public
   positioning gates
 - [`docs/API.md`](docs/API.md) — current HTTP surface and authentication

@@ -1501,9 +1501,9 @@ Turnstile test keys are not acceptable on the Internet-accessible staging
 Worker.
 
 Create the dedicated real staging widget only after Wrangler's OAuth grant
-includes `challenge-widgets.write`. Wrangler 4.114.0 exposes this boundary
-directly, so there is no need to reuse a Pool/Store widget or paste the secret
-through the dashboard:
+includes `challenge-widgets.write`. The locked Wrangler 4.115.0 exposes this
+boundary directly, so there is no need to reuse a Pool/Store widget or paste
+the secret through the dashboard:
 
 ```sh
 umask 077
