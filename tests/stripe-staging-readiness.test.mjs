@@ -1,11 +1,47 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildStripeCliArgs,
+  classifyStripeCliFailure,
   evaluateStripeStagingReadiness,
   stripeStagingInventorySql
 } from "../scripts/check-stripe-staging-readiness.mjs";
 
 describe("read-only Stripe staging readiness gate", () => {
+  it("passes only a restricted test key to the Stripe CLI", () => {
+    const key = "rk_test_example_monitor_key_123456789";
+    expect(buildStripeCliArgs(["products", "retrieve", "prod_test"], key))
+      .toEqual([
+        "products",
+        "retrieve",
+        "prod_test",
+        "--api-key",
+        key,
+        "--color",
+        "off"
+      ]);
+    expect(() => buildStripeCliArgs(
+      ["products", "retrieve", "prod_test"],
+      "sk_test_broader_key_123456789"
+    )).toThrow("restricted Stripe test API key");
+  });
+
+  it("classifies provider failures without retaining provider payloads", () => {
+    expect(classifyStripeCliFailure('{"code":"resource_missing"}'))
+      .toBe("resource missing");
+    expect(classifyStripeCliFailure("This key does not have access"))
+      .toBe("permission denied");
+    expect(classifyStripeCliFailure("Invalid API Key provided"))
+      .toBe("authentication rejected");
+    expect(classifyStripeCliFailure("Request failed, status=403"))
+      .toBe("permission denied");
+    expect(classifyStripeCliFailure("Request failed, status=404"))
+      .toBe("resource missing");
+    expect(classifyStripeCliFailure("unexpected provider response"))
+      .toBe("provider rejected request");
+  });
+
+
   it("excludes immutable fixtures from products, prices, and tax readiness", () => {
     expect(stripeStagingInventorySql.match(/test_fixture = 0/g)).toHaveLength(3);
     expect(stripeStagingInventorySql).toContain(

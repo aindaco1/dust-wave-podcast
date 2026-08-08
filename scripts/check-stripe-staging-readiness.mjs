@@ -329,7 +329,48 @@ export function loadStripeStagingSnapshot() {
 }
 
 function runStripeJson(args) {
-  return runProviderJson("stripe", [...args, "--color", "off"]);
+  const operation = args.slice(0, 2).every((value) =>
+    /^[a-z_]+$/u.test(String(value))
+  )
+    ? args.slice(0, 2).join(" ")
+    : "provider";
+  return runJson("stripe", buildStripeCliArgs(args), {
+    failureLabel: `read-only Stripe ${operation} command`,
+    classifyFailure: classifyStripeCliFailure
+  });
+}
+
+export function buildStripeCliArgs(args, apiKey = process.env.STRIPE_API_KEY) {
+  const key = String(apiKey ?? "").trim();
+  if (!/^rk_test_[A-Za-z0-9_]{16,200}$/u.test(key)) {
+    throw new Error("A restricted Stripe test API key is required.");
+  }
+  return [...args, "--api-key", key, "--color", "off"];
+}
+
+export function classifyStripeCliFailure(output) {
+  const text = String(output ?? "").toLowerCase();
+  if (
+    /resource_missing|no such (?:product|price|billing portal)|status\s*=\s*404/u
+      .test(text)
+  ) {
+    return "resource missing";
+  }
+  if (
+    /permission_missing|does not have access|not authorized|permission denied|status\s*=\s*403/u
+      .test(text)
+  ) {
+    return "permission denied";
+  }
+  if (
+    /invalid api key|authentication|authenticate|status\s*=\s*401/u.test(text)
+  ) {
+    return "authentication rejected";
+  }
+  if (/unknown flag.*api-key|flag provided but not defined/u.test(text)) {
+    return "cli key flag rejected";
+  }
+  return "provider rejected request";
 }
 
 function runProviderJson(command, args) {

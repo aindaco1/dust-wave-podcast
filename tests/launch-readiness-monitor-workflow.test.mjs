@@ -16,7 +16,7 @@ describe("launch readiness monitor workflow", () => {
     expect(workflow).toContain("timeout-minutes: 10");
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("environment: podcast-staging");
-    expect(workflow).toContain("npm run gate:launch:staging");
+    expect(workflow).toContain("npm run --silent gate:launch:staging");
     expect(workflow).toContain("--json");
     expect(workflow).not.toContain("--require-ready");
   });
@@ -40,11 +40,29 @@ describe("launch readiness monitor workflow", () => {
     }
   });
 
+  it("installs a pinned Stripe CLI archive only after checksum verification", () => {
+    expect(workflow).toContain("STRIPE_CLI_VERSION: 1.45.1");
+    expect(workflow).toContain(
+      "STRIPE_CLI_SHA256: ae0b6e83f6b5edf8e0d61e5965b0ef6fffd94bb685ce063c030dba2ce221e332"
+    );
+    expect(workflow).toContain("sha256sum --check --strict");
+    expect(workflow).toContain('tar --extract --gzip --file "$archive" stripe');
+  });
+
   it("retains only the content-free report and enforces execution safety", () => {
     expect(workflow).toContain("write-launch-readiness-summary.mjs");
     expect(workflow).toContain("report.json");
     expect(workflow).toContain("retention-days: 30");
+    expect(workflow).toContain("steps.gate.outputs.status == '0'");
     expect(workflow).toContain('test "$GATE_STATUS" = "0"');
+  });
+
+  it("reports a failed live read without parsing or retaining an empty report", () => {
+    expect(workflow).toContain("Report failed live read");
+    expect(workflow).toContain(
+      "a scoped live read failed before a bounded report was produced"
+    );
+    expect(workflow).toContain("steps.gate.outputs.status != '0'");
   });
 
   it("reports a credential block without installing an expiring token", () => {
