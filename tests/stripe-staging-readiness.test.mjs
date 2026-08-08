@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildStripeCliArgs,
   evaluateStripeStagingReadiness,
   stripeStagingInventorySql
 } from "../scripts/check-stripe-staging-readiness.mjs";
 
 describe("read-only Stripe staging readiness gate", () => {
+  it("passes only a restricted test key to the Stripe CLI", () => {
+    const key = "rk_test_example_monitor_key_123456789";
+    expect(buildStripeCliArgs(["products", "retrieve", "prod_test"], key))
+      .toEqual([
+        "products",
+        "retrieve",
+        "prod_test",
+        "--api-key",
+        key,
+        "--color",
+        "off"
+      ]);
+    expect(() => buildStripeCliArgs(
+      ["products", "retrieve", "prod_test"],
+      "sk_test_broader_key_123456789"
+    )).toThrow("restricted Stripe test API key");
+  });
+
   it("excludes immutable fixtures from products, prices, and tax readiness", () => {
     expect(stripeStagingInventorySql.match(/test_fixture = 0/g)).toHaveLength(3);
     expect(stripeStagingInventorySql).toContain(

@@ -334,9 +334,17 @@ function runStripeJson(args) {
   )
     ? args.slice(0, 2).join(" ")
     : "provider";
-  return runJson("stripe", [...args, "--color", "off"], {
+  return runJson("stripe", buildStripeCliArgs(args), {
     failureLabel: `read-only Stripe ${operation} command`
   });
+}
+
+export function buildStripeCliArgs(args, apiKey = process.env.STRIPE_API_KEY) {
+  const key = String(apiKey ?? "").trim();
+  if (!/^rk_test_[A-Za-z0-9_]{16,200}$/u.test(key)) {
+    throw new Error("A restricted Stripe test API key is required.");
+  }
+  return [...args, "--api-key", key, "--color", "off"];
 }
 
 function runProviderJson(command, args) {
