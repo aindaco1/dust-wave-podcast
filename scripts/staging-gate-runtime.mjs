@@ -34,7 +34,17 @@ export function runJson(command, args, options = {}) {
   });
   const failureLabel = options.failureLabel ?? "read-only staging command";
   if (result.error || result.status !== 0) {
-    throw new Error(`${path.basename(command)} ${failureLabel} failed.`);
+    const category = typeof options.classifyFailure === "function"
+      ? String(options.classifyFailure(
+          `${result.stderr ?? ""}\n${result.stdout ?? ""}`
+        ) ?? "").trim()
+      : "";
+    const safeCategory = /^[a-z][a-z ]{0,80}$/u.test(category)
+      ? ` (${category})`
+      : "";
+    throw new Error(
+      `${path.basename(command)} ${failureLabel} failed${safeCategory}.`
+    );
   }
   try {
     return JSON.parse(result.stdout);

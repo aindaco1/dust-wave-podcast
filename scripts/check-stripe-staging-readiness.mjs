@@ -335,7 +335,8 @@ function runStripeJson(args) {
     ? args.slice(0, 2).join(" ")
     : "provider";
   return runJson("stripe", buildStripeCliArgs(args), {
-    failureLabel: `read-only Stripe ${operation} command`
+    failureLabel: `read-only Stripe ${operation} command`,
+    classifyFailure: classifyStripeCliFailure
   });
 }
 
@@ -345,6 +346,23 @@ export function buildStripeCliArgs(args, apiKey = process.env.STRIPE_API_KEY) {
     throw new Error("A restricted Stripe test API key is required.");
   }
   return [...args, "--api-key", key, "--color", "off"];
+}
+
+export function classifyStripeCliFailure(output) {
+  const text = String(output ?? "").toLowerCase();
+  if (/resource_missing|no such (?:product|price|billing portal)/u.test(text)) {
+    return "resource missing";
+  }
+  if (
+    /permission_missing|does not have access|not authorized|permission denied/u
+      .test(text)
+  ) {
+    return "permission denied";
+  }
+  if (/invalid api key|authentication|authenticate/u.test(text)) {
+    return "authentication rejected";
+  }
+  return "provider rejected request";
 }
 
 function runProviderJson(command, args) {

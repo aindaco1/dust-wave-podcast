@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildStripeCliArgs,
+  classifyStripeCliFailure,
   evaluateStripeStagingReadiness,
   stripeStagingInventorySql
 } from "../scripts/check-stripe-staging-readiness.mjs";
@@ -24,6 +25,18 @@ describe("read-only Stripe staging readiness gate", () => {
       "sk_test_broader_key_123456789"
     )).toThrow("restricted Stripe test API key");
   });
+
+  it("classifies provider failures without retaining provider payloads", () => {
+    expect(classifyStripeCliFailure('{"code":"resource_missing"}'))
+      .toBe("resource missing");
+    expect(classifyStripeCliFailure("This key does not have access"))
+      .toBe("permission denied");
+    expect(classifyStripeCliFailure("Invalid API Key provided"))
+      .toBe("authentication rejected");
+    expect(classifyStripeCliFailure("unexpected provider response"))
+      .toBe("provider rejected request");
+  });
+
 
   it("excludes immutable fixtures from products, prices, and tax readiness", () => {
     expect(stripeStagingInventorySql.match(/test_fixture = 0/g)).toHaveLength(3);
