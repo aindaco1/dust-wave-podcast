@@ -60,23 +60,25 @@ Useful browser surfaces:
 
 | Surface | Verified state |
 |---|---|
-| Podcast source | `main` implementation baseline `10d8e050fc3f306b00cd4785ed0e1d420749b623`; release `v0.2.26`; no open implementation PRs before this handoff |
+| Podcast source | `main` at documentation-only handoff commit `067f7ca`; implementation baseline `10d8e050fc3f306b00cd4785ed0e1d420749b623`; release `v0.2.26`; no open Podcast implementation PRs |
 | Podcast CI | Main CI run [31142244389](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31142244389) passed |
-| Handoff verification | Tracked-secret scan passed over 501 text files, audit reports zero vulnerabilities, 169 test files / 708 tests passed, and both deployment dry runs passed |
+| Handoff verification | Tracked-secret scan passed over 502 text files, audit reports zero vulnerabilities, 169 test files / 708 tests passed, and both deployment dry runs passed |
 | Podcast staging | Worker version `7a952579-0d7f-4bbf-9eb3-1332bcb5e026`, deployed 2026-08-06 with the `0.2.26` guarded-mode configuration |
 | Podcast production shell | Worker version `1774f68a-3a89-487f-8f99-dc2c37615132`, deployed 2026-08-06; schema is current and public zero-item feed is reachable, but provider capabilities remain fail-closed |
 | D1 | Staging and production both report no pending migrations through `0088` |
 | Public release contract | Staging and production gates pass RSS, artwork, cache/security, ETag, and conditional-request checks; both feeds contain zero items |
-| Website source | `dust-wave-new` `main` at `91989dd10f8cf52b6ef1e14229d2be09f892aaac`; release `v1.3.0`; main CI run [31142245867](https://github.com/aindaco1/dust-wave-new/actions/runs/31142245867) passed |
+| Website source | `dust-wave-new` `main` remains `91989dd10f8cf52b6ef1e14229d2be09f892aaac`; release `v1.3.0`. Draft [PR #19](https://github.com/aindaco1/dust-wave-new/pull/19) adds the patched transitive `nanoid` resolution and fixes signed-out readiness invalidation; its CI run [31241210380](https://github.com/aindaco1/dust-wave-new/actions/runs/31241210380) passed |
 | Website podcast UX | Six-section workflow and bilingual interface merged in [dust-wave-new PR #13](https://github.com/aindaco1/dust-wave-new/pull/13); listener/admin locale propagation merged in [Podcast PR #84](https://github.com/aindaco1/dust-wave-podcast/pull/84) |
-| Website staging | Stable Pages alias currently points to immutable deployment `ae44e3aa`, source `38f8a02`; both Admin locale URLs return `200`, as do both production show locale URLs |
+| Website staging | Stable Pages alias points to immutable deployment `d51f6fe3`, source `8ed2bf2`, based on current `main` plus PR #19. Six deployed bilingual surfaces pass exact i18n validation; English desktop and Spanish mobile Admin probes have zero console errors, exact document/viewport widths, and CLS `0.0001` / `0.0000` |
 | Shared Platform | Podcast pins Platform `v0.23.0` at `a0006c3e0c3f8ab814387491753989956adbbe94` and retains domain policy behind adapters |
 | Alignment runner | Submodule remains pinned at `32111c2a8dd62d891c4309f7638a86c31a789dc3`; launch no longer depends on transcript/H1 completion |
 
-The website staging deployment predates current website `main`. It includes
-the completed bilingual Podcast UI but not every later shared-foundation
-reconciliation commit. Rebuild, test, and redeploy staging from current
-website `main` before treating it as exact release-candidate evidence.
+The website staging project is current through PR #19, but the PR remains
+draft because merging website `main` automatically deploys the public GitHub
+Pages site. This staging-only synchronization did not merge it or touch the
+public website. At the next approved public website release, merge the exact
+green PR, then rebuild staging from the resulting merge commit so both source
+pointers use the same immutable asset version.
 
 ## Live launch posture
 
@@ -199,15 +201,16 @@ report the same gate result as the local command.
 This is the highest-value autonomous task because it continuously detects gate
 drift without enabling a provider or asking the owner to run a command.
 
-### 2. Remove source/deployment drift
+### 2. Land the staged website fixes with an approved public release
 
-Rebuild current `dust-wave-new/main`, run its Podcast, i18n, accessibility,
-performance, responsive-overflow, and browser-console suites, then deploy only
-to `dust-wave-website-staging`. Confirm the stable Pages alias resolves the
-new immutable deployment and repeat English/Spanish Admin smoke tests.
-
-Do not deploy the public website or promote a Podcast capability as part of
-this synchronization.
+Draft [dust-wave-new PR #19](https://github.com/aindaco1/dust-wave-new/pull/19)
+is green and already deployed only to `dust-wave-website-staging`. Do not merge
+it as a staging synchronization: any website `main` push automatically deploys
+the public GitHub Pages site. During the next explicitly approved public
+website release, merge the exact reviewed PR, verify that production workflow,
+then rebuild staging from the resulting merge commit to remove the remaining
+asset-commit pointer difference. Do not promote any Podcast capability as part
+of that source reconciliation.
 
 ### 3. Clear the non-content launch evidence
 
@@ -226,7 +229,15 @@ this synchronization.
 ### 4. Prepare everything that can precede a real episode
 
 - Keep the Launch Lab's 41-scenario reconciliation and the virtual-audio gate
-  current through scheduled workflows.
+  current through scheduled workflows. On 2026-08-07, scheduled Launch Lab run
+  [31192270607](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31192270607)
+  tracked 33 passed, seven pending, and one running scenario and completed
+  after its Stripe cleanup; expected real-provider proofs remain non-passing. Scheduled
+  virtual-audio run
+  [31187012789](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31187012789)
+  passed 24 protocol probes and 10,000 paired requests with zero request
+  failures or content mismatches, 71.9 ms p95 added time, and complete lease
+  and object cleanup.
 - Generate and inspect a dry-run publication snapshot with only private or
   synthetic inputs; assert zero public item, upload, email, charge, directory
   submission, or qualified ad outcome.
