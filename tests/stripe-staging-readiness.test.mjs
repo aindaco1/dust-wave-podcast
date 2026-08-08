@@ -33,6 +33,10 @@ describe("read-only Stripe staging readiness gate", () => {
       .toBe("permission denied");
     expect(classifyStripeCliFailure("Invalid API Key provided"))
       .toBe("authentication rejected");
+    expect(classifyStripeCliFailure("Request failed, status=403"))
+      .toBe("permission denied");
+    expect(classifyStripeCliFailure("Request failed, status=404"))
+      .toBe("resource missing");
     expect(classifyStripeCliFailure("unexpected provider response"))
       .toBe("provider rejected request");
   });

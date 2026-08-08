@@ -350,17 +350,25 @@ export function buildStripeCliArgs(args, apiKey = process.env.STRIPE_API_KEY) {
 
 export function classifyStripeCliFailure(output) {
   const text = String(output ?? "").toLowerCase();
-  if (/resource_missing|no such (?:product|price|billing portal)/u.test(text)) {
+  if (
+    /resource_missing|no such (?:product|price|billing portal)|status\s*=\s*404/u
+      .test(text)
+  ) {
     return "resource missing";
   }
   if (
-    /permission_missing|does not have access|not authorized|permission denied/u
+    /permission_missing|does not have access|not authorized|permission denied|status\s*=\s*403/u
       .test(text)
   ) {
     return "permission denied";
   }
-  if (/invalid api key|authentication|authenticate/u.test(text)) {
+  if (
+    /invalid api key|authentication|authenticate|status\s*=\s*401/u.test(text)
+  ) {
     return "authentication rejected";
+  }
+  if (/unknown flag.*api-key|flag provided but not defined/u.test(text)) {
+    return "cli key flag rejected";
   }
   return "provider rejected request";
 }
