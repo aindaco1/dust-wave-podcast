@@ -40,6 +40,15 @@ describe("launch readiness monitor workflow", () => {
     }
   });
 
+  it("installs a pinned Stripe CLI archive only after checksum verification", () => {
+    expect(workflow).toContain("STRIPE_CLI_VERSION: 1.45.1");
+    expect(workflow).toContain(
+      "STRIPE_CLI_SHA256: ae0b6e83f6b5edf8e0d61e5965b0ef6fffd94bb685ce063c030dba2ce221e332"
+    );
+    expect(workflow).toContain("sha256sum --check --strict");
+    expect(workflow).toContain('tar --extract --gzip --file "$archive" stripe');
+  });
+
   it("retains only the content-free report and enforces execution safety", () => {
     expect(workflow).toContain("write-launch-readiness-summary.mjs");
     expect(workflow).toContain("report.json");

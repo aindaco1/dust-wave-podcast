@@ -32,6 +32,23 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Install verified Stripe CLI
+        env:
+          STRIPE_CLI_VERSION: 1.45.1
+          STRIPE_CLI_SHA256: ae0b6e83f6b5edf8e0d61e5965b0ef6fffd94bb685ce063c030dba2ce221e332
+        run: |
+          install -d -m 700 "$RUNNER_TEMP/stripe-cli"
+          cd "$RUNNER_TEMP/stripe-cli"
+          archive="stripe_${STRIPE_CLI_VERSION}_linux_x86_64.tar.gz"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 --retry 3 \
+            "https://github.com/stripe/stripe-cli/releases/download/v${STRIPE_CLI_VERSION}/${archive}" \
+            --output "$archive"
+          echo "${STRIPE_CLI_SHA256}  ${archive}" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" stripe
+          chmod 700 stripe
+          echo "$RUNNER_TEMP/stripe-cli" >> "$GITHUB_PATH"
+
       - name: Read the content-free launch gate
         id: gate
         continue-on-error: true
