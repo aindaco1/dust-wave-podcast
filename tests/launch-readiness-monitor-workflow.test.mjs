@@ -29,6 +29,9 @@ describe("launch readiness monitor workflow", () => {
       "CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
     );
     expect(workflow).toContain(
+      "STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}"
+    );
+    expect(workflow).toContain(
       "PODCAST_LAUNCH_EPISODE_ID: ${{ vars.PODCAST_LAUNCH_EPISODE_ID }}"
     );
     expect(workflow).not.toContain("MEDIA_PROCESSOR_CALLBACK_SECRET");
@@ -47,7 +50,7 @@ describe("launch readiness monitor workflow", () => {
   it("reports a credential block without installing an expiring token", () => {
     expect(workflow).toContain('echo "configured=false"');
     expect(workflow).toContain(
-      "scoped Cloudflare staging read token is not configured"
+      "scoped staging read credentials are not configured"
     );
     expect(workflow).toContain(
       "steps.gate.outputs.configured == 'true'"
