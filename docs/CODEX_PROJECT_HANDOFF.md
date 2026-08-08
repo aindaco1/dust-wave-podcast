@@ -1,6 +1,6 @@
 # Codex project handoff
 
-Last verified: 2026-08-07 in `America/Los_Angeles`  
+Last verified: 2026-08-08 in `America/Los_Angeles`
 Audience: the next Codex task opened in the `dust-wave-podcast` project
 
 This is a continuation snapshot, not a second readiness database. D1, provider
@@ -60,9 +60,9 @@ Useful browser surfaces:
 
 | Surface | Verified state |
 |---|---|
-| Podcast source | `main` at `623a9e8`; release `v0.2.26`; the launch monitor now requires both scoped Cloudflare and Stripe read credentials; no open Podcast implementation PRs |
+| Podcast source | Release `v0.2.26`; the zero-touch launch-monitor restoration and refreshed handoff are tracked in [PR #94](https://github.com/aindaco1/dust-wave-podcast/pull/94) and were validated at `a7c9f96` |
 | Podcast CI | Main CI run [31244532249](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31244532249) passed |
-| Handoff verification | Tracked-secret scan passed over 502 text files, audit reports zero vulnerabilities, 169 test files / 708 tests passed, and both deployment dry runs passed |
+| Handoff verification | Tracked-secret scan passed over 502 text files, audit reports zero vulnerabilities, 169 test files / 712 tests passed, and both deployment dry runs passed |
 | Podcast staging | Worker version `7a952579-0d7f-4bbf-9eb3-1332bcb5e026`, deployed 2026-08-06 with the `0.2.26` guarded-mode configuration |
 | Podcast production shell | Worker version `1774f68a-3a89-487f-8f99-dc2c37615132`, deployed 2026-08-06; schema is current and public zero-item feed is reachable, but provider capabilities remain fail-closed |
 | D1 | Staging and production both report no pending migrations through `0088` |
@@ -81,7 +81,8 @@ commit. Public and staging now use the same immutable asset version.
 
 ## Live launch posture
 
-The composed read-only gate was run on 2026-08-07 against the configured
+The composed read-only gate was run on 2026-08-08 by the durable GitHub
+monitor against the configured
 private launch fixture. It reported **9 pass, 5 block, 0 wait, and 0 fail**.
 
 | Gate | State | Meaning |
@@ -105,13 +106,17 @@ monthly `$5` Price, annual `$50` Price, hardened Portal, webhook event set,
 installed secret posture, provider-event journal, and disabled Checkout posture
 all pass. The only Stripe block is the unapproved tax-policy version.
 
-The daily GitHub launch monitor is implemented but is currently a safe no-op:
-the `podcast-staging` environment has the account ID and launch episode
-variable, but not the scoped Cloudflare and Stripe read credentials now
-required by the workflow. Its latest scheduled run
-[31188389094](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31188389094)
-reported `BLOCK` in the job summary and exited successfully without inventing
-evidence. Local authenticated gate runs are currently authoritative.
+The daily GitHub launch monitor is active. The `podcast-staging` environment
+holds a dedicated account-scoped Cloudflare token with only `D1 Read` and
+`Workers Scripts Read`, plus a dedicated Stripe restricted test key with only
+Products, Prices, Customer Portal, and Webhook Endpoints read access. The
+workflow installs a pinned Stripe CLI archive only after checksum verification;
+neither credential is copied into the repository or retained in its bounded
+artifact. On-demand run
+[31274035980](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31274035980)
+passed and retained the authoritative 9-pass / 5-block / 0-wait / 0-fail JSON
+report for 30 days. The daily schedule can now detect drift without owner
+intervention.
 
 ## Product decisions that must survive the handoff
 
@@ -190,21 +195,7 @@ At handoff, these major boundaries are implemented:
 
 ## Remaining work, in priority order
 
-### 1. Restore zero-touch readiness monitoring
-
-Configure two durable, least-privilege staging read credentials in the GitHub
-`podcast-staging` environment: a Cloudflare token with account-scoped `D1 Read`
-and `Workers Scripts Read` as `CLOUDFLARE_API_TOKEN`, and a Stripe test-mode
-restricted key with read access only to Products, Prices, Customer Portal, and
-Webhook Endpoints as `STRIPE_API_KEY`. Never copy a Wrangler OAuth token or a
-full-access Stripe secret key. Use the workflow's existing preflight, run the
-monitor on demand, and require it to upload the bounded JSON evidence and
-report the same gate result as the local command.
-
-This is the highest-value autonomous task because it continuously detects gate
-drift without enabling a provider or asking the owner to run a command.
-
-### 2. Clear the non-content launch evidence
+### 1. Clear the non-content launch evidence
 
 - Import and approve the exact versioned Podcast tax policy through the
   existing recent-auth Super-admin flow only if the recorded registration,
@@ -218,7 +209,7 @@ drift without enabling a provider or asking the owner to run a command.
   policy is decided. The seven synthetic grant/redeem/overlap/expiry/revoke
   contracts already pass and should not be reimplemented.
 
-### 3. Prepare everything that can precede a real episode
+### 2. Prepare everything that can precede a real episode
 
 - Keep the Launch Lab's 41-scenario reconciliation and the virtual-audio gate
   current through scheduled workflows. On 2026-08-07, scheduled Launch Lab run
@@ -242,7 +233,7 @@ drift without enabling a provider or asking the owner to run a command.
 - Keep the Dust Wave sponsor demo and native-client qualification negative
   cases in CI. Synthetic success must remain ineligible for the durable pilot.
 
-### 4. Execute the first publishable episode automatically when it exists
+### 3. Execute the first publishable episode automatically when it exists
 
 The irreducible input is one rights-cleared Ópera en la Selva episode with
 final title, Spanish-primary summary, English translation, public/premium
