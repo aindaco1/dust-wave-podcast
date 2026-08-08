@@ -61,10 +61,18 @@ jobs:
           exit "$status"
 
       - name: Add bounded launch summary
-        if: ${{ always() && steps.gate.outputs.configured == 'true' }}
+        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.status == '0' }}
         env:
           LAUNCH_GATE_REPORT: ${{ runner.temp }}/podcast-launch-readiness/report.json
         run: node scripts/write-launch-readiness-summary.mjs
+
+      - name: Report failed live read
+        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.status != '0' }}
+        run: |
+          echo "### Podcast launch readiness" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "- Result: FAIL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Reason: a scoped live read failed before a bounded report was produced" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report missing durable monitor credential
         if: ${{ always() && steps.gate.outputs.configured != 'true' }}
@@ -75,7 +83,7 @@ jobs:
           echo "- Reason: scoped staging read credentials are not configured" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain content-free launch evidence
-        if: ${{ always() && steps.gate.outputs.configured == 'true' }}
+        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.status == '0' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: launch-readiness-${{ github.run_id }}-${{ github.run_attempt }}

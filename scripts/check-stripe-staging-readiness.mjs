@@ -329,7 +329,14 @@ export function loadStripeStagingSnapshot() {
 }
 
 function runStripeJson(args) {
-  return runProviderJson("stripe", [...args, "--color", "off"]);
+  const operation = args.slice(0, 2).every((value) =>
+    /^[a-z_]+$/u.test(String(value))
+  )
+    ? args.slice(0, 2).join(" ")
+    : "provider";
+  return runJson("stripe", [...args, "--color", "off"], {
+    failureLabel: `read-only Stripe ${operation} command`
+  });
 }
 
 function runProviderJson(command, args) {

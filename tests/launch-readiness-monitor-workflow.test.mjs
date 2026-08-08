@@ -44,7 +44,16 @@ describe("launch readiness monitor workflow", () => {
     expect(workflow).toContain("write-launch-readiness-summary.mjs");
     expect(workflow).toContain("report.json");
     expect(workflow).toContain("retention-days: 30");
+    expect(workflow).toContain("steps.gate.outputs.status == '0'");
     expect(workflow).toContain('test "$GATE_STATUS" = "0"');
+  });
+
+  it("reports a failed live read without parsing or retaining an empty report", () => {
+    expect(workflow).toContain("Report failed live read");
+    expect(workflow).toContain(
+      "a scoped live read failed before a bounded report was produced"
+    );
+    expect(workflow).toContain("steps.gate.outputs.status != '0'");
   });
 
   it("reports a credential block without installing an expiring token", () => {
