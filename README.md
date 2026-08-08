@@ -512,6 +512,9 @@ Architecture and promotion decisions live in [`docs/adr`](docs/adr). The
 non-secret human inputs that gate production are kept in
 [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md).
 
+- [`docs/CODEX_PROJECT_HANDOFF.md`](docs/CODEX_PROJECT_HANDOFF.md) — current
+  cross-repository continuation snapshot, launch blockers, and next-task entry
+  point
 - [`CHANGELOG.md`](CHANGELOG.md) — released consumer and shared-foundation changes
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — implementation sequence and public
   positioning gates
