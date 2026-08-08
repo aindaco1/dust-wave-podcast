@@ -53,7 +53,7 @@ jobs:
           install -d -m 700 "$REPORT_DIRECTORY"
           install /dev/null -m 600 "$REPORT_DIRECTORY/report.json"
           set +e
-          npm run gate:launch:staging -- \
+          npm run --silent gate:launch:staging -- \
             "$PODCAST_LAUNCH_EPISODE_ID" \
             --json > "$REPORT_DIRECTORY/report.json"
           status=$?
