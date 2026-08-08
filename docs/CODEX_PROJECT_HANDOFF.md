@@ -60,25 +60,24 @@ Useful browser surfaces:
 
 | Surface | Verified state |
 |---|---|
-| Podcast source | `main` at documentation-only handoff commit `067f7ca`; implementation baseline `10d8e050fc3f306b00cd4785ed0e1d420749b623`; release `v0.2.26`; no open Podcast implementation PRs |
-| Podcast CI | Main CI run [31142244389](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31142244389) passed |
+| Podcast source | `main` at `623a9e8`; release `v0.2.26`; the launch monitor now requires both scoped Cloudflare and Stripe read credentials; no open Podcast implementation PRs |
+| Podcast CI | Main CI run [31244532249](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31244532249) passed |
 | Handoff verification | Tracked-secret scan passed over 502 text files, audit reports zero vulnerabilities, 169 test files / 708 tests passed, and both deployment dry runs passed |
 | Podcast staging | Worker version `7a952579-0d7f-4bbf-9eb3-1332bcb5e026`, deployed 2026-08-06 with the `0.2.26` guarded-mode configuration |
 | Podcast production shell | Worker version `1774f68a-3a89-487f-8f99-dc2c37615132`, deployed 2026-08-06; schema is current and public zero-item feed is reachable, but provider capabilities remain fail-closed |
 | D1 | Staging and production both report no pending migrations through `0088` |
 | Public release contract | Staging and production gates pass RSS, artwork, cache/security, ETag, and conditional-request checks; both feeds contain zero items |
-| Website source | `dust-wave-new` `main` remains `91989dd10f8cf52b6ef1e14229d2be09f892aaac`; release `v1.3.0`. Draft [PR #19](https://github.com/aindaco1/dust-wave-new/pull/19) adds the patched transitive `nanoid` resolution and fixes signed-out readiness invalidation; its CI run [31241210380](https://github.com/aindaco1/dust-wave-new/actions/runs/31241210380) passed |
+| Website source | `dust-wave-new` `main` is `ed83995497f9c45c20503fb395fde6824348d8d6`; release `v1.3.0`. [PR #19](https://github.com/aindaco1/dust-wave-new/pull/19) merged the patched transitive `nanoid` resolution and signed-out readiness invalidation fix; production run [31244517201](https://github.com/aindaco1/dust-wave-new/actions/runs/31244517201) passed build, GitHub Pages deploy, Cloudflare header enforcement and cache purge, response-header verification, and federation |
 | Website podcast UX | Six-section workflow and bilingual interface merged in [dust-wave-new PR #13](https://github.com/aindaco1/dust-wave-new/pull/13); listener/admin locale propagation merged in [Podcast PR #84](https://github.com/aindaco1/dust-wave-podcast/pull/84) |
-| Website staging | Stable Pages alias points to immutable deployment `d51f6fe3`, source `8ed2bf2`, based on current `main` plus PR #19. Six deployed bilingual surfaces pass exact i18n validation; English desktop and Spanish mobile Admin probes have zero console errors, exact document/viewport widths, and CLS `0.0001` / `0.0000` |
+| Website staging | Stable Pages alias points to immutable deployment `be66e546`, source `ed83995`, exactly matching website `main`. Six deployed bilingual surfaces pass exact i18n validation; English and Spanish Admin probes have zero console errors and exact document/viewport widths |
 | Shared Platform | Podcast pins Platform `v0.23.0` at `a0006c3e0c3f8ab814387491753989956adbbe94` and retains domain policy behind adapters |
 | Alignment runner | Submodule remains pinned at `32111c2a8dd62d891c4309f7638a86c31a789dc3`; launch no longer depends on transcript/H1 completion |
 
-The website staging project is current through PR #19, but the PR remains
-draft because merging website `main` automatically deploys the public GitHub
-Pages site. This staging-only synchronization did not merge it or touch the
-public website. At the next approved public website release, merge the exact
-green PR, then rebuild staging from the resulting merge commit so both source
-pointers use the same immutable asset version.
+Website [PR #19](https://github.com/aindaco1/dust-wave-new/pull/19) was promoted
+with explicit owner approval. The public deploy and its edge checks passed, all
+four English/Spanish show and Admin URLs return `200`, signed-out Admin browser
+probes have zero console errors, and staging was rebuilt from the exact merge
+commit. Public and staging now use the same immutable asset version.
 
 ## Live launch posture
 
@@ -108,7 +107,8 @@ all pass. The only Stripe block is the unapproved tax-policy version.
 
 The daily GitHub launch monitor is implemented but is currently a safe no-op:
 the `podcast-staging` environment has the account ID and launch episode
-variable, but no `CLOUDFLARE_API_TOKEN`. Its latest scheduled run
+variable, but not the scoped Cloudflare and Stripe read credentials now
+required by the workflow. Its latest scheduled run
 [31188389094](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31188389094)
 reported `BLOCK` in the job summary and exited successfully without inventing
 evidence. Local authenticated gate runs are currently authoritative.
@@ -192,27 +192,19 @@ At handoff, these major boundaries are implemented:
 
 ### 1. Restore zero-touch readiness monitoring
 
-Configure one durable, least-privilege Cloudflare staging read token as the
-`CLOUDFLARE_API_TOKEN` secret in the GitHub `podcast-staging` environment.
-Use the workflow's existing preflight; never copy a Wrangler OAuth token. Run
-the monitor on demand and require it to upload the bounded JSON evidence and
+Configure two durable, least-privilege staging read credentials in the GitHub
+`podcast-staging` environment: a Cloudflare token with account-scoped `D1 Read`
+and `Workers Scripts Read` as `CLOUDFLARE_API_TOKEN`, and a Stripe test-mode
+restricted key with read access only to Products, Prices, Customer Portal, and
+Webhook Endpoints as `STRIPE_API_KEY`. Never copy a Wrangler OAuth token or a
+full-access Stripe secret key. Use the workflow's existing preflight, run the
+monitor on demand, and require it to upload the bounded JSON evidence and
 report the same gate result as the local command.
 
 This is the highest-value autonomous task because it continuously detects gate
 drift without enabling a provider or asking the owner to run a command.
 
-### 2. Land the staged website fixes with an approved public release
-
-Draft [dust-wave-new PR #19](https://github.com/aindaco1/dust-wave-new/pull/19)
-is green and already deployed only to `dust-wave-website-staging`. Do not merge
-it as a staging synchronization: any website `main` push automatically deploys
-the public GitHub Pages site. During the next explicitly approved public
-website release, merge the exact reviewed PR, verify that production workflow,
-then rebuild staging from the resulting merge commit to remove the remaining
-asset-commit pointer difference. Do not promote any Podcast capability as part
-of that source reconciliation.
-
-### 3. Clear the non-content launch evidence
+### 2. Clear the non-content launch evidence
 
 - Import and approve the exact versioned Podcast tax policy through the
   existing recent-auth Super-admin flow only if the recorded registration,
@@ -226,7 +218,7 @@ of that source reconciliation.
   policy is decided. The seven synthetic grant/redeem/overlap/expiry/revoke
   contracts already pass and should not be reimplemented.
 
-### 4. Prepare everything that can precede a real episode
+### 3. Prepare everything that can precede a real episode
 
 - Keep the Launch Lab's 41-scenario reconciliation and the virtual-audio gate
   current through scheduled workflows. On 2026-08-07, scheduled Launch Lab run
@@ -250,7 +242,7 @@ of that source reconciliation.
 - Keep the Dust Wave sponsor demo and native-client qualification negative
   cases in CI. Synthetic success must remain ineligible for the durable pilot.
 
-### 5. Execute the first publishable episode automatically when it exists
+### 4. Execute the first publishable episode automatically when it exists
 
 The irreducible input is one rights-cleared Ópera en la Selva episode with
 final title, Spanish-primary summary, English translation, public/premium
@@ -270,7 +262,7 @@ intent, and release time. Once it exists, the platform should:
    direct-sponsor download while negative cases remain unqualified;
 8. keep every external effect idempotent and reconcile ambiguity before retry.
 
-### 6. Promote capabilities independently
+### 5. Promote capabilities independently
 
 Only after the composed staging gate has no block, wait, or fail node, produce
 one immutable evidence snapshot and rollback plan. A Super-admin approval must
@@ -278,7 +270,7 @@ name that exact snapshot. Promote and canary one capability at a time: public
 feed/media, News, YouTube, Resend, Checkout, Pool redemption, then dynamic ads.
 Automatically revert the flag or Worker version when its focused gate fails.
 
-### 7. Post-launch work
+### 6. Post-launch work
 
 Resume public Spanish/English transcript review, H1 corpus/resource evidence,
 exact alignment approval, public chapters, captioned clips/audiograms, and
