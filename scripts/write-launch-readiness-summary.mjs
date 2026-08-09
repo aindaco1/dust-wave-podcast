@@ -5,8 +5,12 @@ import path from "node:path";
 
 const summaryPath = String(process.env.GITHUB_STEP_SUMMARY ?? "").trim();
 const reportPath = String(process.env.LAUNCH_GATE_REPORT ?? "").trim();
-if (!summaryPath || !path.isAbsolute(reportPath)) {
-  throw new Error("GitHub summary and absolute launch report paths are required.");
+const validateOnly = process.argv.includes("--validate-only");
+if (!path.isAbsolute(reportPath)) {
+  throw new Error("An absolute launch report path is required.");
+}
+if (!validateOnly && !summaryPath) {
+  throw new Error("A GitHub summary path is required.");
 }
 
 const report = JSON.parse(await readFile(reportPath, "utf8"));
@@ -27,6 +31,9 @@ const rows = report.nodes.map((node) => {
   }
   return `| ${node.status} | ${safeCell(node.label)} | ${safeCell(node.detail)} |`;
 });
+if (validateOnly) {
+  process.exit(0);
+}
 const lines = [
   "### Podcast launch readiness",
   "",

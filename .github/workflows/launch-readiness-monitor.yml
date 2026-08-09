@@ -74,17 +74,34 @@ jobs:
             "$PODCAST_LAUNCH_EPISODE_ID" \
             --json > "$REPORT_DIRECTORY/report.json"
           status=$?
+          set -e
+          if LAUNCH_GATE_REPORT="$REPORT_DIRECTORY/report.json" \
+            node scripts/write-launch-readiness-summary.mjs --validate-only; then
+            report_ready=true
+          else
+            report_ready=false
+          fi
           echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit "$status"
+          echo "report_ready=$report_ready" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Add bounded launch summary
-        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.status == '0' }}
+        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.report_ready == 'true' }}
         env:
           LAUNCH_GATE_REPORT: ${{ runner.temp }}/podcast-launch-readiness/report.json
         run: node scripts/write-launch-readiness-summary.mjs
 
+      - name: Report bounded policy failure
+        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.report_ready == 'true' && steps.gate.outputs.status != '0' }}
+        run: |
+          echo "### Monitor result" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "- Result: FAIL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Reason: the bounded report contains one or more failed safety gates" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Classification: policy failure; the scoped live read completed" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Report failed live read
-        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.status != '0' }}
+        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.report_ready != 'true' }}
         run: |
           echo "### Podcast launch readiness" >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
@@ -100,7 +117,7 @@ jobs:
           echo "- Reason: scoped staging read credentials are not configured" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain content-free launch evidence
-        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.status == '0' }}
+        if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.report_ready == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: launch-readiness-${{ github.run_id }}-${{ github.run_attempt }}
@@ -112,9 +129,11 @@ jobs:
         if: ${{ always() }}
         env:
           GATE_CONFIGURED: ${{ steps.gate.outputs.configured }}
+          REPORT_READY: ${{ steps.gate.outputs.report_ready }}
           GATE_STATUS: ${{ steps.gate.outputs.status }}
         run: |
           if [ "$GATE_CONFIGURED" != "true" ]; then
             exit 0
           fi
+          test "$REPORT_READY" = "true"
           test "$GATE_STATUS" = "0"

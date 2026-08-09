@@ -51,18 +51,28 @@ describe("launch readiness monitor workflow", () => {
 
   it("retains only the content-free report and enforces execution safety", () => {
     expect(workflow).toContain("write-launch-readiness-summary.mjs");
+    expect(workflow).toContain("--validate-only");
     expect(workflow).toContain("report.json");
     expect(workflow).toContain("retention-days: 30");
-    expect(workflow).toContain("steps.gate.outputs.status == '0'");
+    expect(workflow).toContain("steps.gate.outputs.report_ready == 'true'");
+    expect(workflow).toContain('test "$REPORT_READY" = "true"');
     expect(workflow).toContain('test "$GATE_STATUS" = "0"');
   });
 
-  it("reports a failed live read without parsing or retaining an empty report", () => {
+  it("retains and classifies a bounded policy failure", () => {
+    expect(workflow).toContain("Report bounded policy failure");
+    expect(workflow).toContain(
+      "policy failure; the scoped live read completed"
+    );
+    expect(workflow).toContain("steps.gate.outputs.status != '0'");
+  });
+
+  it("reports a failed live read only when no valid report exists", () => {
     expect(workflow).toContain("Report failed live read");
     expect(workflow).toContain(
       "a scoped live read failed before a bounded report was produced"
     );
-    expect(workflow).toContain("steps.gate.outputs.status != '0'");
+    expect(workflow).toContain("steps.gate.outputs.report_ready != 'true'");
   });
 
   it("reports a credential block without installing an expiring token", () => {
