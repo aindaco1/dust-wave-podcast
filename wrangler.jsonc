@@ -48,7 +48,7 @@
         "MEDIA_KEY_PREFIX": "podcasts/",
         "MEDIA_BUCKET_NAME": "dustwave-media-staging",
         "AD_DECISION_MODE": "staging_validate",
-        "ANNOUNCEMENT_DELIVERY_MODE": "live",
+        "ANNOUNCEMENT_DELIVERY_MODE": "dry_run",
         "CLIP_PUBLICATION_MODE": "staging_preview",
         "DISTRIBUTION_OBSERVATION_MODE": "staging_probe",
         "YOUTUBE_CHANNEL_URL": "https://youtube.com/@dustwavecollective",
