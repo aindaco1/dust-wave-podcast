@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateVirtualAudioEvidence,
   evaluateLaunchStagingReadiness,
+  presentResend,
   presentStoredVirtualAudioEvidence,
   publicFeedValidatorVersion
 } from "../scripts/check-launch-staging-readiness.mjs";
@@ -85,8 +86,10 @@ function readySnapshot() {
       unresolved: 0
     },
     resend: {
-      delivered: 1,
-      suppressed: 1,
+      consentedDelivered: 1,
+      postDeliveryWithdrawals: 1,
+      listenerSuppressed: 0,
+      providerSuppression: 1,
       failed: 0
     },
     dynamicAds: {
@@ -173,7 +176,13 @@ describe("launch staging gate", () => {
       uploadedUnlisted: 0,
       unresolved: 1
     };
-    snapshot.resend = { delivered: 0, suppressed: 0, failed: 0 };
+    snapshot.resend = {
+      consentedDelivered: 0,
+      postDeliveryWithdrawals: 0,
+      listenerSuppressed: 0,
+      providerSuppression: 0,
+      failed: 0
+    };
     snapshot.dynamicAds = {
       approvedPlans: 1,
       selectedDecisions: 0,
@@ -209,6 +218,67 @@ describe("launch staging gate", () => {
       });
     expect(report.nodes.find(({ id }) => id === "youtube"))
       .toMatchObject({ status: "PASS" });
+  });
+
+  it("keeps listener consent, withdrawal, and provider suppression separate", () => {
+    const syntheticOnly = readySnapshot();
+    syntheticOnly.resend.consentedDelivered = 0;
+    syntheticOnly.resend.postDeliveryWithdrawals = 0;
+    syntheticOnly.resend.listenerSuppressed = 1;
+
+    const syntheticReport = evaluateLaunchStagingReadiness(syntheticOnly);
+
+    expect(syntheticReport.nodes.find(({ id }) => id === "resend"))
+      .toMatchObject({
+        status: "BLOCK",
+        detail: "missing durable evidence: consented live delivery, post-delivery listener withdrawal"
+      });
+
+    const noProviderSuppression = readySnapshot();
+    noProviderSuppression.resend.providerSuppression = 0;
+
+    const providerReport = evaluateLaunchStagingReadiness(
+      noProviderSuppression
+    );
+
+    expect(providerReport.nodes.find(({ id }) => id === "resend"))
+      .toMatchObject({
+        status: "BLOCK",
+        detail: "missing durable evidence: fresh isolated provider suppression"
+      });
+  });
+
+  it("blocks when any consented live delivery failed", () => {
+    const snapshot = readySnapshot();
+    snapshot.resend.failed = 2;
+
+    const report = evaluateLaunchStagingReadiness(snapshot);
+
+    expect(report.nodes.find(({ id }) => id === "resend"))
+      .toMatchObject({
+        status: "BLOCK",
+        detail: "missing durable evidence: 2 failed live deliveries"
+      });
+  });
+
+  it("drops isolated suppression evidence after relevant source drift", () => {
+    const row = {
+      consented_delivered: 1,
+      post_delivery_withdrawals: 1,
+      listener_suppressed: 3,
+      provider_suppression: 4,
+      provider_suppression_source_commit: "a".repeat(40),
+      failed: 0
+    };
+
+    expect(presentResend(row, true)).toEqual({
+      consentedDelivered: 1,
+      postDeliveryWithdrawals: 1,
+      listenerSuppressed: 3,
+      providerSuppression: 4,
+      failed: 0
+    });
+    expect(presentResend(row, false).providerSuppression).toBe(0);
   });
 
   it("names both synthetic and durable dynamic-ad evidence when absent", () => {

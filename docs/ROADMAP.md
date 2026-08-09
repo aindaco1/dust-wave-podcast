@@ -466,20 +466,24 @@ them as launch blockers.
   benefit periods.
 - Reuse the versioned Store tax calculator and manual Stripe Tax Rates only
   after accountant approval; Stripe Tax automatic calculation remains off.
-- The first staging policy candidate now imports the Store's exact
-  `US-NM-87120` fallback evidence through one recent-auth Super-admin action.
-  Provider creation/attestation and immutable D1 approval/assignment are
-  idempotent and automated; the candidate remains unapproved and Checkout
-  remains disabled until that explicit review.
+- The first staging policy imports the Store's exact `US-NM-87120` fallback
+  evidence through one recent-auth Super-admin action. The owner approved that
+  exact 7.625% exclusive candidate; provider creation/attestation and immutable
+  D1 approval/assignment completed idempotently without enabling Checkout.
 - Keep Checkout behind an explicit kill switch. Use idempotent Stripe
   Customer/Checkout calls, webhook-projected source entitlements, and a scoped
   Customer Portal; retain only email/destination HMACs and immutable tax
-  evidence in Podcast D1. The staging provider preflight now confirms the
+  evidence in Podcast D1. The clean staging provider preflight confirmed the
   exact inactive test Product, $5 monthly and $50 annual Prices, hardened
   Portal profile, required signed-webhook event set, installed test API
   credential, and two processed provider-signed expiration events with no
-  failed journal entry. Checkout and every provider object remain inactive
-  pending the accountant-approved manual tax matrix and controlled purchase.
+  failed journal entry. One later owner-controlled monthly purchase completed
+  the entitlement, magic-link, and private-feed journey before Checkout was
+  disabled again. The staging destination now uses the exact 15-event
+  Checkout/subscription/customer/invoice contract, and the purchase's replayed
+  `invoice.paid` event produced matched non-PII tax evidence. Retain that test
+  subscription only until the remaining delivery, Portal, and cancellation
+  checks finish, then restore the gate's zero-mutation posture.
 - Preserve independent Stripe, Pool, and manual entitlement sources beneath
   one access projection so cancellation/revocation of one source cannot remove
   access granted by another. The five-minute scheduler now expires bounded,
@@ -528,7 +532,10 @@ them as launch blockers.
   scenario tag, reconciliation first reuses the signed, content-free webhook
   journal by exact provider ID; only then may it retrieve the already-sent
   provider object. Passed evidence remains immutable and provider failures
-  remain terminal unless the exact expected later event is observed.
+  remain terminal unless the exact expected later event is observed. Only this
+  exact fresh, source-current `suppressed` scenario may satisfy the composed
+  gate's technical provider-suppression subcheck; it remains ineligible for
+  listener-consent, listener-delivery, or withdrawal evidence.
 - The scheduled RSS rehearsal now runs the production feed/media contract: a
   body-free enclosure `HEAD`, one streamed byte range, and approved-only
   Podcasting 2.0 transcript/chapter declarations. Tampered transcript evidence
@@ -621,8 +628,11 @@ them as launch blockers.
   disabled. The dedicated staging webhook now rejects unsigned requests and
   has passed a signed unmatched-event plus exact-replay deduplication exercise
   with its active rotated secret. A tightly controlled consented staging live
-  send, matched delivery transition, and suppression exercise remain promotion
-  gates before enabling the Resend sender.
+  send, matched delivery transition, later listener withdrawal, and no-resend
+  reconciliation remain promotion gates before enabling the Resend sender.
+  Technical suppression is proved separately by a fresh, source-current
+  `suppressed@resend.dev` Launch Lab scenario so the real listener address is
+  never bounced, complained, or suppressed to manufacture evidence.
 - Keep the implemented portable embeds and build-time share-card previews
   read-only. Add scheduling only after its storage, accessibility, privacy,
   cancellation, and cache contracts are characterized.

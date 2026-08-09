@@ -124,6 +124,23 @@ describe("read-only Stripe staging readiness gate", () => {
       detail: "endpoint, mode, status, or event set mismatch"
     });
   });
+
+  it("fails when invoice reconciliation or customer preview events are absent", () => {
+    const fixture = readinessFixture();
+    fixture.provider.webhookEndpoints[0].enabled_events =
+      fixture.provider.webhookEndpoints[0].enabled_events.filter(
+        (event) => !["customer.updated", "invoice.paid"].includes(event)
+      );
+
+    const report = evaluateStripeStagingReadiness(fixture);
+
+    expect(report.summary.safe).toBe(false);
+    expect(report.results).toContainEqual({
+      status: "FAIL",
+      label: "Stripe webhook",
+      detail: "endpoint, mode, status, or event set mismatch"
+    });
+  });
 });
 
 function readinessFixture() {
@@ -217,11 +234,19 @@ function readinessFixture() {
         enabled_events: [
           "checkout.session.completed",
           "checkout.session.expired",
+          "customer.updated",
           "customer.subscription.created",
           "customer.subscription.updated",
           "customer.subscription.deleted",
           "customer.subscription.paused",
-          "customer.subscription.resumed"
+          "customer.subscription.resumed",
+          "invoice.created",
+          "invoice.updated",
+          "invoice.finalized",
+          "invoice.paid",
+          "invoice.payment_failed",
+          "invoice.voided",
+          "invoice.marked_uncollectible"
         ]
       }]
     }

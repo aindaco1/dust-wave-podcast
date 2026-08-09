@@ -11,11 +11,19 @@ import {
 const requiredWebhookEvents = [
   "checkout.session.completed",
   "checkout.session.expired",
+  "customer.updated",
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
   "customer.subscription.paused",
-  "customer.subscription.resumed"
+  "customer.subscription.resumed",
+  "invoice.created",
+  "invoice.updated",
+  "invoice.finalized",
+  "invoice.paid",
+  "invoice.payment_failed",
+  "invoice.voided",
+  "invoice.marked_uncollectible"
 ];
 
 export const stripeStagingInventorySql = `SELECT

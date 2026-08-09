@@ -210,6 +210,13 @@ the invoice payload, customer email, or billing-address fields. Dust Wave
 invoice events that arrive before their subscription source fail retryably;
 unrelated non-subscription invoices remain ignored.
 
+The dedicated Stripe endpoint must use the exact event contract enforced by
+the staging gate: Checkout completion/expiration, the five consumed
+subscription lifecycle events, `customer.updated`, and the seven invoice
+events recognized by the tax-evidence projection. Omitting invoice events can
+leave access active while silently preventing renewal/tax evidence from being
+recorded, so the gate rejects both missing and additional event types.
+
 `customer.updated` performs a preview only. The full provider address exists
 only in webhook memory, is normalized with `@dustwave/tax-core`, HMACed, and
 discarded. One row per affected subscription records whether the destination
@@ -1618,7 +1625,11 @@ headers. Supported actions are:
 - `run_resend_matrix`: exercise Resend's delivered, bounced, complained, and
   suppressed test recipients through the production adapter, reconciling an
   already-signed content-free webhook journal by exact provider ID before any
-  bounded read-only provider retrieval;
+  bounded read-only provider retrieval. The full synthetic run remains
+  `launchGateEligible: false`; only a passed, failure-free, fixture-scoped
+  `suppressed` scenario completed within seven days, with no relevant source
+  drift, may satisfy the composed gate's technical provider-suppression
+  subcheck. It cannot satisfy listener consent, delivery, or withdrawal;
 - `run_stripe_readiness`: read and attest the exact inactive test-mode Product
   and Price objects through the production Stripe adapter;
 - `run_stripe_lifecycle`: advance one resumable step of an isolated test-clock

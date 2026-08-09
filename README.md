@@ -272,11 +272,12 @@ automatic captions into reviewed transcript or H1 gold evidence.
 Stripe staging readiness has a repeatable read-only operator gate:
 `npm run gate:stripe:staging`. It compares the exact D1 show/Price projection
 with test-mode Stripe Product/Price metadata, the hardened Customer Portal,
-the dedicated webhook event set, installed secret names, the webhook journal,
-the Checkout kill switch, and accountant tax state. It never reads a Worker
-secret value or creates a Stripe object. The command succeeds when the posture
-is safe and reports expected activation blockers; add `-- --require-ready` to
-make any remaining blocker fail a promotion check.
+the dedicated Checkout/subscription/customer/invoice webhook event set,
+installed secret names, the webhook journal, the Checkout kill switch, and
+accountant tax state. It never reads a Worker secret value or creates a Stripe
+object. The command succeeds when the posture is safe and reports expected
+activation blockers; add `-- --require-ready` to make any remaining blocker
+fail a promotion check.
 
 The chapter workbench wraps the original normalized `episode_chapters` rows
 with optimistic mutations, immutable revision snapshots, Admin approval, and

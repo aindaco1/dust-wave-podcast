@@ -192,16 +192,18 @@ export function evaluateLaunchStagingReadiness(snapshot) {
   );
 
   const resend = snapshot.resend ?? {};
-  const resendReady = boundedCount(resend.delivered) > 0
-    && boundedCount(resend.suppressed) > 0
+  const resendReady = boundedCount(resend.consentedDelivered) > 0
+    && boundedCount(resend.postDeliveryWithdrawals) > 0
+    && boundedCount(resend.providerSuppression) > 0
     && boundedCount(resend.failed) === 0;
   add(
     resendReady ? "PASS" : "BLOCK",
     "resend",
     "Controlled Resend test record",
     resendReady
-      ? "matched delivery and suppression evidence exist with no failed delivery"
-      : "complete one consented staging send, matched delivery transition, and suppression exercise"
+      ? "consented delivery, listener withdrawal, and fresh isolated provider "
+        + "suppression exist with no failed delivery"
+      : resendBlockDetail(resend)
   );
 
   const dynamicAds = snapshot.dynamicAds ?? {};
@@ -499,16 +501,53 @@ function launchStateStatements(episodeId, validatorVersion) {
       ) AS channel_access_ready
     FROM episode_youtube_publications
     WHERE show_id = ${showId};
+    WITH provider_suppression AS (
+      SELECT run.source_commit, scenario.completed_at, scenario.id
+      FROM launch_lab_provider_scenarios scenario
+      JOIN launch_lab_runs run ON run.id = scenario.run_id
+      JOIN shows fixture_show ON fixture_show.id = run.show_id
+      WHERE scenario.provider = 'resend'
+        AND scenario.scenario = 'suppressed'
+        AND scenario.expected_status = 'suppressed'
+        AND scenario.observed_status = 'suppressed'
+        AND scenario.state = 'passed'
+        AND scenario.failure_code IS NULL
+        AND scenario.provider_id IS NOT NULL
+        AND scenario.completed_at >= datetime('now', '-7 days')
+        AND fixture_show.test_fixture = 1
+    )
     SELECT
       COALESCE(SUM(CASE
-        WHEN delivery.status = 'delivered' THEN 1 ELSE 0 END), 0)
-        AS delivered,
+        WHEN delivery.status = 'delivered'
+          AND delivery.provider_id IS NOT NULL
+        THEN 1 ELSE 0 END), 0) AS consented_delivered,
       COALESCE(SUM(CASE
         WHEN delivery.status = 'suppressed' THEN 1 ELSE 0 END), 0)
-        AS suppressed,
+        AS listener_suppressed,
+      COALESCE(SUM(CASE
+        WHEN delivery.status = 'delivered'
+          AND delivery.provider_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM show_notification_preferences preference
+            WHERE preference.listener_id = delivery.listener_id
+              AND preference.show_id = announcement.show_id
+              AND preference.announcements_enabled = 0
+              AND preference.withdrawn_at IS NOT NULL
+              AND preference.updated_at > delivery.preference_updated_at
+              AND preference.withdrawn_at >= delivery.completed_at
+          )
+        THEN 1 ELSE 0 END), 0) AS post_delivery_withdrawals,
       COALESCE(SUM(CASE
         WHEN delivery.status = 'failed' THEN 1 ELSE 0 END), 0)
-        AS failed
+        AS failed,
+      (SELECT COUNT(*) FROM provider_suppression) AS provider_suppression,
+      (
+        SELECT source_commit
+        FROM provider_suppression
+        ORDER BY completed_at DESC, id DESC
+        LIMIT 1
+      ) AS provider_suppression_source_commit
     FROM podcast_announcement_deliveries delivery
     JOIN podcast_announcements announcement
       ON announcement.id = delivery.announcement_id
@@ -567,12 +606,46 @@ function presentYoutube(row) {
   };
 }
 
-function presentResend(row) {
+export function presentResend(row, sourceCurrent = null) {
+  const sourceCommit = String(
+    row?.provider_suppression_source_commit ?? ""
+  );
+  const providerSuppression = boundedCount(row?.provider_suppression);
+  const providerSourceCurrent = typeof sourceCurrent === "boolean"
+    ? sourceCurrent
+    : /^[a-f0-9]{40}$/.test(sourceCommit)
+      && resendSourceIsCurrent(sourceCommit);
   return {
-    delivered: boundedCount(row?.delivered),
-    suppressed: boundedCount(row?.suppressed),
+    consentedDelivered: boundedCount(row?.consented_delivered),
+    postDeliveryWithdrawals: boundedCount(row?.post_delivery_withdrawals),
+    listenerSuppressed: boundedCount(row?.listener_suppressed),
+    providerSuppression:
+      providerSuppression > 0
+      && providerSourceCurrent
+        ? providerSuppression
+        : 0,
     failed: boundedCount(row?.failed)
   };
+}
+
+function resendBlockDetail(resend) {
+  const missing = [];
+  if (boundedCount(resend.consentedDelivered) === 0) {
+    missing.push("consented live delivery");
+  }
+  if (boundedCount(resend.postDeliveryWithdrawals) === 0) {
+    missing.push("post-delivery listener withdrawal");
+  }
+  if (boundedCount(resend.providerSuppression) === 0) {
+    missing.push("fresh isolated provider suppression");
+  }
+  const failures = boundedCount(resend.failed);
+  if (failures > 0) {
+    missing.push(
+      `${failures} failed live ${failures === 1 ? "delivery" : "deliveries"}`
+    );
+  }
+  return `missing durable evidence: ${missing.join(", ")}`;
 }
 
 function presentDynamicAds(row) {
@@ -651,6 +724,29 @@ function gitSourceIsCurrent(sourceCommit) {
     "scripts/run-virtual-audio-load-gate.mjs",
     ".github/workflows/virtual-audio-staging-gate.yml",
     "wrangler.jsonc"
+  ];
+  const result = spawnSync(
+    "git",
+    ["diff", "--quiet", sourceCommit, "--", ...selectedPaths],
+    {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      timeout: 10_000
+    }
+  );
+  return result.status === 0;
+}
+
+function resendSourceIsCurrent(sourceCommit) {
+  const selectedPaths = [
+    "src/announcement-delivery.ts",
+    "src/launch-lab-resend.ts",
+    "src/launch-lab.ts",
+    "src/resend.ts",
+    "shared/dust-wave-platform/packages/worker-core/src/resend.d.ts",
+    "shared/dust-wave-platform/packages/worker-core/src/resend.js",
+    "config/launch-lab-matrix.json",
+    ".github/workflows/launch-lab-staging.yml"
   ];
   const result = spawnSync(
     "git",

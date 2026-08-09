@@ -1295,7 +1295,12 @@ Before the first controlled Checkout:
    D1 policy/audit/assignment atomically; it does not enable Checkout. Stop if
    the candidate is stale or broader than the underlying Store evidence.
 4. Confirm the signed webhook subscribes to `checkout.session.completed`,
-   `checkout.session.expired`, and `customer.subscription.*`.
+   `checkout.session.expired`, `customer.updated`, the five consumed
+   `customer.subscription.*` lifecycle events, and all seven invoice events
+   recognized by the tax-evidence projection: `invoice.created`,
+   `invoice.updated`, `invoice.finalized`, `invoice.paid`,
+   `invoice.payment_failed`, `invoice.voided`, and
+   `invoice.marked_uncollectible`.
 5. Verify `GET /v1/admin/billing/readiness` shows every dependency and zero
    failed journal events.
 6. Set `SUBSCRIPTION_CHECKOUT_ENABLED=true`, deploy only the reviewed commit,
@@ -1315,8 +1320,9 @@ a Customer, Checkout Session, Subscription, charge, or tax object:
   exclusive $5 monthly Price, exclusive $50 annual Price, USD currency,
   intervals, lookup keys, and show metadata;
 - the active test webhook targets only the Podcast staging route, pins the
-  Worker API version, and includes Checkout completion/expiration plus the
-  subscription lifecycle events consumed by the projection;
+  Worker API version, and includes Checkout completion/expiration,
+  subscription lifecycle, customer tax-preview, and invoice tax-evidence
+  events consumed by the projection;
 - two provider-signed test Checkout expiration events are processed with zero
   failed journal entries;
 - the Podcast-only test Portal configuration is active, permits payment-method
@@ -1884,6 +1890,15 @@ dynamic-ad node to an independently retained run instead. Evidence is accepted
 only for the signed 5,000-pair/10,000-request exercise, full cleanup, a
 seven-day freshness window, and no relevant source drift.
 
+The Resend node keeps listener and provider evidence separate. It requires one
+real live announcement whose signed provider transition reached `delivered`,
+a later withdrawal of that same listener/show preference, zero failed live
+deliveries, and one passed `suppressed@resend.dev` Launch Lab scenario completed
+within seven days with no relevant Resend adapter, webhook, shared verifier,
+matrix, or workflow drift. A listener-side `suppressed` delivery cannot replace
+the provider rehearsal, and a Launch Lab delivery cannot replace listener
+consent or withdrawal.
+
 The 2026-07-29 isolated rerun passed all 24 protocol probes and 10,000 paired
 requests with zero errors, zero content mismatches, and 27.97 ms p95 added
 latency. The signed diagnostic lease and every temporary object were removed.
@@ -2169,7 +2184,13 @@ projection agree. The full recovery-payment refund additionally requires an
 exact paid Invoice Payment and terminal successful provider refund. Scenarios
 needing a native client, an unlisted YouTube object, or directory ingestion
 remain `pending` until their adapters produce truthful evidence. A pending or
-passing synthetic scenario never counts as launch evidence.
+passing synthetic scenario never counts as listener, billing, publication,
+directory, native-client, or durable campaign evidence. The only narrow
+exception is the fresh, passed Resend `suppressed` scenario: the composed
+launch gate may use it for the technical provider-suppression subcheck because
+the designated test address cannot complete listener authentication. It
+cannot satisfy the separate consented-delivery or post-delivery-withdrawal
+checks, and the Launch Lab response remains `launchGateEligible: false`.
 
 Before accepting a run, confirm the public probe returns `404` for both the
 fixture show API and fixture RSS URL, the private fixture feed emits

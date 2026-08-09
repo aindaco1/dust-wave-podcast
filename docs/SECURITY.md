@@ -244,7 +244,11 @@
   recipient, subject, body, or provider payload evidence. Terminal suppression
   outranks delivery regardless of event order, intermediate delivery before a
   complaint remains non-passing, and recovery reuses the original idempotency
-  key without resending.
+  key without resending. The composed launch gate accepts only a passed,
+  failure-free, fixture-scoped `suppressed` scenario completed within seven
+  days, with no relevant Resend source drift, for its technical
+  provider-suppression subcheck. That synthetic row can never satisfy the
+  separate real-listener delivery or withdrawal checks.
 - Launch Lab Stripe lifecycle writes are available only when both the runtime
   environment is staging and Stripe mode is test. The signed caller supplies
   no provider object, payment method, customer identity, or expected result.

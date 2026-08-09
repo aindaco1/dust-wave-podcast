@@ -83,7 +83,7 @@ commit. Public and staging now use the same immutable asset version.
 
 The composed read-only gate was run on 2026-08-08 by the durable GitHub
 monitor against the configured
-private launch fixture. It reported **9 pass, 5 block, 0 wait, and 0 fail**.
+private launch fixture. It reported **10 pass, 4 block, 0 wait, and 0 fail**.
 
 | Gate | State | Meaning |
 |---|---|---|
@@ -94,17 +94,39 @@ private launch fixture. It reported **9 pass, 5 block, 0 wait, and 0 fail**.
 | Staging secret names | Pass | All 18 required Worker secret names are installed; values were not inspected or recorded here |
 | Show configuration | Pass | Premium, RSS, canonical site, and YouTube show settings exist |
 | Episode launch scope | Pass | Eight pass, zero block/wait/fail, with transcript alignment and chapters explicitly deferred post-launch |
-| Stripe | Block | Fourteen checks pass; the exact Podcast subscription tax policy is still unapproved |
+| Stripe | Pass | All 15 test-mode checks pass; the exact approved policy is assigned and Stripe-verified while Checkout remains disabled |
 | Directories | Block | `0/10` destinations have all setup, feed validation, ingestion, and failed-to-recovered evidence |
 | YouTube | Partial | Current OAuth refresh reaches the exact configured channel; one controlled, inspected unlisted publication is still absent |
-| Resend | Block | One consented send, matched delivery transition, unsubscribe/suppression exercise is still absent from launch evidence |
+| Resend | Block | One consented live delivery and later listener withdrawal are absent; fresh isolated `suppressed@resend.dev` evidence is a separate technical subcheck |
 | Dynamic ads | Block | Durable evidence still needs an approved episode ad plan, selected decision, and one qualified native-client direct-sponsor download |
 | D1 integrity | Pass | `PRAGMA foreign_key_check` returned no rows |
 
-The separate Stripe gate reported **14 pass, 1 block, 0 fail**. Test Product,
+The separate Stripe gate reported **15 pass, 0 block, 0 fail**. Test Product,
 monthly `$5` Price, annual `$50` Price, hardened Portal, webhook event set,
 installed secret posture, provider-event journal, and disabled Checkout posture
-all pass. The only Stripe block is the unapproved tax-policy version.
+all pass. The owner approved the exact `US-NM-87120` 7.625% exclusive staging
+candidate on 2026-08-08; the importer created, attested, and assigned the
+manual Stripe test Tax Rate without enabling Checkout.
+
+After that clean baseline, the owner authorized one controlled staging
+Checkout on 2026-08-08. The monthly purchase completed, the Stripe entitlement
+became active, the Resend magic link returned to the member account, and one
+private RSS feed was created. The Checkout kill switch was restored to
+`false`. Stripe's live **Successful payments** customer-email setting is now
+enabled, and the sandbox payment's manually sent receipt is recorded in its
+receipt history.
+
+That purchase also exposed a provider-contract gap: the Podcast destination
+still had only the seven original Checkout/subscription events even though the
+Worker already projected invoice and customer tax evidence. The staging
+destination now has the exact 15-event contract, and the checked-in read-only
+gate rejects both missing and additional types. One exact `invoice.paid`
+replay processed successfully and stored a matched, non-PII tax-evidence row
+for the $5.00 subtotal, $0.38 tax, and $5.38 paid total. Keep the current test
+subscription only through the remaining listener-delivery, Portal, and
+cancellation checks; the preflight gate's zero-mutation posture will remain
+intentionally unsatisfied until the provider and D1 test artifacts are cleaned
+up.
 
 The daily GitHub launch monitor is active. The `podcast-staging` environment
 holds a dedicated account-scoped Cloudflare token with only `D1 Read` and
@@ -113,8 +135,8 @@ Products, Prices, Customer Portal, and Webhook Endpoints read access. The
 workflow installs a pinned Stripe CLI archive only after checksum verification;
 neither credential is copied into the repository or retained in its bounded
 artifact. On-demand run
-[31274035980](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31274035980)
-passed and retained the authoritative 9-pass / 5-block / 0-wait / 0-fail JSON
+[31287625113](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31287625113)
+passed and retained the authoritative 10-pass / 4-block / 0-wait / 0-fail JSON
 report for 30 days. The daily schedule can now detect drift without owner
 intervention.
 
@@ -197,14 +219,13 @@ At handoff, these major boundaries are implemented:
 
 ### 1. Clear the non-content launch evidence
 
-- Import and approve the exact versioned Podcast tax policy through the
-  existing recent-auth Super-admin flow only if the recorded registration,
-  taxability, jurisdiction, rate, evidence reference, approver, and effective
-  date all match. Re-run Stripe and composed gates. Do not enable Checkout.
 - Complete one consented staging listener journey: human Turnstile, magic-link
-  return, entitlement/account page, one announcement delivery, unsubscribe,
-  signed suppression, and no-resend reconciliation. Keep the recipient outside
-  Git and restore announcement mode to `dry_run`.
+  return, entitlement/account page, one live announcement delivery, later
+  one-click withdrawal, and no-resend reconciliation. Keep the recipient
+  outside Git and restore announcement mode to `dry_run`. Use only the fresh
+  isolated Launch Lab `suppressed@resend.dev` result for the separate technical
+  provider-suppression subcheck; never manufacture a bounce, complaint, or
+  suppression against the real listener address.
 - Select the Pool tier/add-on and entitlement duration only when the business
   policy is decided. The seven synthetic grant/redeem/overlap/expiry/revoke
   contracts already pass and should not be reimplemented.
