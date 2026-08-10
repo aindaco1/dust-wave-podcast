@@ -82,9 +82,9 @@ commit. Public and staging now use the same immutable asset version.
 ## Live launch posture
 
 The composed read-only gate was run on 2026-08-10 by durable GitHub monitor
-[31358882433](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31358882433)
+[31360051564](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31360051564)
 against the configured
-private launch fixture. It reported **10 pass, 4 block, 0 wait, and 0 fail**.
+private launch fixture. It reported **11 pass, 3 block, 0 wait, and 0 fail**.
 
 | Gate | State | Meaning |
 |---|---|---|
@@ -99,7 +99,7 @@ private launch fixture. It reported **10 pass, 4 block, 0 wait, and 0 fail**.
 | Directories | Block | `0/10` destinations have all setup, feed validation, ingestion, and failed-to-recovered evidence |
 | YouTube channel access | Pass | A refreshed purpose-bound grant reached the exact configured `@dustwavecollective` channel, and the durable health record is current with zero consecutive failures |
 | YouTube publication | Block | One controlled, inspected unlisted publication is absent and remains held until a separate publishable fixture exists |
-| Resend | Block | The consented live delivery, later listener withdrawal, and zero failed live deliveries remain recorded, but the current gate does not find a fresh isolated provider-suppression record |
+| Resend | Pass | A consented live delivery, later listener withdrawal, fresh isolated provider suppression, and zero failed live deliveries are durably recorded |
 | Dynamic ads | Block | The current signed synthetic gate passes; durable evidence still needs an approved episode ad plan, selected decision, and one qualified native-client direct-sponsor download |
 | D1 integrity | Pass | `PRAGMA foreign_key_check` returned no rows |
 
@@ -137,9 +137,13 @@ live delivery failed. Same-commit Launch Lab reconciliation
 [31347088597](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31347088597)
 advanced the isolated `suppressed@resend.dev` scenario from accepted to
 terminal suppression without resending. The current authoritative monitor no
-longer finds a qualifying fresh durable suppression record, so rerun and
-reconcile the current isolated suppression scenario before treating the
-Resend node as passed; no new real recipient or owner approval is required.
+longer requires a provider rerun: the apparent regression came from a shallow
+monitor checkout that could not compare the still-current evidence commit
+after documentation-only commits. Commit `e7b7b1b` makes the monitor fetch
+history before checking source drift, and run
+[31360051564](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31360051564)
+passed the existing fresh, provider-correlated suppression record without
+contacting Resend again.
 
 Any later provider cleanup must target only exact verified test artifacts.
 Do not delete or rewrite terminal content-free D1 evidence merely to make a
@@ -152,10 +156,11 @@ Products, Prices, Customer Portal, and Webhook Endpoints read access. The
 workflow installs a pinned Stripe CLI archive only after checksum verification;
 neither credential is copied into the repository or retained in its bounded
 artifact. On-demand run
-[31287625113](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31287625113)
-passed and retained the authoritative 10-pass / 4-block / 0-wait / 0-fail JSON
-report for 30 days. The daily schedule can now detect drift without owner
-intervention.
+[31360051564](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31360051564)
+passed and retained the authoritative 11-pass / 3-block / 0-wait / 0-fail JSON
+report for 30 days. Its full-history checkout preserves source-current provider
+evidence across unrelated commits, so the daily schedule can detect real drift
+without owner intervention.
 
 ## Product decisions that must survive the handoff
 
