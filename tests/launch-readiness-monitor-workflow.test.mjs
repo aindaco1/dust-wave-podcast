@@ -21,6 +21,10 @@ describe("launch readiness monitor workflow", () => {
     expect(workflow).not.toContain("--require-ready");
   });
 
+  it("fetches evidence history before checking source drift", () => {
+    expect(workflow).toContain("fetch-depth: 0");
+  });
+
   it("uses only read-gate credentials and pins every external action", () => {
     expect(workflow).toContain(
       "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}"
