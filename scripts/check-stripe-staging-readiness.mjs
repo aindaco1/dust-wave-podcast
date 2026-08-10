@@ -57,7 +57,14 @@ WHERE t.status = 'approved'
   AND s.billing_mode = 'test'
   AND s.premium_enabled = 1
   AND s.test_fixture = 0;
-SELECT COUNT(*) AS checkout_attempts
+SELECT
+  COUNT(*) AS checkout_attempts,
+  COALESCE(SUM(CASE
+    WHEN provider_mode != 'test'
+      OR status NOT IN ('completed', 'expired', 'failed')
+    THEN 1
+    ELSE 0
+  END), 0) AS unsafe_checkout_attempts
 FROM subscription_checkout_attempts;
 SELECT
   COUNT(*) AS stripe_events,
@@ -210,12 +217,17 @@ export function evaluateStripeStagingReadiness(snapshot) {
   );
 
   const checkoutAttempts = Number(snapshot.state?.checkoutAttempts ?? 0);
+  const unsafeCheckoutAttempts = Number(
+    snapshot.state?.unsafeCheckoutAttempts ?? 0
+  );
   add(
-    checkoutAttempts === 0 ? "PASS" : "FAIL",
+    unsafeCheckoutAttempts === 0 ? "PASS" : "FAIL",
     "Checkout mutation posture",
-    checkoutAttempts === 0
-      ? "no staging attempts"
-      : "unexpected Checkout attempts exist"
+    unsafeCheckoutAttempts === 0
+      ? checkoutAttempts === 0
+        ? "no staging attempts"
+        : `${checkoutAttempts} terminal test attempt(s); no active mutation`
+      : `${unsafeCheckoutAttempts} nonterminal or non-test attempt(s)`
   );
 
   const approvedTaxVersions = Number(
@@ -323,6 +335,8 @@ export function loadStripeStagingSnapshot() {
     state: {
       approvedTaxVersions: queryResults[2]?.[0]?.approved_tax_versions ?? 0,
       checkoutAttempts: queryResults[3]?.[0]?.checkout_attempts ?? 0,
+      unsafeCheckoutAttempts:
+        queryResults[3]?.[0]?.unsafe_checkout_attempts ?? 0,
       stripeEvents: queryResults[4]?.[0]?.stripe_events ?? 0,
       failedStripeEvents:
         queryResults[4]?.[0]?.failed_stripe_events ?? 0

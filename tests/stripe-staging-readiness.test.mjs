@@ -141,6 +141,35 @@ describe("read-only Stripe staging readiness gate", () => {
       detail: "endpoint, mode, status, or event set mismatch"
     });
   });
+
+  it("retains terminal test checkout evidence without treating it as active", () => {
+    const fixture = readinessFixture();
+    fixture.state.checkoutAttempts = 1;
+
+    const report = evaluateStripeStagingReadiness(fixture);
+
+    expect(report.summary.safe).toBe(true);
+    expect(report.results).toContainEqual({
+      status: "PASS",
+      label: "Checkout mutation posture",
+      detail: "1 terminal test attempt(s); no active mutation"
+    });
+  });
+
+  it("fails closed for a nonterminal or non-test checkout attempt", () => {
+    const fixture = readinessFixture();
+    fixture.state.checkoutAttempts = 1;
+    fixture.state.unsafeCheckoutAttempts = 1;
+
+    const report = evaluateStripeStagingReadiness(fixture);
+
+    expect(report.summary.safe).toBe(false);
+    expect(report.results).toContainEqual({
+      status: "FAIL",
+      label: "Checkout mutation posture",
+      detail: "1 nonterminal or non-test attempt(s)"
+    });
+  });
 });
 
 function readinessFixture() {
@@ -184,6 +213,7 @@ function readinessFixture() {
     state: {
       approvedTaxVersions: 0,
       checkoutAttempts: 0,
+      unsafeCheckoutAttempts: 0,
       stripeEvents: 2,
       failedStripeEvents: 0
     },
