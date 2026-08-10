@@ -61,9 +61,9 @@ Useful browser surfaces:
 
 | Surface | Verified state |
 |---|---|
-| Podcast source | Release `v0.2.26`; implementation snapshot `15b7af1` preserves terminal Stripe test-checkout evidence while rejecting unsafe non-test or nonterminal attempts |
-| Podcast CI | Main CI run [31345449169](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31345449169) passed |
-| Handoff verification | Tracked-secret scan and audit passed, 170 test files / 722 tests passed, and both staging and production deployment dry runs passed |
+| Podcast source | Release `v0.2.26`; implementation snapshot `de55842` adds the content-independent prelaunch gate and current private golden canary while preserving the strict launch boundary |
+| Podcast CI | Main CI run [31362572356](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31362572356) passed |
+| Handoff verification | Tracked-secret scan and audit passed, 171 test files / 732 tests passed, and both staging and production deployment dry runs passed |
 | Podcast staging | Worker version `7a952579-0d7f-4bbf-9eb3-1332bcb5e026`, deployed 2026-08-06 with the `0.2.26` guarded-mode configuration |
 | Podcast production shell | Worker version `1774f68a-3a89-487f-8f99-dc2c37615132`, deployed 2026-08-06; schema is current and public zero-item feed is reachable, but provider capabilities remain fail-closed |
 | D1 | Staging and production both report no pending migrations through `0088` |
@@ -82,10 +82,13 @@ commit. Public and staging now use the same immutable asset version.
 
 ## Live launch posture
 
-The composed read-only gate was run on 2026-08-10 by durable GitHub monitor
-[31360051564](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31360051564)
-against the configured
-private launch fixture. It reported **11 pass, 3 block, 0 wait, and 0 fail**.
+The content-independent composed gate was run on 2026-08-10 by durable GitHub
+monitor
+[31362711418](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31362711418)
+against the configured private launch fixture. It reported **12 pass, 0 block,
+0 wait, 3 content deferrals, and 0 fail**: `platformReady=true` and
+`launchReady=false`. The strict launch view remains **11 pass, 3 block, 0 wait,
+and 0 fail** until real publishable content exists.
 
 | Gate | State | Meaning |
 |---|---|---|
@@ -97,11 +100,12 @@ private launch fixture. It reported **11 pass, 3 block, 0 wait, and 0 fail**.
 | Show configuration | Pass | Premium, RSS, canonical site, and YouTube show settings exist |
 | Episode launch scope | Pass | Eight pass, zero block/wait/fail, with transcript alignment and chapters explicitly deferred post-launch |
 | Stripe | Pass | All 15 test-mode checks pass; the exact approved policy is assigned and Stripe-verified while Checkout remains disabled |
-| Directories | Block | `0/10` destinations have all setup, feed validation, ingestion, and failed-to-recovered evidence |
+| Private golden canary | Pass | The newest isolated run passes all 24 selected content-safe contract scenarios, and the current signed 5,000-pair/10,000-request media/load gate includes complete cleanup |
+| Directories | Defer | `0/10` destinations have all setup, feed validation, ingestion, and failed-to-recovered evidence; item-dependent proof starts with a rights-cleared trailer or episode |
 | YouTube channel access | Pass | A refreshed purpose-bound grant reached the exact configured `@dustwavecollective` channel, and the durable health record is current with zero consecutive failures |
-| YouTube publication | Block | One controlled, inspected unlisted publication is absent and remains held until a separate publishable fixture exists |
+| YouTube publication | Defer | One controlled, inspected unlisted publication is absent and remains held until a separate publishable fixture exists |
 | Resend | Pass | A consented live delivery, later listener withdrawal, fresh isolated provider suppression, and zero failed live deliveries are durably recorded |
-| Dynamic ads | Block | The current signed synthetic gate passes; durable evidence still needs an approved episode ad plan, selected decision, and one qualified native-client direct-sponsor download |
+| Dynamic ads | Defer | The current signed synthetic gate passes; durable evidence still needs an approved episode ad plan, selected decision, and one qualified native-client direct-sponsor download |
 | D1 integrity | Pass | `PRAGMA foreign_key_check` returned no rows |
 
 The separate Stripe gate reported **15 pass, 0 block, 0 wait, and 0 fail**.
@@ -150,18 +154,21 @@ Any later provider cleanup must target only exact verified test artifacts.
 Do not delete or rewrite terminal content-free D1 evidence merely to make a
 gate pass.
 
-The daily GitHub launch monitor is active. The `podcast-staging` environment
+The daily GitHub platform/launch monitor is active. The `podcast-staging`
+environment
 holds a dedicated account-scoped Cloudflare token with only `D1 Read` and
 `Workers Scripts Read`, plus a dedicated Stripe restricted test key with only
 Products, Prices, Customer Portal, and Webhook Endpoints read access. The
 workflow installs a pinned Stripe CLI archive only after checksum verification;
 neither credential is copied into the repository or retained in its bounded
 artifact. On-demand run
-[31360051564](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31360051564)
-passed and retained the authoritative 11-pass / 3-block / 0-wait / 0-fail JSON
-report for 30 days. Its full-history checkout preserves source-current provider
-evidence across unrelated commits, so the daily schedule can detect real drift
-without owner intervention.
+[31362711418](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31362711418)
+passed and retained the authoritative 12-pass / 0-block / 0-wait / 3-deferred /
+0-fail JSON report for 30 days. Its full-history checkout preserves
+source-current provider evidence across unrelated commits, so the daily
+schedule can detect real drift without owner intervention. It reports
+platform and strict launch readiness separately and never converts a safety or
+non-content blocker into a deferral.
 
 ## Product decisions that must survive the handoff
 
@@ -248,6 +255,11 @@ At handoff, these major boundaries are implemented:
 
 ### 2. Prepare everything that can precede a real episode
 
+- Keep the content-independent gate at `platformReady=true`. Its private golden
+  canary composes 24 current isolated contract scenarios with the signed
+  virtual-audio protocol/load gate. The exact-channel access node remains a
+  separate, fresher live proof; no rehearsal should create duplicate provider
+  activity merely to restate that result.
 - Keep the Launch Lab's 41-scenario reconciliation and the virtual-audio gate
   current through scheduled workflows. Same-commit Launch Lab run
   [31347088597](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31347088597)
