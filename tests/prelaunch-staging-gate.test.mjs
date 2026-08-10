@@ -265,6 +265,7 @@ describe("golden canary evidence presentation", () => {
 
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).not.toContain("directory:ingestion_observed");
+    expect(keys).not.toContain("youtube:channel_identity");
     expect(keys).not.toContain("youtube:unlisted_audio_only");
     expect(keys).not.toContain("ads:native_client_qualified");
   });

@@ -53,9 +53,9 @@ npm run gate:launch:staging -- "$LAUNCH_EPISODE_ID" --require-ready
 The prelaunch report adds one `Private golden-canary rehearsal` node. It
 reuses existing durable evidence instead of building another fixture system:
 
-1. the newest isolated Launch Lab run must pass the selected 25 contract
+1. the newest isolated Launch Lab run must pass the selected 24 contract
    scenarios for ads, directory preflight, Pool, Resend, RSS, Stripe webhooks,
-   and YouTube identity/timing/exclusion; and
+   and YouTube timing/exclusion; and
 2. the newest signed virtual-audio gate must pass at least 5,000 pairs and
    10,000 measured requests with complete lease and object cleanup.
 
@@ -69,6 +69,11 @@ YouTube-object, and native-client-qualified scenarios. Launch Lab fixtures
 remain hidden from public feeds and normal show selectors, and
 `launchGateEligible: false` remains mandatory. A canary pass is never
 publication, billing, directory, listener, or campaign evidence.
+
+Exact YouTube channel identity is intentionally not duplicated inside the
+canary. The composed report's separate `YouTube channel access` node requires
+a successful refresh grant to reach the exact configured channel within 24
+hours; that stricter live access result must pass for `platformReady`.
 
 Refresh the two inputs through the existing protected workflows documented in
 the staging runbook. The daily readiness monitor only reads their bounded D1

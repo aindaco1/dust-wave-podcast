@@ -79,19 +79,37 @@ export function evaluatePrelaunchStagingReadiness(snapshot) {
 function goldenCanaryBlockDetail(canary, virtualAudioReady) {
   const requirements = [];
   const failures = boundedCount(canary.failureCount);
+  const requirementCount = boundedCount(canary.requirementCount);
+  const observedCount = boundedCount(canary.observedRequirementCount);
+  const passedCount = boundedCount(canary.passedCount);
   if (failures > 0) {
     requirements.push(
       `${failures} isolated contract ${failures === 1 ? "failure" : "failures"}`
     );
-  } else if (canary.passed !== true) {
-    requirements.push("refresh the fresh, source-current Launch Lab rehearsal");
+  }
+  if (observedCount !== requirementCount) {
+    requirements.push(
+      `${observedCount}/${requirementCount} required isolated contract scenario(s) are present`
+    );
+  } else if (passedCount !== requirementCount) {
+    requirements.push(
+      `${passedCount}/${requirementCount} required isolated contract scenario(s) passed`
+    );
+  }
+  if (canary.fresh !== true) {
+    requirements.push("the Launch Lab rehearsal is missing or older than seven days");
+  }
+  if (canary.sourceCurrent !== true) {
+    requirements.push("relevant Launch Lab source changed after the rehearsal");
   }
   if (!virtualAudioReady) {
     requirements.push(
       "refresh the signed synthetic media/load gate with complete cleanup"
     );
   }
-  return requirements.join("; ");
+  return requirements.length > 0
+    ? requirements.join("; ")
+    : "refresh the complete Launch Lab rehearsal";
 }
 
 function presentAction(nodes, statuses) {

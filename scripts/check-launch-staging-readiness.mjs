@@ -62,7 +62,6 @@ export const goldenCanaryRequirements = Object.freeze([
     scenario: "transcript_chapter_contract"
   }),
   Object.freeze({ provider: "stripe", scenario: "webhook_contract" }),
-  Object.freeze({ provider: "youtube", scenario: "channel_identity" }),
   Object.freeze({ provider: "youtube", scenario: "early_access_hold" }),
   Object.freeze({
     provider: "youtube",
@@ -880,7 +879,6 @@ function goldenCanarySourceIsCurrent(sourceCommit) {
     "src/feed.ts",
     "src/launch-lab-ledger.ts",
     "src/launch-lab-resend.ts",
-    "src/launch-lab-youtube.ts",
     "src/launch-lab.ts",
     "src/pool-redemptions.ts",
     "src/resend.ts",
