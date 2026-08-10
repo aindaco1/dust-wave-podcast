@@ -1868,8 +1868,24 @@ idempotent only when their stored checksum metadata matches exactly.
 
 ## 6. Controlled external tests
 
-Before promoting any external boundary, run the composed read-only launch
-report against the isolated launch episode:
+Before a publishable episode exists, run the content-independent prelaunch
+report against the private launch episode:
+
+```sh
+npm run gate:prelaunch:staging -- EPISODE_ID
+```
+
+This report preserves the strict launch result while separately proving
+`platformReady`. It adds the current private golden canary and turns only the
+directory-ingestion, controlled YouTube-publication, and real-client dynamic-ad
+blocks into explicit `DEFER` results. See
+[`PRELAUNCH_READINESS.md`](PRELAUNCH_READINESS.md) for the exact boundary and
+first-content activation sequence. Use `--require-ready` here only to enforce
+platform readiness; content deferrals remain visible and `launchReady` remains
+false.
+
+Before promoting any external boundary, run the strict composed read-only
+launch report against the same episode:
 
 ```sh
 npm run gate:launch:staging -- EPISODE_ID

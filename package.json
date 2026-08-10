@@ -20,6 +20,7 @@
     "gate:episode:staging": "node scripts/check-episode-staging-gate.mjs",
     "gate:stripe:staging": "node scripts/check-stripe-staging-readiness.mjs",
     "gate:launch:staging": "node scripts/check-launch-staging-readiness.mjs",
+    "gate:prelaunch:staging": "node scripts/check-prelaunch-staging-readiness.mjs",
     "gate:public:staging": "node scripts/verify-public-release.mjs staging",
     "gate:public:production": "node scripts/verify-public-release.mjs production",
     "launch-lab": "node scripts/launch-lab-client.mjs",

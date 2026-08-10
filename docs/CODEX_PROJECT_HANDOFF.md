@@ -34,6 +34,7 @@ npm run gate:stripe:staging
 
 LAUNCH_EPISODE_ID="$(gh variable get PODCAST_LAUNCH_EPISODE_ID --env podcast-staging)"
 npm run gate:launch:staging -- "$LAUNCH_EPISODE_ID"
+npm run gate:prelaunch:staging -- "$LAUNCH_EPISODE_ID"
 
 npm run gate:public:staging
 npm run gate:public:production
@@ -366,6 +367,8 @@ passing zero-item public gate is not permission to promote any capability.
 - [`DYNAMIC_ADS_GATE.md`](DYNAMIC_ADS_GATE.md),
   [`VIRTUAL_AUDIO_GATE.md`](VIRTUAL_AUDIO_GATE.md), and
   [`CLIP_RENDER_GATE.md`](CLIP_RENDER_GATE.md): media-specific evidence.
+- [`PRELAUNCH_READINESS.md`](PRELAUNCH_READINESS.md): content-independent
+  platform readiness, private golden canary, and first-content activation.
 - [`ALIGNMENT_GATE.md`](ALIGNMENT_GATE.md): unchanged post-launch transcript and
   word-alignment quality boundary.
 - [Cross-repository completion plan](https://github.com/aindaco1/dust-wave-new/blob/main/PODCAST_PLATFORM_EXECUTION_PLAN.md):

@@ -50,7 +50,7 @@ jobs:
           chmod 700 stripe
           echo "$RUNNER_TEMP/stripe-cli" >> "$GITHUB_PATH"
 
-      - name: Read the content-free launch gate
+      - name: Read the content-free platform and launch gate
         id: gate
         continue-on-error: true
         env:
@@ -71,7 +71,7 @@ jobs:
           install -d -m 700 "$REPORT_DIRECTORY"
           install /dev/null -m 600 "$REPORT_DIRECTORY/report.json"
           set +e
-          npm run --silent gate:launch:staging -- \
+          npm run --silent gate:prelaunch:staging -- \
             "$PODCAST_LAUNCH_EPISODE_ID" \
             --json > "$REPORT_DIRECTORY/report.json"
           status=$?
@@ -86,7 +86,7 @@ jobs:
           echo "report_ready=$report_ready" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Add bounded launch summary
+      - name: Add bounded platform and launch summary
         if: ${{ always() && steps.gate.outputs.configured == 'true' && steps.gate.outputs.report_ready == 'true' }}
         env:
           LAUNCH_GATE_REPORT: ${{ runner.temp }}/podcast-launch-readiness/report.json
@@ -98,7 +98,7 @@ jobs:
           echo "### Monitor result" >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           echo "- Result: FAIL" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Reason: the bounded report contains one or more failed safety gates" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Reason: the bounded report contains one or more failed platform or safety gates" >> "$GITHUB_STEP_SUMMARY"
           echo "- Classification: policy failure; the scoped live read completed" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report failed live read

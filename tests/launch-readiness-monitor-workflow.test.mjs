@@ -16,7 +16,7 @@ describe("launch readiness monitor workflow", () => {
     expect(workflow).toContain("timeout-minutes: 10");
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("environment: podcast-staging");
-    expect(workflow).toContain("npm run --silent gate:launch:staging");
+    expect(workflow).toContain("npm run --silent gate:prelaunch:staging");
     expect(workflow).toContain("--json");
     expect(workflow).not.toContain("--require-ready");
   });

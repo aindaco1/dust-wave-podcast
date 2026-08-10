@@ -74,6 +74,31 @@ describe("launch readiness summary", () => {
       "| FAIL | Stripe test-mode gate | controlled mutation remains |"
     );
   });
+
+  it("writes platform readiness without hiding content deferrals", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "prelaunch-report-"));
+    const reportPath = path.join(directory, "report.json");
+    const summaryPath = path.join(directory, "summary.md");
+    writeFileSync(reportPath, JSON.stringify(validPrelaunchReport()), "utf8");
+
+    execFileSync(process.execPath, [script], {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        GITHUB_STEP_SUMMARY: summaryPath,
+        LAUNCH_GATE_REPORT: reportPath
+      },
+      stdio: "pipe"
+    });
+
+    const summary = readFileSync(summaryPath, "utf8");
+    expect(summary).toContain("- Platform ready: yes");
+    expect(summary).toContain("- Launch ready: no");
+    expect(summary).toContain("- Content deferred: 1");
+    expect(summary).toContain(
+      "| DEFER | Controlled YouTube test record | requires publishable content |"
+    );
+  });
 });
 
 function validReport() {
@@ -91,6 +116,28 @@ function validReport() {
       blockCount: 0,
       waitCount: 0,
       failCount: 1
+    }
+  };
+}
+
+function validPrelaunchReport() {
+  return {
+    schemaVersion: 1,
+    reportType: "prelaunch",
+    nodes: [{
+      status: "DEFER",
+      label: "Controlled YouTube test record",
+      detail: "requires publishable content"
+    }],
+    summary: {
+      safe: true,
+      platformReady: true,
+      launchReady: false,
+      passCount: 0,
+      blockCount: 0,
+      waitCount: 0,
+      deferredCount: 1,
+      failCount: 0
     }
   };
 }

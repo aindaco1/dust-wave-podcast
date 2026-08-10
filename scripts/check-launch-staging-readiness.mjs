@@ -33,6 +33,45 @@ const dynamicAdPilotRequirements = Object.freeze([
     label: "qualified direct-sponsor download"
   })
 ]);
+export const goldenCanaryRequirements = Object.freeze([
+  Object.freeze({ provider: "ads", scenario: "targeting_matrix" }),
+  Object.freeze({ provider: "ads", scenario: "house_fallback" }),
+  Object.freeze({ provider: "ads", scenario: "equal_byte_length" }),
+  Object.freeze({ provider: "ads", scenario: "partial_not_qualified" }),
+  Object.freeze({ provider: "directory", scenario: "packet_generation" }),
+  Object.freeze({
+    provider: "directory",
+    scenario: "canonical_feed_validation"
+  }),
+  Object.freeze({ provider: "pool", scenario: "grant" }),
+  Object.freeze({ provider: "pool", scenario: "redeem" }),
+  Object.freeze({ provider: "pool", scenario: "duplicate" }),
+  Object.freeze({ provider: "pool", scenario: "revoke" }),
+  Object.freeze({ provider: "pool", scenario: "expiry" }),
+  Object.freeze({ provider: "pool", scenario: "overlap" }),
+  Object.freeze({ provider: "pool", scenario: "feed_rotation" }),
+  Object.freeze({ provider: "resend", scenario: "delivered" }),
+  Object.freeze({ provider: "resend", scenario: "bounced" }),
+  Object.freeze({ provider: "resend", scenario: "complained" }),
+  Object.freeze({ provider: "resend", scenario: "suppressed" }),
+  Object.freeze({ provider: "rss", scenario: "public_fixture_hidden" }),
+  Object.freeze({ provider: "rss", scenario: "private_directory_block" }),
+  Object.freeze({ provider: "rss", scenario: "enclosure_head_range" }),
+  Object.freeze({
+    provider: "rss",
+    scenario: "transcript_chapter_contract"
+  }),
+  Object.freeze({ provider: "stripe", scenario: "webhook_contract" }),
+  Object.freeze({ provider: "youtube", scenario: "channel_identity" }),
+  Object.freeze({ provider: "youtube", scenario: "early_access_hold" }),
+  Object.freeze({
+    provider: "youtube",
+    scenario: "premium_bonus_exclusion"
+  })
+]);
+const goldenCanarySqlKeys = goldenCanaryRequirements
+  .map(({ provider, scenario }) => `'${provider}:${scenario}'`)
+  .join(", ");
 
 const stagingPosture = Object.freeze({
   AD_DECISION_MODE: "staging_validate",
@@ -284,7 +323,7 @@ export function loadLaunchStagingSnapshot(
     "--command",
     launchStateStatements(escapedEpisodeId, escapedValidatorVersion)
   ]);
-  if (!Array.isArray(response) || response.length !== 7) {
+  if (!Array.isArray(response) || response.length !== 8) {
     throw new Error("D1 returned an incomplete launch-state snapshot.");
   }
   const results = response.map((entry) => entry.results ?? []);
@@ -308,7 +347,8 @@ export function loadLaunchStagingSnapshot(
     virtualAudioEvidence: virtualAudioEvidencePath
       ? loadVirtualAudioEvidence(virtualAudioEvidencePath)
       : presentStoredVirtualAudioEvidence(results[5][0]),
-    foreignKeyViolations: results[6].length,
+    goldenCanaryEvidence: presentGoldenCanaryEvidence(results[6]),
+    foreignKeyViolations: results[7].length,
     remoteReadOnly: response.every((entry) =>
       Number(entry.meta?.changes ?? 0) === 0
       && Number(entry.meta?.rows_written ?? 0) === 0
@@ -583,6 +623,36 @@ function launchStateStatements(episodeId, validatorVersion) {
     FROM virtual_audio_gate_runs
     ORDER BY generated_at DESC, created_at DESC
     LIMIT 1;
+    SELECT
+      run.source_commit,
+      run.started_at,
+      COUNT(*) AS required_count,
+      SUM(CASE
+        WHEN scenario.state = 'passed'
+          AND scenario.observed_status = scenario.expected_status
+          AND scenario.failure_code IS NULL
+          AND scenario.completed_at IS NOT NULL
+        THEN 1 ELSE 0 END
+      ) AS passed_count,
+      SUM(CASE
+        WHEN (
+            scenario.state = 'failed'
+            OR scenario.failure_code IS NOT NULL
+          )
+        THEN 1 ELSE 0 END
+      ) AS failure_count,
+      MIN(scenario.completed_at) AS oldest_completed_at,
+      MAX(scenario.completed_at) AS newest_completed_at
+    FROM launch_lab_runs run
+    JOIN launch_lab_provider_scenarios scenario
+      ON scenario.run_id = run.id
+    JOIN shows fixture_show ON fixture_show.id = run.show_id
+    WHERE fixture_show.test_fixture = 1
+      AND (scenario.provider || ':' || scenario.scenario)
+        IN (${goldenCanarySqlKeys})
+    GROUP BY run.id, run.source_commit, run.started_at
+    ORDER BY run.started_at DESC, run.id DESC
+    LIMIT 5;
     PRAGMA foreign_key_check;`;
 }
 
@@ -687,6 +757,48 @@ export function presentStoredVirtualAudioEvidence(
       && gitSourceIsCurrent(sourceCommit));
 }
 
+export function presentGoldenCanaryEvidence(
+  rows,
+  sourceCurrent = null
+) {
+  const row = Array.isArray(rows) ? rows[0] : null;
+  const sourceCommit = String(row?.source_commit ?? "");
+  const completedAt = parseDatabaseTimestamp(row?.oldest_completed_at);
+  const ageMs = Date.now() - completedAt;
+  const fresh = Number.isFinite(completedAt)
+    && ageMs >= 0
+    && ageMs <= 7 * 24 * 60 * 60 * 1000;
+  const sourceIsCurrent = typeof sourceCurrent === "boolean"
+    ? sourceCurrent
+    : /^[a-f0-9]{40}$/.test(sourceCommit)
+      && goldenCanarySourceIsCurrent(sourceCommit);
+  const requirementCount = goldenCanaryRequirements.length;
+  const observedRequirementCount = boundedCount(row?.required_count);
+  const passedCount = boundedCount(row?.passed_count);
+  const failureCount = boundedCount(row?.failure_count);
+  return {
+    passed: observedRequirementCount === requirementCount
+      && passedCount === requirementCount
+      && failureCount === 0
+      && fresh
+      && sourceIsCurrent,
+    requirementCount,
+    observedRequirementCount,
+    passedCount,
+    failureCount,
+    fresh,
+    sourceCurrent: sourceIsCurrent
+  };
+}
+
+function parseDatabaseTimestamp(value) {
+  const text = String(value ?? "").trim();
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)
+    ? `${text.replace(" ", "T")}Z`
+    : text;
+  return Date.parse(normalized);
+}
+
 function dynamicAdBlockDetail(virtualAudioReady, missingEvidence) {
   const requirements = [];
   if (!virtualAudioReady) {
@@ -746,6 +858,38 @@ function resendSourceIsCurrent(sourceCommit) {
     "shared/dust-wave-platform/packages/worker-core/src/resend.d.ts",
     "shared/dust-wave-platform/packages/worker-core/src/resend.js",
     "config/launch-lab-matrix.json",
+    ".github/workflows/launch-lab-staging.yml"
+  ];
+  const result = spawnSync(
+    "git",
+    ["diff", "--quiet", sourceCommit, "--", ...selectedPaths],
+    {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      timeout: 10_000
+    }
+  );
+  return result.status === 0;
+}
+
+function goldenCanarySourceIsCurrent(sourceCommit) {
+  const selectedPaths = [
+    "src/ad-runtime.ts",
+    "src/announcement-delivery.ts",
+    "src/feed-validation.ts",
+    "src/feed.ts",
+    "src/launch-lab-ledger.ts",
+    "src/launch-lab-resend.ts",
+    "src/launch-lab-youtube.ts",
+    "src/launch-lab.ts",
+    "src/pool-redemptions.ts",
+    "src/resend.ts",
+    "shared/dust-wave-platform",
+    "config/launch-lab-fixture.json",
+    "config/launch-lab-matrix.json",
+    "scripts/build-launch-lab-contract-observations.mjs",
+    "scripts/lib/direct-sponsor-demo-gate.mjs",
+    "scripts/probe-launch-lab-public-boundary.mjs",
     ".github/workflows/launch-lab-staging.yml"
   ];
   const result = spawnSync(
