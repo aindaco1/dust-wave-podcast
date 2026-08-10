@@ -60,7 +60,7 @@ Useful browser surfaces:
 
 | Surface | Verified state |
 |---|---|
-| Podcast source | Release `v0.2.26`; current `main` is `15b7af1`, which preserves terminal Stripe test-checkout evidence while rejecting unsafe non-test or nonterminal attempts |
+| Podcast source | Release `v0.2.26`; implementation snapshot `15b7af1` preserves terminal Stripe test-checkout evidence while rejecting unsafe non-test or nonterminal attempts |
 | Podcast CI | Main CI run [31345449169](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31345449169) passed |
 | Handoff verification | Tracked-secret scan and audit passed, 170 test files / 722 tests passed, and both staging and production deployment dry runs passed |
 | Podcast staging | Worker version `7a952579-0d7f-4bbf-9eb3-1332bcb5e026`, deployed 2026-08-06 with the `0.2.26` guarded-mode configuration |
