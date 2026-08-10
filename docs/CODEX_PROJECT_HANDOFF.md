@@ -1,6 +1,6 @@
 # Codex project handoff
 
-Last verified: 2026-08-08 in `America/Los_Angeles`
+Last verified: 2026-08-09 in `America/Los_Angeles`
 Audience: the next Codex task opened in the `dust-wave-podcast` project
 
 This is a continuation snapshot, not a second readiness database. D1, provider
@@ -60,9 +60,9 @@ Useful browser surfaces:
 
 | Surface | Verified state |
 |---|---|
-| Podcast source | Release `v0.2.26`; the zero-touch launch-monitor restoration and refreshed handoff are tracked in [PR #94](https://github.com/aindaco1/dust-wave-podcast/pull/94) and were validated at `a7c9f96` |
-| Podcast CI | Main CI run [31244532249](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31244532249) passed |
-| Handoff verification | Tracked-secret scan passed over 502 text files, audit reports zero vulnerabilities, 169 test files / 712 tests passed, and both deployment dry runs passed |
+| Podcast source | Release `v0.2.26`; current `main` is `15b7af1`, which preserves terminal Stripe test-checkout evidence while rejecting unsafe non-test or nonterminal attempts |
+| Podcast CI | Main CI run [31345449169](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31345449169) passed |
+| Handoff verification | Tracked-secret scan and audit passed, 170 test files / 722 tests passed, and both staging and production deployment dry runs passed |
 | Podcast staging | Worker version `7a952579-0d7f-4bbf-9eb3-1332bcb5e026`, deployed 2026-08-06 with the `0.2.26` guarded-mode configuration |
 | Podcast production shell | Worker version `1774f68a-3a89-487f-8f99-dc2c37615132`, deployed 2026-08-06; schema is current and public zero-item feed is reachable, but provider capabilities remain fail-closed |
 | D1 | Staging and production both report no pending migrations through `0088` |
@@ -81,8 +81,9 @@ commit. Public and staging now use the same immutable asset version.
 
 ## Live launch posture
 
-The composed read-only gate was run on 2026-08-08 by the durable GitHub
-monitor against the configured
+The composed read-only gate was run on 2026-08-09 by durable GitHub monitor
+[31351405379](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31351405379)
+against the configured
 private launch fixture. It reported **10 pass, 4 block, 0 wait, and 0 fail**.
 
 | Gate | State | Meaning |
@@ -96,17 +97,21 @@ private launch fixture. It reported **10 pass, 4 block, 0 wait, and 0 fail**.
 | Episode launch scope | Pass | Eight pass, zero block/wait/fail, with transcript alignment and chapters explicitly deferred post-launch |
 | Stripe | Pass | All 15 test-mode checks pass; the exact approved policy is assigned and Stripe-verified while Checkout remains disabled |
 | Directories | Block | `0/10` destinations have all setup, feed validation, ingestion, and failed-to-recovered evidence |
-| YouTube | Partial | Current OAuth refresh reaches the exact configured channel; one controlled, inspected unlisted publication is still absent |
-| Resend | Block | One consented live delivery and later listener withdrawal are absent; fresh isolated `suppressed@resend.dev` evidence is a separate technical subcheck |
-| Dynamic ads | Block | Durable evidence still needs an approved episode ad plan, selected decision, and one qualified native-client direct-sponsor download |
+| YouTube channel access | Block | The exact-channel health record is not current; refresh or reauthorize the purpose-bound grant and verify the configured channel |
+| YouTube publication | Block | One controlled, inspected unlisted publication is absent and remains held until a separate publishable fixture exists |
+| Resend | Pass | A consented live delivery, later listener withdrawal, fresh isolated provider suppression, and zero failed live deliveries are durably recorded |
+| Dynamic ads | Block | The current signed synthetic gate passes; durable evidence still needs an approved episode ad plan, selected decision, and one qualified native-client direct-sponsor download |
 | D1 integrity | Pass | `PRAGMA foreign_key_check` returned no rows |
 
-The separate Stripe gate reported **15 pass, 0 block, 0 fail**. Test Product,
-monthly `$5` Price, annual `$50` Price, hardened Portal, webhook event set,
-installed secret posture, provider-event journal, and disabled Checkout posture
-all pass. The owner approved the exact `US-NM-87120` 7.625% exclusive staging
-candidate on 2026-08-08; the importer created, attested, and assigned the
-manual Stripe test Tax Rate without enabling Checkout.
+The separate Stripe gate reported **15 pass, 0 block, 0 wait, and 0 fail**.
+The obsolete test Product and its monthly `$5` and annual `$50` Prices are
+archived. The gate now retains the completed test-mode Checkout attempt as
+terminal evidence while rejecting any non-test or nonterminal attempt.
+Hardened Portal, webhook event set, installed secret posture, provider-event
+journal, and disabled Checkout posture all pass. The owner approved the exact
+`US-NM-87120` 7.625% exclusive staging candidate on 2026-08-08; the importer
+created, attested, and assigned the manual Stripe test Tax Rate without
+enabling Checkout.
 
 After that clean baseline, the owner authorized one controlled staging
 Checkout on 2026-08-08. The monthly purchase completed, the Stripe entitlement
@@ -123,10 +128,19 @@ destination now has the exact 15-event contract, and the checked-in read-only
 gate rejects both missing and additional types. One exact `invoice.paid`
 replay processed successfully and stored a matched, non-PII tax-evidence row
 for the $5.00 subtotal, $0.38 tax, and $5.38 paid total. Keep the current test
-subscription only through the remaining listener-delivery, Portal, and
-cancellation checks; the preflight gate's zero-mutation posture will remain
-intentionally unsatisfied until the provider and D1 test artifacts are cleaned
-up.
+catalog archived and never reactivate it as production inventory.
+
+The controlled Resend listener journey is also complete: one consented live
+delivery reached its signed provider `delivered` transition, the listener
+later withdrew the show preference, no later send remained eligible, and no
+live delivery failed. Same-commit Launch Lab reconciliation
+[31347088597](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31347088597)
+advanced the isolated `suppressed@resend.dev` scenario from accepted to
+terminal suppression without resending.
+
+Any later provider cleanup must target only exact verified test artifacts.
+Do not delete or rewrite terminal content-free D1 evidence merely to make a
+gate pass.
 
 The daily GitHub launch monitor is active. The `podcast-staging` environment
 holds a dedicated account-scoped Cloudflare token with only `D1 Read` and
@@ -217,15 +231,8 @@ At handoff, these major boundaries are implemented:
 
 ## Remaining work, in priority order
 
-### 1. Clear the non-content launch evidence
+### 1. Clear the remaining non-content launch evidence
 
-- Complete one consented staging listener journey: human Turnstile, magic-link
-  return, entitlement/account page, one live announcement delivery, later
-  one-click withdrawal, and no-resend reconciliation. Keep the recipient
-  outside Git and restore announcement mode to `dry_run`. Use only the fresh
-  isolated Launch Lab `suppressed@resend.dev` result for the separate technical
-  provider-suppression subcheck; never manufacture a bounce, complaint, or
-  suppression against the real listener address.
 - Select the Pool tier/add-on and entitlement duration only when the business
   policy is decided. The seven synthetic grant/redeem/overlap/expiry/revoke
   contracts already pass and should not be reimplemented.
@@ -233,14 +240,13 @@ At handoff, these major boundaries are implemented:
 ### 2. Prepare everything that can precede a real episode
 
 - Keep the Launch Lab's 41-scenario reconciliation and the virtual-audio gate
-  current through scheduled workflows. On 2026-08-07, scheduled Launch Lab run
-  [31192270607](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31192270607)
-  tracked 33 passed, seven pending, and one running scenario and completed
-  after its Stripe cleanup; expected real-provider proofs remain non-passing. Scheduled
-  virtual-audio run
-  [31187012789](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31187012789)
-  passed 24 protocol probes and 10,000 paired requests with zero request
-  failures or content mismatches, 71.9 ms p95 added time, and complete lease
+  current through scheduled workflows. Same-commit Launch Lab run
+  [31347088597](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31347088597)
+  tracks 33 passed and eight pending scenarios with no failure; the remaining
+  provider proofs require truthful external evidence. Current virtual-audio
+  run [31351272844](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31351272844)
+  passed 24 protocol probes and 10,000 measured requests with zero request
+  failures or content mismatches, 79.95 ms p95 added time, and complete lease
   and object cleanup.
 - Generate and inspect a dry-run publication snapshot with only private or
   synthetic inputs; assert zero public item, upload, email, charge, directory
