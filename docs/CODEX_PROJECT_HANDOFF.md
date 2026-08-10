@@ -81,8 +81,8 @@ commit. Public and staging now use the same immutable asset version.
 
 ## Live launch posture
 
-The composed read-only gate was run on 2026-08-09 by durable GitHub monitor
-[31351405379](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31351405379)
+The composed read-only gate was run on 2026-08-10 by durable GitHub monitor
+[31358882433](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31358882433)
 against the configured
 private launch fixture. It reported **10 pass, 4 block, 0 wait, and 0 fail**.
 
@@ -97,9 +97,9 @@ private launch fixture. It reported **10 pass, 4 block, 0 wait, and 0 fail**.
 | Episode launch scope | Pass | Eight pass, zero block/wait/fail, with transcript alignment and chapters explicitly deferred post-launch |
 | Stripe | Pass | All 15 test-mode checks pass; the exact approved policy is assigned and Stripe-verified while Checkout remains disabled |
 | Directories | Block | `0/10` destinations have all setup, feed validation, ingestion, and failed-to-recovered evidence |
-| YouTube channel access | Block | The exact-channel health record is not current; refresh or reauthorize the purpose-bound grant and verify the configured channel |
+| YouTube channel access | Pass | A refreshed purpose-bound grant reached the exact configured `@dustwavecollective` channel, and the durable health record is current with zero consecutive failures |
 | YouTube publication | Block | One controlled, inspected unlisted publication is absent and remains held until a separate publishable fixture exists |
-| Resend | Pass | A consented live delivery, later listener withdrawal, fresh isolated provider suppression, and zero failed live deliveries are durably recorded |
+| Resend | Block | The consented live delivery, later listener withdrawal, and zero failed live deliveries remain recorded, but the current gate does not find a fresh isolated provider-suppression record |
 | Dynamic ads | Block | The current signed synthetic gate passes; durable evidence still needs an approved episode ad plan, selected decision, and one qualified native-client direct-sponsor download |
 | D1 integrity | Pass | `PRAGMA foreign_key_check` returned no rows |
 
@@ -130,13 +130,16 @@ replay processed successfully and stored a matched, non-PII tax-evidence row
 for the $5.00 subtotal, $0.38 tax, and $5.38 paid total. Keep the current test
 catalog archived and never reactivate it as production inventory.
 
-The controlled Resend listener journey is also complete: one consented live
+The controlled Resend listener journey is complete: one consented live
 delivery reached its signed provider `delivered` transition, the listener
 later withdrew the show preference, no later send remained eligible, and no
 live delivery failed. Same-commit Launch Lab reconciliation
 [31347088597](https://github.com/aindaco1/dust-wave-podcast/actions/runs/31347088597)
 advanced the isolated `suppressed@resend.dev` scenario from accepted to
-terminal suppression without resending.
+terminal suppression without resending. The current authoritative monitor no
+longer finds a qualifying fresh durable suppression record, so rerun and
+reconcile the current isolated suppression scenario before treating the
+Resend node as passed; no new real recipient or owner approval is required.
 
 Any later provider cleanup must target only exact verified test artifacts.
 Do not delete or rewrite terminal content-free D1 evidence merely to make a
