@@ -96,6 +96,24 @@ empty. Keep every owner state `not_started` until an authorized operator
 actually completes that platform's one-time setup; do not mark a directory
 `verified` merely because its submission page or RSS feed is reachable.
 
+For migration `0089`, create a disposable show only in a fresh local database
+and verify the insert automatically creates one distribution row per current
+destination plus one audio-QC policy, transcription setting, and publication
+evidence version. Replay the same creation request and verify that neither the
+show nor its `show.created` audit duplicates. Do not exercise the production
+creation endpoint as a deployment probe: show identity is permanent, even
+while the show remains private and `coming_soon`.
+
+Delete that same local disposable shell with the exact `DELETE_SHOW {slug}`
+confirmation. Verify the show and untouched default rows are gone, exactly one
+`show.deleted` audit remains, and `deleted_show_identities` permanently retains
+the show ID, slug, feed slug, Podcast GUID, and both opaque request IDs without
+PII. Replay the deletion and confirm no duplicate audit. Confirm both the old
+creation request and a new creation request using the retired slug fail closed.
+Then repeat with an isolated episode and a queue dead-letter incident and
+verify both blocker categories preserve the show. Do not use remote staging or
+production content to test deletion; archive any show with real history.
+
 Migration `0077` is the provider-semantic exception to that default. Verify the
 Overcast information URL is `https://overcast.fm/podcasterinfo`, and untouched
 Overcast show rows move from `not_started` to `not_required`. Confirm a fixture

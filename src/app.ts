@@ -1,5 +1,7 @@
 import {
+  createAdminShow,
   createAdminEpisode,
+  deleteAdminShow,
   listAdminEpisodes,
   listAdminShows,
   publishAdminEpisode,
@@ -977,8 +979,9 @@ async function routeRequest(
     if (method === "GET") return listAdminUsers(request, env);
     if (method === "POST") return inviteAdminUser(request, env);
   }
-  if (url.pathname === "/v1/admin/shows" && method === "GET") {
-    return listAdminShows(request, env);
+  if (url.pathname === "/v1/admin/shows") {
+    if (method === "GET") return listAdminShows(request, env);
+    if (method === "POST") return createAdminShow(request, env);
   }
   if (url.pathname === "/v1/admin/distribution" && method === "GET") {
     return listDistributionDestinations(request, env);
@@ -1386,8 +1389,13 @@ async function routeRequest(
     return updateAdminUserStatus(request, env, adminUserMatch[1]);
   }
   const adminShowMatch = url.pathname.match(ADMIN_SHOW_PATH);
-  if (adminShowMatch && method === "PATCH") {
-    return updateAdminShow(request, env, adminShowMatch[1]);
+  if (adminShowMatch) {
+    if (method === "PATCH") {
+      return updateAdminShow(request, env, adminShowMatch[1]);
+    }
+    if (method === "DELETE") {
+      return deleteAdminShow(request, env, adminShowMatch[1]);
+    }
   }
   const adminEpisodePublishMatch = url.pathname.match(ADMIN_EPISODE_PUBLISH_PATH);
   if (adminEpisodePublishMatch && method === "POST") {

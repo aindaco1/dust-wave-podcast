@@ -345,9 +345,32 @@ including under concurrent requests.
 
 ## Admin
 
+`POST /v1/admin/shows` accepts an opaque `requestId`, the permanent URL
+`slug`, initial bilingual metadata, and the exact confirmation
+`CREATE_SHOW {slug}`. The same request ID and normalized body can be replayed
+without a duplicate write; a changed replay or reused slug returns `409`.
+The Worker always derives the canonical page, canonical feed, and immutable
+Podcasting 2.0 GUID, and forces `coming_soon`, non-Premium, non-fixture
+defaults. The response intentionally reports `publicSiteReady: false` with
+website catalog and artwork blockers. Creating the D1 show is not evidence
+that a public page, feed, checkout, directory listing, or email exists.
+
+`DELETE /v1/admin/shows/{id}` accepts an opaque `requestId` and the exact
+confirmation `DELETE_SHOW {slug}`. It is intentionally narrower than archive:
+only a non-fixture `coming_soon` shell created by the admin workflow can be
+deleted, and only while it has no episodes, audience, billing, publication,
+distribution, media/import, marketing/ad, analytics/operations, scoped-role,
+or customized-policy history. Exact retries are idempotent. The deletion
+retains an immutable audit event and identity tombstone, so the slug, feed
+path, Podcast GUID, and original creation request can never be reused. It does
+not delete a website catalog entry or artwork assets; any show with history
+must be archived instead.
+
 | Method | Path | Roles | Purpose |
 |---|---|---|---|
 | `GET` | `/v1/admin/shows` | analyst+ | Show overview, including the read-only immutable Podcasting 2.0 channel GUID |
+| `POST` | `/v1/admin/shows` | recently authenticated super-admin | Create one private `coming_soon` show with permanent server-derived page, feed, and Podcasting 2.0 identity; never publishes or provisions the website |
+| `DELETE` | `/v1/admin/shows/{id}` | recently authenticated super-admin | Delete only a pristine admin-created `coming_soon` shell after exact confirmation; preserve its retired identity and audit evidence, and block any show with history |
 | `PATCH` | `/v1/admin/shows/{id}` | admin+ | Editable show metadata; artwork must be canonical HTTPS and the optional channel destination must be a canonical YouTube channel URL |
 | `GET` | `/v1/admin/shows/{id}/site-projection` | admin+ | Compare Worker-owned show metadata with the configured site catalog ref without writing |
 | `POST` | `/v1/admin/shows/{id}/site-projection` | recently authenticated super-admin | Recompute and SHA-bind the reviewed site-catalog projection; dry-run unless GitHub publishing is explicitly live |
