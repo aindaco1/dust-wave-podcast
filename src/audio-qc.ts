@@ -13,14 +13,24 @@ import {
   type AdminRole
 } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import {
+  audioQcPolicyContract,
+  audioQcProcessorDispatch as processorDispatch,
+  type AudioQcPolicyRecord
+} from "./audio-qc-policy";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateConflict as audioQcConflict,
+  privateJson
+} from "./http";
+import { mediaProcessorAuthError } from "./media-processor-protocol";
 import { describeProcessorAvailability } from "./processor-mode";
 import { readSignedJsonBody } from "./signed-callback";
 import {
   positiveInteger,
   readJsonObject,
   RequestValidationError,
+  strictInteger,
   validIdentifier
 } from "./validation";
 
@@ -40,19 +50,8 @@ const FAILURE_CODES = new Set([
   "report_invalid"
 ]);
 
-type AudioQcPolicyRow = {
+type AudioQcPolicyRow = AudioQcPolicyRecord & {
   show_id: string;
-  revision: number;
-  mono_integrated_lufs: number;
-  stereo_integrated_lufs: number;
-  integrated_lufs_tolerance: number;
-  maximum_true_peak_dbtp: number;
-  maximum_dc_offset: number;
-  maximum_channel_imbalance_lu: number;
-  maximum_leading_silence_ms: number;
-  maximum_trailing_silence_ms: number;
-  maximum_internal_silence_ms: number;
-  silence_threshold_db: number;
   updated_at: string;
 };
 
@@ -395,7 +394,7 @@ export async function queueAdminEpisodeAudioQc(
     source_object_etag: source.object_etag,
     source_mime_type: source.content_type,
     policy_revision: policy.revision,
-    policy_json: JSON.stringify(policyContract(policy)),
+    policy_json: JSON.stringify(audioQcPolicyContract(policy)),
     processor_manifest_sha256: "",
     status: "queued",
     source_sha256: null,
@@ -465,7 +464,7 @@ export async function queueAdminEpisodeAudioQc(
       source.object_etag,
       source.content_type,
       policy.revision,
-      JSON.stringify(policyContract(policy)),
+      JSON.stringify(audioQcPolicyContract(policy)),
       manifest.manifestSha256,
       access.authorization.identity.id
     ),
@@ -606,7 +605,7 @@ export async function completeAudioQcRun(
     invalidBodyCode: "invalid_audio_qc_processor_body"
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, signed.reason);
+    return mediaProcessorAuthError(request, env.ALLOWED_ORIGINS, signed.reason);
   }
   if (signed.body.runId !== runId) {
     throw new RequestValidationError(
@@ -807,7 +806,7 @@ async function authorizeProcessorRequest(
     invalidBodyCode: "invalid_audio_qc_processor_request"
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, signed.reason);
+    return mediaProcessorAuthError(request, env.ALLOWED_ORIGINS, signed.reason);
   }
   if (signed.body.runId !== runId || signed.body.action !== action) {
     throw new RequestValidationError(
@@ -932,26 +931,9 @@ async function loadRun(
   ).bind(runId).first<AudioQcRunRow>();
 }
 
-function policyContract(row: AudioQcPolicyRow): AudioQcPolicy {
-  return {
-    schemaVersion: "audio-qc-policy-v1",
-    revision: row.revision,
-    monoIntegratedLufs: row.mono_integrated_lufs,
-    stereoIntegratedLufs: row.stereo_integrated_lufs,
-    integratedLufsTolerance: row.integrated_lufs_tolerance,
-    maximumTruePeakDbtp: row.maximum_true_peak_dbtp,
-    maximumDcOffset: row.maximum_dc_offset,
-    maximumChannelImbalanceLu: row.maximum_channel_imbalance_lu,
-    maximumLeadingSilenceMs: row.maximum_leading_silence_ms,
-    maximumTrailingSilenceMs: row.maximum_trailing_silence_ms,
-    maximumInternalSilenceMs: row.maximum_internal_silence_ms,
-    silenceThresholdDb: row.silence_threshold_db
-  };
-}
-
 function presentPolicy(row: AudioQcPolicyRow) {
   return {
-    ...policyContract(row),
+    ...audioQcPolicyContract(row),
     updatedAt: row.updated_at
   };
 }
@@ -995,55 +977,9 @@ function presentRun(
   };
 }
 
-function processorDispatch(manifest: AudioQcManifest) {
-  return {
-    workflow: "process-audio-qc.yml",
-    runId: manifest.runId,
-    manifestSha256: manifest.manifestSha256
-  };
-}
-
 function strictNumber(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new RequestValidationError(`${field} must be a finite number`);
   }
   return value;
-}
-
-function strictInteger(value: unknown, field: string): number {
-  if (!Number.isSafeInteger(value)) {
-    throw new RequestValidationError(`${field} must be an integer`);
-  }
-  return value as number;
-}
-
-function processorAuthError(
-  request: Request,
-  env: PodcastEnv,
-  reason: "secret_missing" | "invalid_signature"
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    {
-      error: reason === "secret_missing"
-        ? "not_found"
-        : "invalid_processor_signature"
-    },
-    { status: reason === "secret_missing" ? 404 : 401 }
-  );
-}
-
-function audioQcConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
-  );
 }

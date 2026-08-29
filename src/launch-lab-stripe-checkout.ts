@@ -3,6 +3,8 @@ import launchLabFixture from "../config/launch-lab-fixture.json";
 
 import type { PodcastEnv } from "./env";
 import { recordLaunchLabObservations } from "./launch-lab-ledger";
+import { createLaunchLabStripeValueReaders } from
+  "./launch-lab-stripe-values";
 import {
   cleanupLaunchLabStripeFixture,
   loadLaunchLabStripeSource
@@ -19,6 +21,12 @@ const PROVIDER_METADATA = {
   platform: "dust_wave_podcast",
   launch_lab_fixture: "hosted_checkout_v1"
 } as const;
+const {
+  nestedId,
+  positiveInteger,
+  providerId,
+  safeErrorCode
+} = createLaunchLabStripeValueReaders("launch_lab_hosted");
 
 type CheckoutPhase =
   | "new"
@@ -571,33 +579,6 @@ function requireHostedCheckoutBoundary(env: PodcastEnv): void {
   ) throw new Error("launch_lab_hosted_checkout_not_available");
 }
 
-function providerId(value: unknown, prefix: string): string {
-  const text = String(value ?? "");
-  if (!new RegExp(`^${prefix}_[A-Za-z0-9_]{6,128}$`).test(text)) {
-    throw new Error(`launch_lab_hosted_invalid_${prefix}_id`);
-  }
-  return text;
-}
-
-function nestedId(value: unknown, prefix: string): string | null {
-  if (typeof value === "string") {
-    try {
-      return providerId(value, prefix);
-    } catch {
-      return null;
-    }
-  }
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return nestedId((value as Record<string, unknown>).id, prefix);
-  }
-  return null;
-}
-
-function positiveInteger(value: unknown): number {
-  const number = Number(value);
-  return Number.isSafeInteger(number) && number > 0 ? number : 0;
-}
-
 function checkoutAttemptId(runId: string): string {
   return `checkout_launch_lab_hosted_${runId}`.slice(0, 150);
 }
@@ -608,11 +589,6 @@ function validHostedUrl(value: unknown): string {
     throw new Error("launch_lab_hosted_url_mismatch");
   }
   return url.toString();
-}
-
-function safeErrorCode(error: unknown): string {
-  const value = error instanceof Error ? error.message : "unknown_error";
-  return value.replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80);
 }
 
 function present(lifecycle: CheckoutRow): LaunchLabHostedCheckoutResult {

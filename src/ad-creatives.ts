@@ -1,8 +1,12 @@
+import { sha256BytesHex as bytesSha256 } from
+  "@dustwave/worker-core/crypto";
+
 import {
   loadAdCampaignScope,
   type CampaignScopeRow
 } from "./ad-campaigns";
 import {
+  forbiddenAdminAccess as forbidden,
   hasAdminRoleForShow,
   requireAdmin,
   type AdminAuthorization,
@@ -581,26 +585,4 @@ async function markCreativeUploadFailure(
       error: message
     }
   });
-}
-
-function forbidden(
-  request: Request,
-  env: PodcastEnv
-): { ok: false; response: Response } {
-  return {
-    ok: false,
-    response: privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "forbidden" },
-      { status: 403 }
-    )
-  };
-}
-
-async function bytesSha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }

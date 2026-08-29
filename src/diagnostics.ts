@@ -1,5 +1,6 @@
 import {
   hmacSha256,
+  sha256BytesHex as sha256Bytes,
   sha256Hex,
   timingSafeEqual
 } from "@dustwave/worker-core/crypto";
@@ -768,12 +769,6 @@ function gateRunMatches(
   return expected.every((value, index) => value === values[index]);
 }
 
-async function sha256Bytes(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 function diagnosticJson(
   payload: Record<string, unknown>,

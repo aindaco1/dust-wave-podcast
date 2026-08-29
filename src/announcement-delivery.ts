@@ -12,7 +12,10 @@ import {
 } from "./admin-auth";
 import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  noStoreJson as webhookJson,
+  privateJson
+} from "./http";
 import {
   announcementAudienceRevision,
   announcementDeliveryMode,
@@ -32,6 +35,7 @@ import { recordLaunchLabResendWebhook } from "./launch-lab-resend";
 import type { PodcastJob } from "./types";
 import {
   boundedPageSize,
+  recordOrNull as objectValue,
   readBoundedText,
   readJsonObject,
   RequestValidationError,
@@ -1201,12 +1205,6 @@ function normalizeWebhookTags(value: unknown): Record<string, string> {
   ));
 }
 
-function objectValue(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function unsubscribeNotFound(): Response {
   return new Response(
     JSON.stringify({ error: "unsubscribe_not_found" }),
@@ -1231,20 +1229,6 @@ function publicUnsubscribeHeaders(
   });
   if (contentType) headers.set("content-type", contentType);
   return headers;
-}
-
-function webhookJson(
-  body: Record<string, unknown>,
-  status = 200
-): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff"
-    }
-  });
 }
 
 function escapeHtml(value: string): string {

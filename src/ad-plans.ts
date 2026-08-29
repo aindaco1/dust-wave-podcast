@@ -3,6 +3,7 @@ import {
 } from "@dustwave/worker-core/crypto";
 
 import {
+  forbiddenAdminAccess as forbidden,
   hasAdminRoleForShow,
   requireAdmin,
   type AdminAuthorization,
@@ -17,6 +18,7 @@ import { privateJson } from "./http";
 import { DYNAMIC_AD_MP3_PROFILE } from "./mp3-profile";
 import { readSignedJsonBody } from "./signed-callback";
 import {
+  nonNegativeInteger,
   readJsonObject,
   RequestValidationError,
   requiredText,
@@ -1158,29 +1160,4 @@ function positiveBoundedInteger(
     throw new RequestValidationError(`${field} must be a positive integer`);
   }
   return result;
-}
-
-function nonNegativeInteger(value: unknown, field: string): number {
-  const result = Number(value);
-  if (!Number.isSafeInteger(result) || result < 0) {
-    throw new RequestValidationError(
-      `${field} must be a non-negative integer`
-    );
-  }
-  return result;
-}
-
-function forbidden(
-  request: Request,
-  env: PodcastEnv
-): { ok: false; response: Response } {
-  return {
-    ok: false,
-    response: privateJson(
-      request,
-      env.ALLOWED_ORIGINS,
-      { error: "forbidden" },
-      { status: 403 }
-    )
-  };
 }

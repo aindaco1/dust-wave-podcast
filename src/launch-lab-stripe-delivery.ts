@@ -1,6 +1,7 @@
 import type { PodcastEnv } from "./env";
 import { recordLaunchLabObservations } from "./launch-lab-ledger";
 import { createPodcastStripeClient } from "./stripe-client";
+import { recordOrNull } from "./validation";
 
 const FIXTURE_SHOW_ID = "show_dust_wave_launch_lab";
 const EVENT_CANDIDATE_LIMIT = 12;
@@ -274,10 +275,4 @@ function validEventId(value: unknown): value is string {
 
 function positiveInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0;
-}
-
-function recordOrNull(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 }

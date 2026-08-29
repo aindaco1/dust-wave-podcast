@@ -8,8 +8,14 @@ import {
 } from "./admin-auth";
 import { authorizeAdminEpisode } from "./admin-episode-access";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
 import {
+  privateConflict as conflict,
+  privateJson
+} from "./http";
+import {
+  nonNegativeInteger,
+  nullableNumber,
+  nullableString,
   readJsonObject,
   RequestValidationError,
   requiredText,
@@ -1375,14 +1381,6 @@ function optionalMillisecond(value: unknown, field: string): number | null {
   return number;
 }
 
-function nonNegativeInteger(value: unknown, field: string): number {
-  const number = Number(value);
-  if (!Number.isSafeInteger(number) || number < 0) {
-    throw new RequestValidationError(`${field} must be a non-negative integer`);
-  }
-  return number;
-}
-
 function boundedDigest(value: string): string {
   const digest = value.normalize("NFKC").trim();
   if (
@@ -1463,26 +1461,4 @@ async function currentEntityRevision(
     `SELECT revision FROM ${table} WHERE id = ?`
   ).bind(entityId).first<{ revision: number }>();
   return row?.revision ?? null;
-}
-
-function conflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
-  );
-}
-
-function nullableString(value: unknown): string | null {
-  return value === null || value === undefined ? null : String(value);
-}
-
-function nullableNumber(value: unknown): number | null {
-  return value === null || value === undefined ? null : Number(value);
 }

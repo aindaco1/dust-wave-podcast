@@ -28,6 +28,8 @@ import {
   FINAL_WORKING_MASTER_DECISION_SQL
 } from "./final-working-master";
 import { privateJson } from "./http";
+import { invalidMediaProcessorSignature as processorAuthError } from
+  "./media-processor-protocol";
 import { putImmutablePrivateArtifact } from "./private-artifacts";
 import { describeProcessorAvailability } from "./processor-mode";
 import { readSignedJsonBody } from "./signed-callback";
@@ -1884,18 +1886,6 @@ function alignmentConflict(
     env.ALLOWED_ORIGINS,
     { error: code, ...details },
     { status: 409 }
-  );
-}
-
-function processorAuthError(
-  request: Request,
-  env: PodcastEnv
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error: "invalid_processor_signature" },
-    { status: 401 }
   );
 }
 

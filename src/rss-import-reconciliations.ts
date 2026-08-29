@@ -7,13 +7,18 @@ import {
 import { prepareAdminAuditAfterSingleChange } from "./audit";
 import type { PodcastEnv } from "./env";
 import { PUBLIC_FEED_VALIDATOR_VERSION } from "./feed-validation";
-import { privateJson } from "./http";
+import {
+  privateConflict as reconciliationConflict,
+  privateJson
+} from "./http";
 import {
   loadRssImportExecutionEvidence,
   rssImportExecutionEnabled,
   type RssImportExecutionItemRow,
   type RssImportExecutionRow
 } from "./rss-import-executions";
+import { validRssImportSha256 as validSha256 } from
+  "./rss-import-contract";
 import { validatedImportFeedUrl } from "./rss-import-preview";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
@@ -2559,14 +2564,6 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-function validSha256(value: unknown, field: string): string {
-  const digest = requiredText(value, field, 64).toLowerCase();
-  if (!/^[a-f0-9]{64}$/u.test(digest)) {
-    throw new RequestValidationError(`${field} must be a SHA-256 digest`);
-  }
-  return digest;
-}
-
 function validRedirectMethod(value: unknown): RedirectMethod {
   const method = requiredText(value, "redirectMethod", 80);
   if (!REDIRECT_METHODS.includes(method as RedirectMethod)) {
@@ -2611,18 +2608,5 @@ function reconciliationUnavailable(
     env.ALLOWED_ORIGINS,
     { error: "rss_import_reconciliation_unavailable" },
     { status: 404 }
-  );
-}
-
-function reconciliationConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error },
-    { status: 409 }
   );
 }

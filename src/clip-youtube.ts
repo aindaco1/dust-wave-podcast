@@ -6,7 +6,10 @@ import {
 } from "./admin-auth";
 import { prepareAdminAudit, recordAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateConflict as clipYoutubeConflict,
+  privateJson
+} from "./http";
 import type { PodcastJob } from "./types";
 import {
   optionalText,
@@ -24,6 +27,8 @@ import {
   youtubeProviderConfigured,
   youtubeProviderTitle
 } from "./youtube-provider";
+import { validYouTubePrivacyStatus as validPrivacyStatus } from
+  "./youtube-publication-validation";
 
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
 const MAXIMUM_CLIP_UPLOAD_BYTES = 95 * 1024 * 1024;
@@ -648,16 +653,6 @@ function sameDraft(
     && publication.channel_url === expected.channelUrl;
 }
 
-function validPrivacyStatus(value: unknown): "private" | "unlisted" {
-  const status = requiredText(value, "privacyStatus", 20);
-  if (status !== "private" && status !== "unlisted") {
-    throw new RequestValidationError(
-      "privacyStatus must be private or unlisted"
-    );
-  }
-  return status;
-}
-
 function providerTitle(value: unknown): string {
   const title = requiredText(value, "title", 100);
   try {
@@ -711,18 +706,5 @@ function clipYoutubeNotFound(
     env.ALLOWED_ORIGINS,
     { error: "clip_youtube_publication_not_found" },
     { status: 404 }
-  );
-}
-
-function clipYoutubeConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error },
-    { status: 409 }
   );
 }

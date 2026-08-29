@@ -9,12 +9,17 @@ import {
   recordAdminAudit
 } from "./audit";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateConflict as executionConflict,
+  privateJson
+} from "./http";
 import {
   loadRssImportPlanEvidence,
   reconcileRssImportPlanSource,
   type ImportPlanItemRow
 } from "./rss-import-plans";
+import { validRssImportSha256 as validSha256 } from
+  "./rss-import-contract";
 import {
   openSensitiveValue,
   sealSensitiveValue
@@ -1308,14 +1313,6 @@ function requiredExecutionSecret(env: PodcastEnv): string {
   return secret;
 }
 
-function validSha256(value: unknown, field: string): string {
-  const digest = requiredText(value, field, 64).toLowerCase();
-  if (!/^[a-f0-9]{64}$/u.test(digest)) {
-    throw new RequestValidationError(`${field} must be a SHA-256 digest`);
-  }
-  return digest;
-}
-
 function requireExactKeys(
   value: Record<string, unknown>,
   keys: string[]
@@ -1366,18 +1363,5 @@ function executionUnavailable(request: Request, env: PodcastEnv): Response {
     env.ALLOWED_ORIGINS,
     { error: "rss_import_execution_unavailable" },
     { status: 404 }
-  );
-}
-
-function executionConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error },
-    { status: 409 }
   );
 }

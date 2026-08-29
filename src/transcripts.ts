@@ -8,7 +8,12 @@ import {
   prepareResolveTranscriptReviewAction
 } from "./admin-action-notifications";
 import type { PodcastEnv } from "./env";
-import { privateCorsHeaders, privateJson } from "./http";
+import {
+  etagMatches,
+  privateConflict as conflict,
+  privateCorsHeaders,
+  privateJson
+} from "./http";
 import { safeDownloadFilename } from "./media-range";
 import {
   hashPrivateFeedToken,
@@ -17,6 +22,8 @@ import {
 } from "./private-feeds";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
+  nonNegativeInteger,
+  positiveInteger,
   readJsonObject,
   RequestValidationError,
   requiredText,
@@ -1325,16 +1332,6 @@ function publicTranscriptHeaders(cacheControl: string): Headers {
   });
 }
 
-function etagMatches(header: string | null, etag: string): boolean {
-  if (!header) return false;
-  return header.split(",").some((candidate) => {
-    const value = candidate.trim();
-    return value === "*"
-      || value === etag
-      || (value.startsWith("W/") && value.slice(2) === etag);
-  });
-}
-
 export async function stableTranscriptId(
   episodeId: string,
   language: string
@@ -1470,34 +1467,4 @@ function transcriptMillisecond(
     throw new RequestValidationError(`${field} is invalid`);
   }
   return number;
-}
-
-function nonNegativeInteger(value: unknown, field: string): number {
-  const number = Number(value);
-  if (!Number.isSafeInteger(number) || number < 0) {
-    throw new RequestValidationError(`${field} must be a non-negative integer`);
-  }
-  return number;
-}
-
-function positiveInteger(value: unknown, field: string): number {
-  const number = Number(value);
-  if (!Number.isSafeInteger(number) || number < 1) {
-    throw new RequestValidationError(`${field} must be a positive integer`);
-  }
-  return number;
-}
-
-function conflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
-  );
 }

@@ -1,3 +1,5 @@
+import { etagMatches, noStoreJson } from "./http";
+
 export const MAX_VIRTUAL_MEDIA_SEGMENTS = 24;
 
 export type VirtualMediaSegmentKind =
@@ -497,14 +499,7 @@ function virtualMediaHeaders(
 }
 
 function virtualMediaError(code: string, status: number): Response {
-  return new Response(JSON.stringify({ error: code }), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff"
-    }
-  });
+  return noStoreJson({ error: code }, status);
 }
 
 function withFixedLength(
@@ -519,18 +514,6 @@ function withFixedLength(
       // pipeTo already propagates the source error to the response stream.
     });
   return fixedLength.readable;
-}
-
-function etagMatches(header: string | null, etag: string): boolean {
-  if (!header) return false;
-  return header
-    .split(",")
-    .map((value) => value.trim())
-    .some((value) =>
-      value === "*"
-      || value === etag
-      || (value.startsWith("W/") && value.slice(2) === etag)
-    );
 }
 
 function isSafeNonNegativeInteger(value: number): boolean {

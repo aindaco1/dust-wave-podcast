@@ -582,6 +582,21 @@ export async function requireRecentAdminAuthentication(
   );
 }
 
+export function forbiddenAdminAccess(
+  request: Request,
+  env: PodcastEnv
+): { ok: false; response: Response } {
+  return {
+    ok: false,
+    response: privateJson(
+      request,
+      env.ALLOWED_ORIGINS,
+      { error: "forbidden" },
+      { status: 403 }
+    )
+  };
+}
+
 export async function pruneAdminAuthState(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare(

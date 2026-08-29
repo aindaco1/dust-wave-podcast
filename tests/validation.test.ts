@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  boundedEvidence,
   boundedPageSize,
   isTruthy,
+  nonNegativeInteger,
+  nullableNumber,
+  nullableString,
+  recordOrNull,
   optionalText,
   positiveInteger,
   readBoundedBytes,
@@ -11,6 +16,7 @@ import {
   readJsonObject,
   RequestValidationError,
   requiredText,
+  strictInteger,
   safeFilename,
   validDateTime,
   validIdentifier,
@@ -206,6 +212,30 @@ describe("scalar request validation", () => {
     expect(() => boundedPageSize("101", 25, 100, "pageSize")).toThrow(
       "pageSize must be between 1 and 100"
     );
+  });
+
+  it("shares non-negative and nullable database coercion", () => {
+    expect(nonNegativeInteger("0", "offset")).toBe(0);
+    expect(nonNegativeInteger(12, "offset")).toBe(12);
+    expect(() => nonNegativeInteger(-1, "offset")).toThrow(
+      "offset must be a non-negative integer"
+    );
+    expect(nullableString(undefined)).toBeNull();
+    expect(nullableString(42)).toBe("42");
+    expect(nullableNumber(null)).toBeNull();
+    expect(nullableNumber("42")).toBe(42);
+  });
+
+  it("shares strict integers, records, and bounded evidence", () => {
+    expect(strictInteger(4, "revision")).toBe(4);
+    expect(() => strictInteger("4", "revision")).toThrow(
+      "revision must be an integer"
+    );
+    expect(recordOrNull({ id: "example" })).toEqual({ id: "example" });
+    expect(recordOrNull([])).toBeNull();
+    expect(recordOrNull(null)).toBeNull();
+    expect(boundedEvidence("  abcdef  ", 3)).toBe("abc");
+    expect(boundedEvidence("", 3)).toBeNull();
   });
 
   it("accepts only the documented truthy spellings", () => {

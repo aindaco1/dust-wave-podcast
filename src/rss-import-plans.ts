@@ -9,7 +9,10 @@ import {
   prepareAdminAuditAfterSingleChange
 } from "./audit";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateConflict as planConflict,
+  privateJson
+} from "./http";
 import {
   displayRssImportUrl,
   requireExactRssImportKeys,
@@ -827,18 +830,5 @@ function planNotFound(request: Request, env: PodcastEnv): Response {
     env.ALLOWED_ORIGINS,
     { error: "rss_import_plan_not_found" },
     { status: 404 }
-  );
-}
-
-function planConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error },
-    { status: 409 }
   );
 }

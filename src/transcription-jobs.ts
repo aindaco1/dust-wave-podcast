@@ -20,7 +20,10 @@ import type { PodcastEnv } from "./env";
 import {
   FINAL_WORKING_MASTER_DECISION_SQL
 } from "./final-working-master";
-import { privateJson } from "./http";
+import {
+  privateConflict as transcriptionConflict,
+  privateJson
+} from "./http";
 import {
   canonicalTranscriptContent,
   normalizeTranscriptCues,
@@ -1786,20 +1789,6 @@ function parseProviderRequestId(
 ): string | null {
   const identifier = String(value ?? "").trim();
   return identifier ? identifier.slice(0, 240) : null;
-}
-
-function transcriptionConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
-  );
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

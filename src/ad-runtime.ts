@@ -27,7 +27,10 @@ import {
 } from "./admin-auth";
 import { prepareAdminAudit } from "./audit";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  noStoreJson,
+  privateJson
+} from "./http";
 import { safeDownloadFilename } from "./media-range";
 import { DYNAMIC_AD_MP3_PROFILE } from "./mp3-profile";
 import { recordPodcastMediaDelivery } from "./podcast-analytics";
@@ -1758,14 +1761,6 @@ async function preflightStoredManifest(
     );
   });
 }
-
 function decisionError(code: string, status: number): Response {
-  return new Response(JSON.stringify({ error: code }), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff"
-    }
-  });
+  return noStoreJson({ error: code }, status);
 }

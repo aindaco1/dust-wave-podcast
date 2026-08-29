@@ -11,7 +11,10 @@ import {
   type ClipRenderMediaEvidence
 } from "./clips";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateConflict as clipPublicationConflict,
+  privateJson
+} from "./http";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
   optionalText,
@@ -868,18 +871,5 @@ function clipPublicationNotFound(
     env.ALLOWED_ORIGINS,
     { error: "clip_publication_not_found" },
     { status: 404 }
-  );
-}
-
-function clipPublicationConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error },
-    { status: 409 }
   );
 }

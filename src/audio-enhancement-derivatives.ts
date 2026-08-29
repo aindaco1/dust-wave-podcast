@@ -10,8 +10,7 @@ import {
 } from "@dustwave/media-core/audio-enhancement-derivative";
 import {
   buildAudioQcManifest,
-  type AudioQcManifest,
-  type AudioQcPolicy
+  type AudioQcManifest
 } from "@dustwave/media-core/audio-qc";
 import {
   sha256BytesHex,
@@ -19,6 +18,11 @@ import {
 } from "@dustwave/worker-core/crypto";
 
 import { authorizeAdminEpisode } from "./admin-episode-access";
+import {
+  audioQcPolicyContract,
+  audioQcProcessorDispatch as qcDispatch,
+  type AudioQcPolicyRecord
+} from "./audio-qc-policy";
 import {
   prepareResolveWorkingMasterAction
 } from "./admin-action-notifications";
@@ -31,17 +35,32 @@ import {
 import { prepareAdminAuditAfterSingleChange } from "./audit";
 import type { PodcastEnv } from "./env";
 import {
-  privateCorsHeaders,
-  privateJson
+  privateAudioHeaders,
+  privateConflict as derivativeConflict,
+  privateJson,
+  privateNotFound as derivativeNotFound
 } from "./http";
 import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import {
+  MAXIMUM_PROCESSOR_BODY_BYTES,
+  MAXIMUM_PROCESSOR_OUTPUT_BYTES as MAXIMUM_OUTPUT_BYTES,
+  MAXIMUM_PROCESSOR_PART_BYTES as MAXIMUM_PART_BYTES,
+  invalidMediaProcessorSignature as invalidProcessorSignature,
+  parseMediaProcessorMultipartEvidence,
+  parseMediaProcessorPartPayload,
+  PROCESSOR_PART_PAYLOAD_HEADER,
+  PROCESSOR_SIGNATURE_HEADER,
+  PROCESSOR_TIMESTAMP_HEADER,
+  readMediaProcessorSignedJson,
+  RECOMMENDED_PROCESSOR_PART_BYTES as RECOMMENDED_PART_BYTES,
+  validateMediaProcessorMultipartParts
+} from "./media-processor-protocol";
 import { describeProcessorAvailability } from "./processor-mode";
 import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
-  readSignedJsonBody,
   verifySignedText
 } from "./signed-callback";
 import {
@@ -64,15 +83,6 @@ const READ_ROLES: AdminRole[] = [
 ];
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
 const APPROVE_ROLES: AdminRole[] = ["super_admin"];
-const PROCESSOR_TIMESTAMP_HEADER = "x-podcast-processor-timestamp";
-const PROCESSOR_SIGNATURE_HEADER = "x-podcast-processor-signature";
-const PROCESSOR_PART_PAYLOAD_HEADER =
-  "x-podcast-processor-part-payload";
-const MAXIMUM_PROCESSOR_BODY_BYTES = 125_000;
-const MAXIMUM_OUTPUT_BYTES = 2 * 1024 * 1024 * 1024;
-const MAXIMUM_PART_BYTES = 32 * 1024 * 1024;
-const MINIMUM_MULTIPART_PART_BYTES = 5 * 1024 * 1024;
-const RECOMMENDED_PART_BYTES = 33_554_432 as const;
 const FAILURE_CODES = new Set([
   "processor_failed",
   "source_invalid",
@@ -161,20 +171,6 @@ type DerivativePartRow = {
   etag: string;
   uploaded_bytes: number;
   sha256: string;
-};
-
-type AudioQcPolicyRow = {
-  revision: number;
-  mono_integrated_lufs: number;
-  stereo_integrated_lufs: number;
-  integrated_lufs_tolerance: number;
-  maximum_true_peak_dbtp: number;
-  maximum_dc_offset: number;
-  maximum_channel_imbalance_lu: number;
-  maximum_leading_silence_ms: number;
-  maximum_trailing_silence_ms: number;
-  maximum_internal_silence_ms: number;
-  silence_threshold_db: number;
 };
 
 export async function listAdminAudioEnhancementDerivatives(
@@ -1553,9 +1549,9 @@ export async function serveAdminAudioEnhancementDerivative(
       "audio_enhancement_derivative_output_mismatch"
     );
   }
-  const headers = derivativeMediaHeaders(
+  const headers = privateAudioHeaders(
     request,
-    env,
+    env.ALLOWED_ORIGINS,
     head!.httpEtag
   );
   headers.set(
@@ -1671,21 +1667,15 @@ async function signedProcessorJson(
   bodyName: string,
   maximumBytes = MAXIMUM_PROCESSOR_BODY_BYTES
 ): Promise<{ body: Record<string, unknown> } | Response> {
-  if (!processorAvailable(env)) return derivativeNotFound(request, env);
-  const signed = await readSignedJsonBody(request, {
+  return readMediaProcessorSignedJson(request, {
+    available: processorAvailable(env),
     secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
-    timestampHeader: PROCESSOR_TIMESTAMP_HEADER,
-    signatureHeader: PROCESSOR_SIGNATURE_HEADER,
     maximumBytes,
     bodyName,
-    invalidBodyCode: "invalid_audio_enhancement_derivative_processor_body"
+    invalidBodyCode: "invalid_audio_enhancement_derivative_processor_body",
+    unavailableResponse: () => derivativeNotFound(request, env),
+    invalidSignatureResponse: () => invalidProcessorSignature(request, env)
   });
-  if (!signed.ok) {
-    return signed.reason === "secret_missing"
-      ? derivativeNotFound(request, env)
-      : invalidProcessorSignature(request, env);
-  }
-  return signed;
 }
 
 async function buildDerivativeManifest(
@@ -1996,36 +1986,19 @@ function parsePartPayload(encoded: string): {
   sha256: string;
   manifestSha256: string;
 } {
-  let value: Record<string, unknown>;
-  try {
-    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/")
-      + "=".repeat((4 - encoded.length % 4) % 4);
-    value = JSON.parse(atob(base64)) as Record<string, unknown>;
-  } catch {
-    throw new RequestValidationError(
-      "The derivative part payload is invalid"
-    );
-  }
+  const payload = parseMediaProcessorPartPayload(encoded, {
+    idField: "derivativeId",
+    idLabel: "derivativeId",
+    invalidPayloadMessage: "The derivative part payload is invalid",
+    maximumPartBytes: MAXIMUM_PART_BYTES,
+    validateSha256: requiredSha256
+  });
   return {
-    derivativeId: validIdentifier(
-      value.derivativeId,
-      "derivativeId"
-    ),
-    partNumber: positiveInteger(
-      value.partNumber,
-      "partNumber",
-      10_000
-    ),
-    objectBytes: positiveInteger(
-      value.objectBytes,
-      "objectBytes",
-      MAXIMUM_PART_BYTES
-    ),
-    sha256: requiredSha256(value.sha256, "sha256"),
-    manifestSha256: requiredSha256(
-      value.manifestSha256,
-      "manifestSha256"
-    )
+    derivativeId: payload.id,
+    partNumber: payload.partNumber,
+    objectBytes: payload.objectBytes,
+    sha256: payload.sha256,
+    manifestSha256: payload.manifestSha256
   };
 }
 
@@ -2038,63 +2011,18 @@ function multipartEvidence(
   partCount: number;
   manifestSha256: string;
 } {
-  if (
-    body.jobId !== derivativeId
-    || body.action !== "upload-complete"
-  ) {
-    throw new RequestValidationError(
-      "The multipart evidence does not match its URL"
-    );
-  }
-  return {
-    objectBytes: positiveInteger(
-      body.objectBytes,
-      "objectBytes",
-      MAXIMUM_OUTPUT_BYTES
-    ),
-    outputSha256: requiredSha256(
-      body.outputSha256,
-      "outputSha256"
-    ),
-    partCount: positiveInteger(body.partCount, "partCount", 10_000),
-    manifestSha256: requiredSha256(
-      body.manifestSha256,
-      "manifestSha256"
-    )
-  };
+  return parseMediaProcessorMultipartEvidence(body, derivativeId, {
+    idField: "jobId",
+    maximumOutputBytes: MAXIMUM_OUTPUT_BYTES,
+    validateSha256: requiredSha256
+  });
 }
 
 function validateCompleteParts(
   parts: DerivativePartRow[],
   evidence: { objectBytes: number; partCount: number }
 ): void {
-  if (parts.length !== evidence.partCount || parts.length === 0) {
-    throw new RequestValidationError(
-      "The multipart part count is incomplete"
-    );
-  }
-  let total = 0;
-  for (const [index, part] of parts.entries()) {
-    if (part.part_number !== index + 1) {
-      throw new RequestValidationError(
-        "The multipart parts must be contiguous"
-      );
-    }
-    if (
-      index < parts.length - 1
-      && part.uploaded_bytes < MINIMUM_MULTIPART_PART_BYTES
-    ) {
-      throw new RequestValidationError(
-        "Every non-final multipart part must be at least 5 MiB"
-      );
-    }
-    total += part.uploaded_bytes;
-  }
-  if (total !== evidence.objectBytes) {
-    throw new RequestValidationError(
-      "The multipart byte total does not match the output"
-    );
-  }
+  validateMediaProcessorMultipartParts(parts, evidence);
 }
 
 function validCompletedObject(
@@ -2133,7 +2061,7 @@ async function derivativeOutputIdentifiers(derivativeId: string): Promise<{
 async function loadAudioQcPolicy(
   db: D1Database,
   showId: string
-): Promise<AudioQcPolicyRow | null> {
+): Promise<AudioQcPolicyRecord | null> {
   return db.prepare(
     `SELECT
        revision, mono_integrated_lufs, stereo_integrated_lufs,
@@ -2143,24 +2071,7 @@ async function loadAudioQcPolicy(
        maximum_internal_silence_ms, silence_threshold_db
      FROM show_audio_qc_policies
      WHERE show_id = ?`
-  ).bind(showId).first<AudioQcPolicyRow>();
-}
-
-function audioQcPolicyContract(row: AudioQcPolicyRow): AudioQcPolicy {
-  return {
-    schemaVersion: "audio-qc-policy-v1",
-    revision: row.revision,
-    monoIntegratedLufs: row.mono_integrated_lufs,
-    stereoIntegratedLufs: row.stereo_integrated_lufs,
-    integratedLufsTolerance: row.integrated_lufs_tolerance,
-    maximumTruePeakDbtp: row.maximum_true_peak_dbtp,
-    maximumDcOffset: row.maximum_dc_offset,
-    maximumChannelImbalanceLu: row.maximum_channel_imbalance_lu,
-    maximumLeadingSilenceMs: row.maximum_leading_silence_ms,
-    maximumTrailingSilenceMs: row.maximum_trailing_silence_ms,
-    maximumInternalSilenceMs: row.maximum_internal_silence_ms,
-    silenceThresholdDb: row.silence_threshold_db
-  };
+  ).bind(showId).first<AudioQcPolicyRecord>();
 }
 
 async function buildDerivativeQcManifest(
@@ -2169,7 +2080,7 @@ async function buildDerivativeQcManifest(
   object: R2Object,
   report: AudioEnhancementDerivativeReport,
   runId: string,
-  policy: AudioQcPolicyRow
+  policy: AudioQcPolicyRecord
 ): Promise<AudioQcManifest> {
   return buildAudioQcManifest({
     schemaVersion: "audio-qc-job-v1",
@@ -2302,14 +2213,6 @@ function derivativeDispatch(
   };
 }
 
-function qcDispatch(manifest: AudioQcManifest): Record<string, unknown> {
-  return {
-    workflow: "process-audio-qc.yml",
-    runId: manifest.runId,
-    manifestSha256: manifest.manifestSha256
-  };
-}
-
 function derivativeCurrent(row: DerivativeRow): boolean {
   return row.current_master_id === row.source_master_id;
 }
@@ -2343,66 +2246,4 @@ function requiredSha256(value: unknown, field: string): string {
     throw new RequestValidationError(`${field} must be a SHA-256 digest`);
   }
   return digest;
-}
-
-function derivativeMediaHeaders(
-  request: Request,
-  env: PodcastEnv,
-  etag: string
-): Headers {
-  const headers = new Headers({
-    ...privateCorsHeaders(request, env.ALLOWED_ORIGINS),
-    "content-type": "audio/mpeg",
-    "accept-ranges": "bytes",
-    "cache-control": "private, no-store, max-age=0",
-    "content-security-policy": "default-src 'none'; sandbox",
-    "cross-origin-resource-policy": "same-site",
-    etag,
-    "referrer-policy": "no-referrer",
-    "x-content-type-options": "nosniff",
-    "x-robots-tag": "noindex, nofollow, noarchive"
-  });
-  headers.set(
-    "access-control-expose-headers",
-    "accept-ranges,content-disposition,content-length,content-range,etag"
-  );
-  return headers;
-}
-
-function invalidProcessorSignature(
-  request: Request,
-  env: PodcastEnv
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error: "invalid_processor_signature" },
-    { status: 401 }
-  );
-}
-
-function derivativeNotFound(
-  request: Request,
-  env: PodcastEnv
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error: "not_found" },
-    { status: 404 }
-  );
-}
-
-function derivativeConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
-  );
 }

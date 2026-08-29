@@ -10,6 +10,7 @@ import {
 import type { PodcastEnv } from "./env";
 import {
   privateCorsHeaders,
+  privateConflict as clipConflict,
   privateJson
 } from "./http";
 import {
@@ -26,6 +27,7 @@ import {
 } from "./transcripts";
 import {
   boundedPageSize,
+  nonNegativeInteger,
   readJsonObject,
   RequestValidationError,
   requiredText,
@@ -2549,14 +2551,6 @@ function validLanguage(value: unknown): "en" | "es" {
   return language;
 }
 
-function nonNegativeInteger(value: unknown, field: string): number {
-  const number = Number(value);
-  if (!Number.isSafeInteger(number) || number < 0) {
-    throw new RequestValidationError(`${field} must be a non-negative integer`);
-  }
-  return number;
-}
-
 function positiveInteger(
   value: unknown,
   field: string,
@@ -2581,18 +2575,4 @@ async function currentClipRevision(
     `SELECT revision FROM clips WHERE id = ?`
   ).bind(clipId).first<{ revision: number }>();
   return row?.revision ?? null;
-}
-
-function clipConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
-  );
 }

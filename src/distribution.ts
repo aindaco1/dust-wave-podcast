@@ -17,6 +17,7 @@ import {
 } from "./jobs";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import {
+  boundedEvidence,
   optionalText,
   readJsonObject,
   RequestValidationError,
@@ -1108,11 +1109,6 @@ function presentReleaseChannel(row: ReleaseChannelRow): {
         : null,
     retryable: row.status === "failed" && row.destination !== "youtube"
   };
-}
-
-function boundedEvidence(value: unknown, maximum: number): string | null {
-  const text = String(value ?? "").trim();
-  return text ? Array.from(text).slice(0, maximum).join("") : null;
 }
 
 function exactBoolean(value: unknown, field: string): boolean {

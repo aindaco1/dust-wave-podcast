@@ -13,12 +13,18 @@ import {
 import { sha256Hex } from "@dustwave/worker-core/crypto";
 
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateConflict as chunkConflict,
+  privateJson
+} from "./http";
+import { mediaProcessorAuthError } from "./media-processor-protocol";
 import {
   readSignedJsonBody,
   verifySignedText
 } from "./signed-callback";
 import {
+  nullableNumber,
+  nullableString,
   RequestValidationError,
   validIdentifier
 } from "./validation";
@@ -335,7 +341,11 @@ export async function uploadTranscriptionChunkProcessorOutput(
     || encodedPayload.length > 2_000
     || !/^[A-Za-z0-9_-]+$/.test(encodedPayload)
   ) {
-    return processorAuthError(request, env, "invalid_signature");
+    return mediaProcessorAuthError(
+      request,
+      env.ALLOWED_ORIGINS,
+      "invalid_signature"
+    );
   }
   const signed = await verifySignedText(request, {
     secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
@@ -344,7 +354,11 @@ export async function uploadTranscriptionChunkProcessorOutput(
     message: encodedPayload
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, "invalid_signature");
+    return mediaProcessorAuthError(
+      request,
+      env.ALLOWED_ORIGINS,
+      "invalid_signature"
+    );
   }
   const payload = parseUploadPayload(encodedPayload);
   if (payload.runId !== runId || payload.chunkIndex !== chunkIndex) {
@@ -460,7 +474,7 @@ export async function completeTranscriptionChunkRun(
     invalidBodyCode: "invalid_transcription_chunk_processor_body"
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, signed.reason);
+    return mediaProcessorAuthError(request, env.ALLOWED_ORIGINS, signed.reason);
   }
   const context = await loadProcessorContext(env.DB, runId);
   if (!context) {
@@ -661,7 +675,7 @@ async function authorizeProcessorAction(
     invalidBodyCode: "invalid_transcription_chunk_processor_request"
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, signed.reason);
+    return mediaProcessorAuthError(request, env.ALLOWED_ORIGINS, signed.reason);
   }
   if (signed.body.runId !== runId || signed.body.action !== action) {
     throw new RequestValidationError(
@@ -1133,42 +1147,4 @@ function boundedInteger(
     throw new RequestValidationError(`${field} is invalid`);
   }
   return number;
-}
-
-function nullableString(value: unknown): string | null {
-  return value === null || value === undefined ? null : String(value);
-}
-
-function nullableNumber(value: unknown): number | null {
-  return value === null || value === undefined ? null : Number(value);
-}
-
-function chunkConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error },
-    { status: 409 }
-  );
-}
-
-function processorAuthError(
-  request: Request,
-  env: PodcastEnv,
-  reason: "secret_missing" | "invalid_signature"
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    {
-      error: reason === "secret_missing"
-        ? "not_found"
-        : "invalid_processor_signature"
-    },
-    { status: reason === "secret_missing" ? 404 : 401 }
-  );
 }

@@ -310,307 +310,162 @@ import {
   uploadMultipartPart
 } from "./uploads";
 import { readJsonObject, RequestValidationError } from "./validation";
-
-const SHOW_PATH = /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/;
-const SHOW_TAX_QUOTE_PATH =
-  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/tax\/quote$/;
-const SHOW_CHECKOUT_PATH =
-  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/checkout$/;
-const SHOW_EPISODE_TRANSCRIPTS_PATH =
-  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts$/;
-const SHOW_EPISODE_TRANSCRIPT_VTT_PATH =
-  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts\/(en|es)\.vtt$/;
-const SHOW_EPISODE_CHAPTERS_PATH =
-  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
-const SHOW_EPISODE_CLIPS_PATH =
-  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/clips$/;
-const SHOW_EPISODE_CLIP_MEDIA_PATH =
-  /^\/v1\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/clips\/([a-z0-9]+(?:-[a-z0-9]+)*)\.mp4$/;
-const FEED_PATH = /^\/(?:v1\/feeds\/)?([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
-const MEDIA_PATH = /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)(?:\/audio)?$/;
-const PUBLIC_EPISODE_PEAKS_PATH =
-  /^\/(?:v1\/media\/|episodes\/)([A-Za-z0-9_-]+)\/peaks$/;
-const PRIVATE_FEED_PATH =
-  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/rss\.xml$/;
-const PRIVATE_MEDIA_PATH =
-  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/episodes\/([A-Za-z0-9_-]+)\/audio$/;
-const PRIVATE_CHAPTERS_PATH =
-  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/chapters\.json$/;
-const PRIVATE_TRANSCRIPT_VTT_PATH =
-  /^\/v1\/private\/([A-Za-z0-9_-]{43})\/([a-z0-9]+(?:-[a-z0-9]+)*)\/episodes\/([a-z0-9]+(?:-[a-z0-9]+)*)\/transcripts\/(en|es)\.vtt$/;
-const MEMBER_SHOW_FEED_PATH =
-  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed$/;
-const MEMBER_SHOW_FEED_ROTATE_PATH =
-  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/feed\/rotate$/;
-const MEMBER_SHOW_PORTAL_PATH =
-  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/billing\/portal$/;
-const MEMBER_SHOW_NOTIFICATIONS_PATH =
-  /^\/v1\/member\/shows\/([a-z0-9]+(?:-[a-z0-9]+)*)\/notifications$/;
-const MEMBER_POOL_REDEMPTION_PATH = "/v1/member/redemptions/pool";
-const INTERNAL_POOL_GRANTS_PATH = "/v1/internal/pool/grants";
-const ADMIN_SHOW_PATH = /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)$/;
-const ADMIN_SHOW_SITE_PROJECTION_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/site-projection$/;
-const ADMIN_SHOW_PREMIUM_PRICES_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/premium-prices$/;
-const ADMIN_SHOW_TAX_POLICY_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/tax-policy$/;
-const ADMIN_SHOW_AUDIO_QC_POLICY_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/audio-qc-policy$/;
-const ADMIN_SHOW_CLIPS_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/clips$/;
-const ADMIN_SHOW_EPISODES_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/episodes$/;
-const ADMIN_SHOW_RSS_IMPORT_PREVIEW_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/preview$/;
-const ADMIN_SHOW_RSS_IMPORT_PODCAST_GUID_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/podcast-guid$/;
-const ADMIN_SHOW_RSS_IMPORT_PLANS_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/rss-import\/plans$/;
-const ADMIN_RSS_IMPORT_PLAN_REVIEW_PATH =
-  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/review$/;
-const ADMIN_RSS_IMPORT_PLAN_CANCEL_PATH =
-  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/cancel$/;
-const ADMIN_RSS_IMPORT_PLAN_EXECUTION_PATH =
-  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/execution$/;
-const ADMIN_RSS_IMPORT_PLAN_RECONCILIATION_PATH =
-  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/reconciliation$/;
-const ADMIN_RSS_IMPORT_REDIRECT_ATTESTATION_PATH =
-  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/redirect-attestation$/;
-const ADMIN_RSS_IMPORT_CUTOVER_PACKET_PATH =
-  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/cutover-packet$/;
-const ADMIN_RSS_IMPORT_REDIRECT_ACTIVATION_APPROVAL_PATH =
-  /^\/v1\/admin\/rss-import\/plans\/([A-Za-z0-9_-]+)\/redirect-activation-approval$/;
-const ADMIN_SHOW_MARKETING_DRY_RUN_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/dry-run$/;
-const ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements$/;
-const ADMIN_SHOW_MARKETING_APPROVE_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/announcements\/approve$/;
-const ADMIN_SHOW_MARKETING_LINKS_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/links$/;
-const ADMIN_SHOW_MARKETING_LINK_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/marketing\/links\/([A-Za-z0-9_-]+)$/;
-const ADMIN_SHOW_ANALYTICS_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/analytics\/overview$/;
-const ADMIN_SHOW_ANALYTICS_CSV_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/analytics\/overview\.csv$/;
-const ANNOUNCEMENT_UNSUBSCRIBE_PATH =
-  /^\/v1\/notifications\/unsubscribe\/([A-Za-z0-9_-]{43})$/;
-const ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)$/;
-const ADMIN_SHOW_FEED_VALIDATION_PATH =
-  /^\/v1\/admin\/shows\/([A-Za-z0-9_-]+)\/feed-validation$/;
-const ADMIN_EPISODE_PATH = /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)$/;
-const ADMIN_EPISODE_SHOW_NOTES_DRAFT_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/show-notes\/draft$/;
-const ADMIN_EPISODE_SHOW_NOTES_DRAFTS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/show-notes\/drafts$/;
-const ADMIN_EPISODE_CHAPTER_DRAFT_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/draft$/;
-const ADMIN_EPISODE_CHAPTER_DRAFTS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/drafts$/;
-const ADMIN_EPISODE_CLIP_DRAFT_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/draft$/;
-const ADMIN_EPISODE_CLIP_DRAFTS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/drafts$/;
-const ADMIN_EPISODE_PUBLISH_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/publish$/;
-const ADMIN_EPISODE_READINESS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/readiness$/;
-const ADMIN_EPISODE_YOUTUBE_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/youtube$/;
-const ADMIN_EPISODE_YOUTUBE_AUDIO_RENDITIONS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/youtube-audio-renditions$/;
-const ADMIN_EPISODE_AUDIO_QC_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-qc$/;
-const ADMIN_EPISODE_AUDIO_MASTER_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-master$/;
-const ADMIN_EPISODE_AUDIO_MASTER_APPROVE_SOURCE_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-master\/approve-source$/;
-const ADMIN_EPISODE_AUDIO_ENHANCEMENT_PREVIEWS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-enhancement-previews$/;
-const ADMIN_EPISODE_AUDIO_ENHANCEMENT_DERIVATIVES_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/audio-enhancement-derivatives$/;
-const ADMIN_EPISODE_DELIVERY_AUDIO_JOBS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/delivery-audio-jobs$/;
-const ADMIN_AUDIO_ENHANCEMENT_MEDIA_PATH =
-  /^\/v1\/admin\/audio-enhancements\/([A-Za-z0-9_-]+)\/media\/(original|enhanced)$/;
-const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_APPROVE_PATH =
-  /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_REJECT_PATH =
-  /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/reject$/;
-const ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_MEDIA_PATH =
-  /^\/v1\/admin\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/media$/;
-const ADMIN_DELIVERY_AUDIO_APPROVE_PATH =
-  /^\/v1\/admin\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_DELIVERY_AUDIO_MEDIA_PATH =
-  /^\/v1\/admin\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/media$/;
-const ADMIN_DELIVERY_AUDIO_PEAKS_PATH =
-  /^\/v1\/admin\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/peaks$/;
-const ADMIN_EPISODE_DISTRIBUTION_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution$/;
-const ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)\/retry$/;
-const ADMIN_EPISODE_DISTRIBUTION_DESTINATION_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/distribution\/([A-Za-z0-9_-]+)$/;
-const ADMIN_EPISODE_TRANSCRIPTS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts$/;
-const ADMIN_EPISODE_TRANSCRIPTION_JOBS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcription-jobs$/;
-const ADMIN_EPISODE_ALIGNMENTS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/alignments$/;
-const ADMIN_EPISODE_ALIGNMENT_APPROVE_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/alignments\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_EPISODE_TRANSCRIPT_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)$/;
-const ADMIN_EPISODE_TRANSCRIPT_CAPTIONS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)\/captions\.(vtt|srt)$/;
-const ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/transcripts\/(en|es)\/approve$/;
-const ADMIN_EPISODE_CHAPTERS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters$/;
-const ADMIN_EPISODE_CHAPTERS_APPROVE_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/chapters\/approve$/;
-const ADMIN_EPISODE_REVIEWS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/reviews$/;
-const ADMIN_REVIEW_PATH =
-  /^\/v1\/admin\/reviews\/([A-Za-z0-9_-]+)$/;
-const ADMIN_REVIEW_COMMENT_PATH =
-  /^\/v1\/admin\/review-comments\/([A-Za-z0-9_-]+)$/;
-const ADMIN_EPISODE_CLIPS_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips$/;
-const ADMIN_EPISODE_CLIP_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/clips\/([A-Za-z0-9_-]+)$/;
-const ADMIN_CLIP_RENDER_PATH =
-  /^\/v1\/admin\/clips\/([A-Za-z0-9_-]+)\/render$/;
-const ADMIN_CLIP_RENDER_MEDIA_PATH =
-  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/media$/;
-const ADMIN_CLIP_RENDER_CAPTIONS_PATH =
-  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/captions\.(vtt|srt)$/;
-const ADMIN_CLIP_RENDER_YOUTUBE_PATH =
-  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/youtube$/;
-const ADMIN_CLIP_RENDER_PUBLICATION_PATH =
-  /^\/v1\/admin\/clip-renders\/([A-Za-z0-9_-]+)\/publication$/;
-const ADMIN_CLIP_PUBLICATION_APPROVE_PATH =
-  /^\/v1\/admin\/clip-publications\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_CLIP_PUBLICATION_WITHDRAW_PATH =
-  /^\/v1\/admin\/clip-publications\/([A-Za-z0-9_-]+)\/withdraw$/;
-const ADMIN_CLIP_YOUTUBE_APPROVE_PATH =
-  /^\/v1\/admin\/clip-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_EPISODE_YOUTUBE_APPROVE_PATH =
-  /^\/v1\/admin\/episode-youtube-publications\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_EPISODE_YOUTUBE_RECONCILE_PATH =
-  /^\/v1\/admin\/episode-youtube-publications\/([A-Za-z0-9_-]+)\/reconcile$/;
-const ADMIN_EPISODE_AD_PLAN_PATH =
-  /^\/v1\/admin\/episodes\/([A-Za-z0-9_-]+)\/ad-plan$/;
-const ADMIN_UPLOAD_PART_PATH =
-  /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)\/parts\/(\d+)$/;
-const ADMIN_UPLOAD_COMPLETE_PATH =
-  /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)\/complete$/;
-const ADMIN_UPLOAD_PATH = /^\/v1\/admin\/uploads\/([A-Za-z0-9_-]+)$/;
-const ADMIN_AD_CAMPAIGN_PATH =
-  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)$/;
-const ADMIN_AD_CAMPAIGN_APPROVE_PATH =
-  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_AD_CAMPAIGN_KILL_PATH =
-  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/kill$/;
-const ADMIN_AD_CAMPAIGN_CREATIVES_PATH =
-  /^\/v1\/admin\/ads\/campaigns\/([A-Za-z0-9_-]+)\/creatives$/;
-const ADMIN_AD_CREATIVE_AUDIO_PATH =
-  /^\/v1\/admin\/ads\/creatives\/([A-Za-z0-9_-]+)\/audio$/;
-const ADMIN_AD_CREATIVE_VALIDATE_PATH =
-  /^\/v1\/admin\/ads\/creatives\/([A-Za-z0-9_-]+)\/validate$/;
-const ADMIN_AD_PLAN_APPROVE_PATH =
-  /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/approve$/;
-const ADMIN_AD_PLAN_REJECT_PATH =
-  /^\/v1\/admin\/ads\/plans\/([A-Za-z0-9_-]+)\/reject$/;
-const PROCESSOR_DISPATCH_CLAIM_PATH =
-  "/v1/processor/dispatches/claim";
-const PROCESSOR_DISPATCH_RESULT_PATH =
-  /^\/v1\/processor\/dispatches\/([A-Za-z0-9_-]+)\/(dispatched|failed)$/;
-const PROCESSOR_AD_PLAN_COMPLETE_PATH =
-  /^\/v1\/processor\/ad-plans\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_CLIP_RENDER_COMPLETE_PATH =
-  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_CLIP_RENDER_MANIFEST_PATH =
-  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_CLIP_RENDER_SOURCE_PATH =
-  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/source$/;
-const PROCESSOR_CLIP_RENDER_OUTPUT_PATH =
-  /^\/v1\/processor\/clip-renders\/([A-Za-z0-9_-]+)\/output$/;
-const PROCESSOR_YOUTUBE_AUDIO_RENDITION_MANIFEST_PATH =
-  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_YOUTUBE_AUDIO_RENDITION_SOURCE_PATH =
-  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/sources\/(audio|artwork)$/;
-const PROCESSOR_YOUTUBE_AUDIO_RENDITION_PART_PATH =
-  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/parts\/([0-9]{1,5})$/;
-const PROCESSOR_YOUTUBE_AUDIO_RENDITION_UPLOAD_COMPLETE_PATH =
-  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/upload-complete$/;
-const PROCESSOR_YOUTUBE_AUDIO_RENDITION_COMPLETE_PATH =
-  /^\/v1\/processor\/youtube-audio-renditions\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_AUDIO_QC_COMPLETE_PATH =
-  /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_AUDIO_QC_MANIFEST_PATH =
-  /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_AUDIO_QC_SOURCE_PATH =
-  /^\/v1\/processor\/audio-qc\/([A-Za-z0-9_-]+)\/source$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_COMPLETE_PATH =
-  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_MANIFEST_PATH =
-  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_SOURCE_PATH =
-  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/source$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_OUTPUT_PATH =
-  /^\/v1\/processor\/audio-enhancements\/([A-Za-z0-9_-]+)\/outputs\/(original|enhanced)$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_COMPLETE_PATH =
-  /^\/v1\/processor\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_MANIFEST_PATH =
-  /^\/v1\/processor\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_SOURCE_PATH =
-  /^\/v1\/processor\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/source$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_PART_PATH =
-  /^\/v1\/processor\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/parts\/([0-9]{1,5})$/;
-const PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_UPLOAD_COMPLETE_PATH =
-  /^\/v1\/processor\/audio-enhancement-derivatives\/([A-Za-z0-9_-]+)\/upload-complete$/;
-const PROCESSOR_DELIVERY_AUDIO_COMPLETE_PATH =
-  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_DELIVERY_AUDIO_MANIFEST_PATH =
-  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_DELIVERY_AUDIO_SOURCE_PATH =
-  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/source$/;
-const PROCESSOR_DELIVERY_AUDIO_PART_PATH =
-  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/parts\/([0-9]{1,5})$/;
-const PROCESSOR_DELIVERY_AUDIO_UPLOAD_COMPLETE_PATH =
-  /^\/v1\/processor\/delivery-audio-jobs\/([A-Za-z0-9_-]+)\/upload-complete$/;
-const PROCESSOR_TRANSCRIPTION_CHUNK_COMPLETE_PATH =
-  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_TRANSCRIPTION_CHUNK_MANIFEST_PATH =
-  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_TRANSCRIPTION_CHUNK_SOURCE_PATH =
-  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/source$/;
-const PROCESSOR_TRANSCRIPTION_CHUNK_OUTPUT_PATH =
-  /^\/v1\/processor\/transcription-chunks\/([A-Za-z0-9_-]+)\/chunks\/([0-9]{1,3})$/;
-const PROCESSOR_ALIGNMENT_COMPLETE_PATH =
-  /^\/v1\/processor\/alignments\/([A-Za-z0-9_-]+)\/complete$/;
-const PROCESSOR_ALIGNMENT_MANIFEST_PATH =
-  /^\/v1\/processor\/alignments\/([A-Za-z0-9_-]+)\/manifest$/;
-const PROCESSOR_ALIGNMENT_SOURCE_PATH =
-  /^\/v1\/processor\/alignments\/([A-Za-z0-9_-]+)\/source$/;
-const AD_DECISION_AUDIO_PATH =
-  /^\/v1\/ads\/decisions\/([A-Za-z0-9_-]+)\/audio$/;
-const VIRTUAL_AUDIO_DIAGNOSTIC_PATH =
-  /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_.-]{80,180})(?:\/(virtual|baseline))?$/;
-const VIRTUAL_AUDIO_FIXTURE_OBJECT_PATH =
-  /^\/v1\/diagnostics\/virtual-audio\/([A-Za-z0-9_.-]{80,180})\/objects\/([A-Za-z0-9.-]{1,100})$/;
-const ADMIN_USER_PATH =
-  /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)$/;
-const ADMIN_USER_ROLES_PATH =
-  /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)\/roles$/;
-const ADMIN_USER_ROLE_PATH =
-  /^\/v1\/admin\/users\/([A-Za-z0-9_-]+)\/roles\/(super_admin|admin|producer|analyst)$/;
-const ADMIN_ALIGNMENT_BENCHMARKS_PATH =
-  "/v1/admin/alignment-benchmarks";
+import {
+  SHOW_PATH,
+  SHOW_TAX_QUOTE_PATH,
+  SHOW_CHECKOUT_PATH,
+  SHOW_EPISODE_TRANSCRIPTS_PATH,
+  SHOW_EPISODE_TRANSCRIPT_VTT_PATH,
+  SHOW_EPISODE_CHAPTERS_PATH,
+  SHOW_EPISODE_CLIPS_PATH,
+  SHOW_EPISODE_CLIP_MEDIA_PATH,
+  FEED_PATH,
+  MEDIA_PATH,
+  PUBLIC_EPISODE_PEAKS_PATH,
+  PRIVATE_FEED_PATH,
+  PRIVATE_MEDIA_PATH,
+  PRIVATE_CHAPTERS_PATH,
+  PRIVATE_TRANSCRIPT_VTT_PATH,
+  MEMBER_SHOW_FEED_PATH,
+  MEMBER_SHOW_FEED_ROTATE_PATH,
+  MEMBER_SHOW_PORTAL_PATH,
+  MEMBER_SHOW_NOTIFICATIONS_PATH,
+  MEMBER_POOL_REDEMPTION_PATH,
+  INTERNAL_POOL_GRANTS_PATH,
+  ADMIN_SHOW_PATH,
+  ADMIN_SHOW_SITE_PROJECTION_PATH,
+  ADMIN_SHOW_PREMIUM_PRICES_PATH,
+  ADMIN_SHOW_TAX_POLICY_PATH,
+  ADMIN_SHOW_AUDIO_QC_POLICY_PATH,
+  ADMIN_SHOW_CLIPS_PATH,
+  ADMIN_SHOW_EPISODES_PATH,
+  ADMIN_SHOW_RSS_IMPORT_PREVIEW_PATH,
+  ADMIN_SHOW_RSS_IMPORT_PODCAST_GUID_PATH,
+  ADMIN_SHOW_RSS_IMPORT_PLANS_PATH,
+  ADMIN_RSS_IMPORT_PLAN_REVIEW_PATH,
+  ADMIN_RSS_IMPORT_PLAN_CANCEL_PATH,
+  ADMIN_RSS_IMPORT_PLAN_EXECUTION_PATH,
+  ADMIN_RSS_IMPORT_PLAN_RECONCILIATION_PATH,
+  ADMIN_RSS_IMPORT_REDIRECT_ATTESTATION_PATH,
+  ADMIN_RSS_IMPORT_CUTOVER_PACKET_PATH,
+  ADMIN_RSS_IMPORT_REDIRECT_ACTIVATION_APPROVAL_PATH,
+  ADMIN_SHOW_MARKETING_DRY_RUN_PATH,
+  ADMIN_SHOW_MARKETING_ANNOUNCEMENTS_PATH,
+  ADMIN_SHOW_MARKETING_APPROVE_PATH,
+  ADMIN_SHOW_MARKETING_LINKS_PATH,
+  ADMIN_SHOW_MARKETING_LINK_PATH,
+  ADMIN_SHOW_ANALYTICS_PATH,
+  ADMIN_SHOW_ANALYTICS_CSV_PATH,
+  ANNOUNCEMENT_UNSUBSCRIBE_PATH,
+  ADMIN_SHOW_DISTRIBUTION_DESTINATION_PATH,
+  ADMIN_SHOW_FEED_VALIDATION_PATH,
+  ADMIN_EPISODE_PATH,
+  ADMIN_EPISODE_SHOW_NOTES_DRAFT_PATH,
+  ADMIN_EPISODE_SHOW_NOTES_DRAFTS_PATH,
+  ADMIN_EPISODE_CHAPTER_DRAFT_PATH,
+  ADMIN_EPISODE_CHAPTER_DRAFTS_PATH,
+  ADMIN_EPISODE_CLIP_DRAFT_PATH,
+  ADMIN_EPISODE_CLIP_DRAFTS_PATH,
+  ADMIN_EPISODE_PUBLISH_PATH,
+  ADMIN_EPISODE_READINESS_PATH,
+  ADMIN_EPISODE_YOUTUBE_PATH,
+  ADMIN_EPISODE_YOUTUBE_AUDIO_RENDITIONS_PATH,
+  ADMIN_EPISODE_AUDIO_QC_PATH,
+  ADMIN_EPISODE_AUDIO_MASTER_PATH,
+  ADMIN_EPISODE_AUDIO_MASTER_APPROVE_SOURCE_PATH,
+  ADMIN_EPISODE_AUDIO_ENHANCEMENT_PREVIEWS_PATH,
+  ADMIN_EPISODE_AUDIO_ENHANCEMENT_DERIVATIVES_PATH,
+  ADMIN_EPISODE_DELIVERY_AUDIO_JOBS_PATH,
+  ADMIN_AUDIO_ENHANCEMENT_MEDIA_PATH,
+  ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_APPROVE_PATH,
+  ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_REJECT_PATH,
+  ADMIN_AUDIO_ENHANCEMENT_DERIVATIVE_MEDIA_PATH,
+  ADMIN_DELIVERY_AUDIO_APPROVE_PATH,
+  ADMIN_DELIVERY_AUDIO_MEDIA_PATH,
+  ADMIN_DELIVERY_AUDIO_PEAKS_PATH,
+  ADMIN_EPISODE_DISTRIBUTION_PATH,
+  ADMIN_EPISODE_DISTRIBUTION_RETRY_PATH,
+  ADMIN_EPISODE_DISTRIBUTION_DESTINATION_PATH,
+  ADMIN_EPISODE_TRANSCRIPTS_PATH,
+  ADMIN_EPISODE_TRANSCRIPTION_JOBS_PATH,
+  ADMIN_EPISODE_ALIGNMENTS_PATH,
+  ADMIN_EPISODE_ALIGNMENT_APPROVE_PATH,
+  ADMIN_EPISODE_TRANSCRIPT_PATH,
+  ADMIN_EPISODE_TRANSCRIPT_CAPTIONS_PATH,
+  ADMIN_EPISODE_TRANSCRIPT_APPROVE_PATH,
+  ADMIN_EPISODE_CHAPTERS_PATH,
+  ADMIN_EPISODE_CHAPTERS_APPROVE_PATH,
+  ADMIN_EPISODE_REVIEWS_PATH,
+  ADMIN_REVIEW_PATH,
+  ADMIN_REVIEW_COMMENT_PATH,
+  ADMIN_EPISODE_CLIPS_PATH,
+  ADMIN_EPISODE_CLIP_PATH,
+  ADMIN_CLIP_RENDER_PATH,
+  ADMIN_CLIP_RENDER_MEDIA_PATH,
+  ADMIN_CLIP_RENDER_CAPTIONS_PATH,
+  ADMIN_CLIP_RENDER_YOUTUBE_PATH,
+  ADMIN_CLIP_RENDER_PUBLICATION_PATH,
+  ADMIN_CLIP_PUBLICATION_APPROVE_PATH,
+  ADMIN_CLIP_PUBLICATION_WITHDRAW_PATH,
+  ADMIN_CLIP_YOUTUBE_APPROVE_PATH,
+  ADMIN_EPISODE_YOUTUBE_APPROVE_PATH,
+  ADMIN_EPISODE_YOUTUBE_RECONCILE_PATH,
+  ADMIN_EPISODE_AD_PLAN_PATH,
+  ADMIN_UPLOAD_PART_PATH,
+  ADMIN_UPLOAD_COMPLETE_PATH,
+  ADMIN_UPLOAD_PATH,
+  ADMIN_AD_CAMPAIGN_PATH,
+  ADMIN_AD_CAMPAIGN_APPROVE_PATH,
+  ADMIN_AD_CAMPAIGN_KILL_PATH,
+  ADMIN_AD_CAMPAIGN_CREATIVES_PATH,
+  ADMIN_AD_CREATIVE_AUDIO_PATH,
+  ADMIN_AD_CREATIVE_VALIDATE_PATH,
+  ADMIN_AD_PLAN_APPROVE_PATH,
+  ADMIN_AD_PLAN_REJECT_PATH,
+  PROCESSOR_DISPATCH_CLAIM_PATH,
+  PROCESSOR_DISPATCH_RESULT_PATH,
+  PROCESSOR_AD_PLAN_COMPLETE_PATH,
+  PROCESSOR_CLIP_RENDER_COMPLETE_PATH,
+  PROCESSOR_CLIP_RENDER_MANIFEST_PATH,
+  PROCESSOR_CLIP_RENDER_SOURCE_PATH,
+  PROCESSOR_CLIP_RENDER_OUTPUT_PATH,
+  PROCESSOR_YOUTUBE_AUDIO_RENDITION_MANIFEST_PATH,
+  PROCESSOR_YOUTUBE_AUDIO_RENDITION_SOURCE_PATH,
+  PROCESSOR_YOUTUBE_AUDIO_RENDITION_PART_PATH,
+  PROCESSOR_YOUTUBE_AUDIO_RENDITION_UPLOAD_COMPLETE_PATH,
+  PROCESSOR_YOUTUBE_AUDIO_RENDITION_COMPLETE_PATH,
+  PROCESSOR_AUDIO_QC_COMPLETE_PATH,
+  PROCESSOR_AUDIO_QC_MANIFEST_PATH,
+  PROCESSOR_AUDIO_QC_SOURCE_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_COMPLETE_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_MANIFEST_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_SOURCE_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_OUTPUT_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_COMPLETE_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_MANIFEST_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_SOURCE_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_PART_PATH,
+  PROCESSOR_AUDIO_ENHANCEMENT_DERIVATIVE_UPLOAD_COMPLETE_PATH,
+  PROCESSOR_DELIVERY_AUDIO_COMPLETE_PATH,
+  PROCESSOR_DELIVERY_AUDIO_MANIFEST_PATH,
+  PROCESSOR_DELIVERY_AUDIO_SOURCE_PATH,
+  PROCESSOR_DELIVERY_AUDIO_PART_PATH,
+  PROCESSOR_DELIVERY_AUDIO_UPLOAD_COMPLETE_PATH,
+  PROCESSOR_TRANSCRIPTION_CHUNK_COMPLETE_PATH,
+  PROCESSOR_TRANSCRIPTION_CHUNK_MANIFEST_PATH,
+  PROCESSOR_TRANSCRIPTION_CHUNK_SOURCE_PATH,
+  PROCESSOR_TRANSCRIPTION_CHUNK_OUTPUT_PATH,
+  PROCESSOR_ALIGNMENT_COMPLETE_PATH,
+  PROCESSOR_ALIGNMENT_MANIFEST_PATH,
+  PROCESSOR_ALIGNMENT_SOURCE_PATH,
+  AD_DECISION_AUDIO_PATH,
+  VIRTUAL_AUDIO_DIAGNOSTIC_PATH,
+  VIRTUAL_AUDIO_FIXTURE_OBJECT_PATH,
+  ADMIN_USER_PATH,
+  ADMIN_USER_ROLES_PATH,
+  ADMIN_USER_ROLE_PATH,
+  ADMIN_ALIGNMENT_BENCHMARKS_PATH
+} from "./route-patterns";
 
 export async function handleRequest(
   request: Request,

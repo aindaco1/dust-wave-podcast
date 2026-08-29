@@ -31,17 +31,31 @@ import {
 } from "./final-working-master";
 import {
   privateCorsHeaders,
+  privateConflict as deliveryConflict,
   privateJson
 } from "./http";
 import {
   requestedMediaRange,
   safeDownloadFilename
 } from "./media-range";
+import {
+  MAXIMUM_PROCESSOR_BODY_BYTES,
+  MAXIMUM_PROCESSOR_OUTPUT_BYTES as MAXIMUM_OUTPUT_BYTES,
+  MAXIMUM_PROCESSOR_PART_BYTES as MAXIMUM_PART_BYTES,
+  invalidMediaProcessorSignature as invalidProcessorSignature,
+  parseMediaProcessorMultipartEvidence,
+  parseMediaProcessorPartPayload,
+  PROCESSOR_PART_PAYLOAD_HEADER,
+  PROCESSOR_SIGNATURE_HEADER,
+  PROCESSOR_TIMESTAMP_HEADER,
+  readMediaProcessorSignedJson,
+  RECOMMENDED_PROCESSOR_PART_BYTES as RECOMMENDED_PART_BYTES,
+  validateMediaProcessorMultipartParts
+} from "./media-processor-protocol";
 import { describeProcessorAvailability } from "./processor-mode";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import { completeMultipartUploadAndHead } from "./r2-multipart";
 import {
-  readSignedJsonBody,
   verifySignedText
 } from "./signed-callback";
 import {
@@ -60,15 +74,6 @@ const READ_ROLES: AdminRole[] = [
   "analyst"
 ];
 const EDIT_ROLES: AdminRole[] = ["super_admin", "admin", "producer"];
-const PROCESSOR_TIMESTAMP_HEADER = "x-podcast-processor-timestamp";
-const PROCESSOR_SIGNATURE_HEADER = "x-podcast-processor-signature";
-const PROCESSOR_PART_PAYLOAD_HEADER =
-  "x-podcast-processor-part-payload";
-const MAXIMUM_PROCESSOR_BODY_BYTES = 125_000;
-const MAXIMUM_OUTPUT_BYTES = 2 * 1024 * 1024 * 1024;
-const MAXIMUM_PART_BYTES = 32 * 1024 * 1024;
-const MINIMUM_MULTIPART_PART_BYTES = 5 * 1024 * 1024;
-const RECOMMENDED_PART_BYTES = 33_554_432 as const;
 const AUTOMATED_DELIVERY_AUDIO_MAX_ATTEMPTS = 3;
 const FAILURE_CODES = new Set([
   "processor_failed",
@@ -1455,21 +1460,15 @@ async function signedProcessorJson(
   bodyName: string,
   maximumBytes = MAXIMUM_PROCESSOR_BODY_BYTES
 ): Promise<{ body: Record<string, unknown> } | Response> {
-  if (!processorAvailable(env)) return deliveryNotFound(request, env);
-  const signed = await readSignedJsonBody(request, {
+  return readMediaProcessorSignedJson(request, {
+    available: processorAvailable(env),
     secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
-    timestampHeader: PROCESSOR_TIMESTAMP_HEADER,
-    signatureHeader: PROCESSOR_SIGNATURE_HEADER,
     maximumBytes,
     bodyName,
-    invalidBodyCode: "invalid_delivery_audio_processor_body"
+    invalidBodyCode: "invalid_delivery_audio_processor_body",
+    unavailableResponse: () => deliveryNotFound(request, env),
+    invalidSignatureResponse: () => invalidProcessorSignature(request, env)
   });
-  if (!signed.ok) {
-    return signed.reason === "secret_missing"
-      ? deliveryNotFound(request, env)
-      : invalidProcessorSignature(request, env);
-  }
-  return signed;
 }
 
 async function buildManifest(
@@ -1718,33 +1717,19 @@ function parsePartPayload(encoded: string): {
   sha256: string;
   manifestSha256: string;
 } {
-  let value: Record<string, unknown>;
-  try {
-    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/")
-      + "=".repeat((4 - encoded.length % 4) % 4);
-    value = JSON.parse(atob(base64)) as Record<string, unknown>;
-  } catch {
-    throw new RequestValidationError(
-      "The delivery-audio part payload is invalid"
-    );
-  }
+  const payload = parseMediaProcessorPartPayload(encoded, {
+    idField: "jobId",
+    idLabel: "jobId",
+    invalidPayloadMessage: "The delivery-audio part payload is invalid",
+    maximumPartBytes: MAXIMUM_PART_BYTES,
+    validateSha256: requiredSha256
+  });
   return {
-    jobId: validIdentifier(value.jobId, "jobId"),
-    partNumber: positiveInteger(
-      value.partNumber,
-      "partNumber",
-      10_000
-    ),
-    objectBytes: positiveInteger(
-      value.objectBytes,
-      "objectBytes",
-      MAXIMUM_PART_BYTES
-    ),
-    sha256: requiredSha256(value.sha256, "sha256"),
-    manifestSha256: requiredSha256(
-      value.manifestSha256,
-      "manifestSha256"
-    )
+    jobId: payload.id,
+    partNumber: payload.partNumber,
+    objectBytes: payload.objectBytes,
+    sha256: payload.sha256,
+    manifestSha256: payload.manifestSha256
   };
 }
 
@@ -1757,58 +1742,22 @@ function multipartEvidence(
   partCount: number;
   manifestSha256: string;
 } {
-  if (body.jobId !== jobId || body.action !== "upload-complete") {
-    throw new RequestValidationError(
-      "The multipart evidence does not match its URL"
-    );
-  }
-  return {
-    objectBytes: positiveInteger(
-      body.objectBytes,
-      "objectBytes",
-      MAXIMUM_OUTPUT_BYTES
-    ),
-    outputSha256: requiredSha256(
-      body.outputSha256,
-      "outputSha256"
-    ),
-    partCount: positiveInteger(body.partCount, "partCount", 10_000),
-    manifestSha256: requiredSha256(
-      body.manifestSha256,
-      "manifestSha256"
-    )
-  };
+  return parseMediaProcessorMultipartEvidence(body, jobId, {
+    idField: "jobId",
+    maximumOutputBytes: MAXIMUM_OUTPUT_BYTES,
+    validateSha256: requiredSha256
+  });
 }
 
 function validateCompleteParts(
   parts: DeliveryPartRow[],
   evidence: { objectBytes: number; partCount: number }
 ): void {
-  if (parts.length !== evidence.partCount || parts.length === 0) {
-    throw new RequestValidationError(
-      "The multipart part count is incomplete"
-    );
-  }
-  let total = 0;
-  parts.forEach((part, index) => {
-    if (
-      part.part_number !== index + 1
-      || (
-        index < parts.length - 1
-        && part.uploaded_bytes < MINIMUM_MULTIPART_PART_BYTES
-      )
-    ) {
-      throw new RequestValidationError(
-        "The multipart part ordering or size is invalid"
-      );
-    }
-    total += part.uploaded_bytes;
+  validateMediaProcessorMultipartParts(parts, evidence, {
+    combinedOrderingAndSizeMessage:
+      "The multipart part ordering or size is invalid",
+    byteTotalMessage: "The multipart byte count is invalid"
   });
-  if (total !== evidence.objectBytes) {
-    throw new RequestValidationError(
-      "The multipart byte count is invalid"
-    );
-  }
 }
 
 function validCompletedObject(
@@ -1965,18 +1914,6 @@ function privateMediaHeaders(
   return headers;
 }
 
-function invalidProcessorSignature(
-  request: Request,
-  env: PodcastEnv
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error: "invalid_processor_signature" },
-    { status: 401 }
-  );
-}
-
 function deliveryNotFound(
   request: Request,
   env: PodcastEnv
@@ -1986,20 +1923,6 @@ function deliveryNotFound(
     env.ALLOWED_ORIGINS,
     { error: "delivery_audio_job_not_found" },
     { status: 404 }
-  );
-}
-
-function deliveryConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
   );
 }
 

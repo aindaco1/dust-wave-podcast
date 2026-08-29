@@ -22,7 +22,8 @@ import {
 } from "./admin-auth";
 import type { PodcastEnv } from "./env";
 import {
-  privateCorsHeaders,
+  privateAudioHeaders,
+  privateConflict as masterConflict,
   privateJson
 } from "./http";
 import {
@@ -30,6 +31,7 @@ import {
   safeDownloadFilename
 } from "./media-range";
 import { describeProcessorAvailability } from "./processor-mode";
+import { mediaProcessorAuthError } from "./media-processor-protocol";
 import {
   readSignedJsonBody,
   verifySignedText
@@ -38,6 +40,7 @@ import {
   readJsonObject,
   RequestValidationError,
   requiredText,
+  strictInteger,
   validIdentifier
 } from "./validation";
 
@@ -867,7 +870,11 @@ export async function uploadAudioEnhancementProcessorOutput(
     || encodedPayload.length > 2_000
     || !/^[A-Za-z0-9_-]+$/.test(encodedPayload)
   ) {
-    return processorAuthError(request, env, "invalid_signature");
+    return mediaProcessorAuthError(
+      request,
+      env.ALLOWED_ORIGINS,
+      "invalid_signature"
+    );
   }
   const signed = await verifySignedText(request, {
     secret: env.MEDIA_PROCESSOR_CALLBACK_SECRET,
@@ -876,7 +883,11 @@ export async function uploadAudioEnhancementProcessorOutput(
     message: encodedPayload
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, "invalid_signature");
+    return mediaProcessorAuthError(
+      request,
+      env.ALLOWED_ORIGINS,
+      "invalid_signature"
+    );
   }
   const payload = parseUploadPayload(encodedPayload);
   if (payload.jobId !== jobId || payload.kind !== kind) {
@@ -976,7 +987,7 @@ export async function completeAudioEnhancementPreview(
     invalidBodyCode: "invalid_audio_enhancement_processor_body"
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, signed.reason);
+    return mediaProcessorAuthError(request, env.ALLOWED_ORIGINS, signed.reason);
   }
   if (signed.body.jobId !== jobId) {
     throw new RequestValidationError(
@@ -1289,9 +1300,9 @@ export async function serveAdminAudioEnhancementPreview(
       "audio_enhancement_output_mismatch"
     );
   }
-  const headers = previewMediaHeaders(
+  const headers = privateAudioHeaders(
     request,
-    env,
+    env.ALLOWED_ORIGINS,
     objectHead!.httpEtag
   );
   if (new URL(request.url).searchParams.get("download") === "1") {
@@ -1377,7 +1388,7 @@ async function authorizeEnhancementProcessor(
     invalidBodyCode: "invalid_audio_enhancement_processor_request"
   });
   if (!signed.ok) {
-    return processorAuthError(request, env, signed.reason);
+    return mediaProcessorAuthError(request, env.ALLOWED_ORIGINS, signed.reason);
   }
   if (signed.body.jobId !== jobId || signed.body.action !== action) {
     throw new RequestValidationError(
@@ -1768,37 +1779,6 @@ function validStoredOutput(
   );
 }
 
-function previewMediaHeaders(
-  request: Request,
-  env: PodcastEnv,
-  etag: string
-): Headers {
-  const headers = new Headers({
-    ...privateCorsHeaders(request, env.ALLOWED_ORIGINS),
-    "content-type": "audio/mpeg",
-    "accept-ranges": "bytes",
-    "cache-control": "private, no-store, max-age=0",
-    "content-security-policy": "default-src 'none'; sandbox",
-    "cross-origin-resource-policy": "same-site",
-    etag,
-    "referrer-policy": "no-referrer",
-    "x-content-type-options": "nosniff",
-    "x-robots-tag": "noindex, nofollow, noarchive"
-  });
-  headers.set(
-    "access-control-expose-headers",
-    "accept-ranges,content-disposition,content-length,content-range,etag"
-  );
-  return headers;
-}
-
-function strictInteger(value: unknown, field: string): number {
-  if (!Number.isSafeInteger(value)) {
-    throw new RequestValidationError(`${field} must be an integer`);
-  }
-  return value as number;
-}
-
 function nonNegativeInteger(value: unknown, field: string): number {
   const result = strictInteger(value, field);
   if (result < 0) {
@@ -1807,35 +1787,4 @@ function nonNegativeInteger(value: unknown, field: string): number {
     );
   }
   return result;
-}
-
-function processorAuthError(
-  request: Request,
-  env: PodcastEnv,
-  reason: "secret_missing" | "invalid_signature"
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    {
-      error: reason === "secret_missing"
-        ? "not_found"
-        : "invalid_processor_signature"
-    },
-    { status: reason === "secret_missing" ? 404 : 401 }
-  );
-}
-
-function masterConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string,
-  detail: Record<string, unknown> = {}
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error, ...detail },
-    { status: 409 }
-  );
 }

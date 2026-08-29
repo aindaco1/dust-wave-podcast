@@ -22,6 +22,7 @@ import {
   completeEditorialAiDraft,
   failEditorialAiDraft
 } from "./editorial-ai-draft-ledger";
+import { scheduleEditorialAiDrafts } from "./editorial-ai-draft-scheduler";
 import type { PodcastEnv } from "./env";
 import { FINAL_WORKING_MASTER_DECISION_SQL } from "./final-working-master";
 import { privateJson } from "./http";
@@ -257,58 +258,19 @@ export async function listAdminEpisodeShowNotesDrafts(
 export async function scheduleAutomaticShowNotesDrafts(
   env: PodcastEnv
 ): Promise<number> {
-  if (
-    env.ENVIRONMENT !== "staging"
-    || env.SHOW_NOTES_AUTOMATION_MODE !== "staging_generate"
-    || !isTruthy(env.SHOW_NOTES_AI_ENABLED)
-  ) {
-    return 0;
-  }
-  let sources: D1Result<AutomatedShowNotesSource>;
-  try {
-    sources = await env.DB.prepare(
+  return scheduleEditorialAiDrafts({
+    enabled: env.ENVIRONMENT === "staging"
+      && env.SHOW_NOTES_AUTOMATION_MODE === "staging_generate"
+      && isTruthy(env.SHOW_NOTES_AI_ENABLED),
+    maximumAttempts: MAXIMUM_AUTOMATED_DRAFTS_PER_RUN,
+    loadSources: () => env.DB.prepare(
       AUTOMATED_SHOW_NOTES_SOURCES_SQL
-    ).bind(10).all<AutomatedShowNotesSource>();
-  } catch (error) {
-    console.error(JSON.stringify({
-      level: "error",
-      event: "show_notes_automation_scan_failed",
-      errorName: error instanceof Error ? error.name : "UnknownError"
-    }));
-    return 0;
-  }
-
-  let generated = 0;
-  let attempted = 0;
-  for (const source of sources.results) {
-    const outputLanguages = new Set<TranscriptLanguage>([
-      source.source_language
-    ]);
-    if (source.show_language === "en" || source.show_language === "es") {
-      outputLanguages.add(source.show_language);
-    }
-    for (const outputLanguage of outputLanguages) {
-      if (attempted >= MAXIMUM_AUTOMATED_DRAFTS_PER_RUN) return generated;
-      try {
-        const result = await generateAutomaticShowNotesDraft(
-          env,
-          source,
-          outputLanguage
-        );
-        if (result !== "skipped") attempted += 1;
-        if (result === "ready") generated += 1;
-      } catch (error) {
-        console.error(JSON.stringify({
-          level: "error",
-          event: "show_notes_automation_failed",
-          episodeId: source.episode_id,
-          outputLanguage,
-          errorName: error instanceof Error ? error.name : "UnknownError"
-        }));
-      }
-    }
-  }
-  return generated;
+    ).bind(10).all<AutomatedShowNotesSource>(),
+    generate: (source, outputLanguage) =>
+      generateAutomaticShowNotesDraft(env, source, outputLanguage),
+    scanFailedEvent: "show_notes_automation_scan_failed",
+    generationFailedEvent: "show_notes_automation_failed"
+  });
 }
 
 export async function createAdminEpisodeShowNotesDraft(

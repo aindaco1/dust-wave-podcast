@@ -1,7 +1,12 @@
 import registry from "../config/processor-dispatch-registry.json";
 
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateJson,
+  privateNotFound as processorNotFound
+} from "./http";
+import { invalidMediaProcessorSignature as processorAuthError } from
+  "./media-processor-protocol";
 import { readSignedJsonBody } from "./signed-callback";
 import {
   RequestValidationError,
@@ -525,22 +530,4 @@ function validDispatchIdentifier(value: unknown): string {
     throw new RequestValidationError("dispatchId is invalid");
   }
   return dispatchId;
-}
-
-function processorAuthError(request: Request, env: PodcastEnv): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error: "invalid_processor_signature" },
-    { status: 401 }
-  );
-}
-
-function processorNotFound(request: Request, env: PodcastEnv): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error: "not_found" },
-    { status: 404 }
-  );
 }

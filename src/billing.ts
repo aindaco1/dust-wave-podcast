@@ -9,13 +9,17 @@ import { verifyStripeSignature } from "@dustwave/worker-core/stripe";
 import { requireAdmin } from "./admin-auth";
 import { projectStripeTaxEvent } from "./billing-tax-evidence";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  noStoreJson as webhookResponse,
+  privateJson
+} from "./http";
 import { observeLaunchLabStripeReplay } from
   "./launch-lab-stripe-delivery";
 import { SQL_UTC_NOW_RFC3339 } from "./sql-time";
 import { subscriptionCheckoutConfigured } from "./tax-quotes";
 import {
   isTruthy,
+  recordOrNull,
   readBoundedText,
   RequestValidationError
 } from "./validation";
@@ -757,12 +761,6 @@ function metadataString(
   return stringOrNull(recordOrNull(object.metadata)?.[key]);
 }
 
-function recordOrNull(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function verifyProviderCustomer(
   expected: string | null,
   actualValue: unknown
@@ -820,15 +818,4 @@ function safeProjectionError(error: unknown): string {
   return /^[a-z0-9_]{1,120}$/i.test(message)
     ? message
     : "event_projection_failed";
-}
-
-function webhookResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff"
-    }
-  });
 }

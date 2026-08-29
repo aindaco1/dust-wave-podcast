@@ -16,6 +16,7 @@ import {
   type SubscriptionTaxResolution
 } from "./tax-quotes";
 import {
+  recordOrNull,
   RequestValidationError,
   validIdentifier
 } from "./validation";
@@ -657,12 +658,6 @@ function unixDateTime(value: unknown): string | null {
 
 function stripeMode(env: PodcastEnv): "test" | "live" {
   return String(env.STRIPE_MODE) === "live" ? "live" : "test";
-}
-
-function recordOrNull(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 }
 
 function presentTaxEvidence(row: TaxEvidenceRow): Record<string, unknown> {

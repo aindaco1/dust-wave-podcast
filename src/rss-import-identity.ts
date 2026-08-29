@@ -8,7 +8,10 @@ import {
   prepareAdminAuditAfterSingleChange
 } from "./audit";
 import type { PodcastEnv } from "./env";
-import { privateJson } from "./http";
+import {
+  privateConflict as identityConflict,
+  privateJson
+} from "./http";
 import { isPodcastGuid } from "./podcast-guid";
 import {
   displayRssImportUrl,
@@ -334,17 +337,4 @@ function presentIdentityAssignment(
     feedSha256: assignment.feed_sha256,
     assignedAt: assignment.assigned_at
   };
-}
-
-function identityConflict(
-  request: Request,
-  env: PodcastEnv,
-  error: string
-): Response {
-  return privateJson(
-    request,
-    env.ALLOWED_ORIGINS,
-    { error },
-    { status: 409 }
-  );
 }

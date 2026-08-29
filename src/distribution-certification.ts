@@ -1,4 +1,5 @@
 import { PUBLIC_FEED_VALIDATOR_VERSION } from "./feed-validation";
+import { boundedEvidence } from "./validation";
 
 export const LAUNCH_CLAIM_REQUIRED_DESTINATIONS = 10;
 
@@ -217,9 +218,4 @@ function presentFeedValidation(
         validatedAt: null,
         currentValidator: false
       };
-}
-
-function boundedEvidence(value: unknown, maximum: number): string | null {
-  const text = String(value ?? "").trim();
-  return text ? Array.from(text).slice(0, maximum).join("") : null;
 }

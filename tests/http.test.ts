@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  etagMatches,
   json,
+  noStoreJson,
   options,
+  privateAudioHeaders,
   privateCorsHeaders,
   privateJson,
+  privateConflict,
+  privateNotFound,
   trustedAllowedOrigin
 } from "../src/http";
 
@@ -77,6 +82,25 @@ describe("Podcast HTTP responses", () => {
     expect(response.headers.get("access-control-allow-credentials")).toBe("true");
   });
 
+  it("shares the private seekable audio response policy", () => {
+    const headers = privateAudioHeaders(
+      request("https://admin.dustwave.xyz"),
+      ORIGINS,
+      '"preview-etag"'
+    );
+
+    expect(headers.get("content-type")).toBe("audio/mpeg");
+    expect(headers.get("accept-ranges")).toBe("bytes");
+    expect(headers.get("etag")).toBe('"preview-etag"');
+    expect(headers.get("cache-control")).toBe("private, no-store, max-age=0");
+    expect(headers.get("content-security-policy")).toBe(
+      "default-src 'none'; sandbox"
+    );
+    expect(headers.get("access-control-expose-headers")).toContain(
+      "content-range"
+    );
+  });
+
   it("returns empty preflight responses with configurable credentials", async () => {
     const credentialed = options(request("https://admin.dustwave.xyz"), ORIGINS);
     const publicResponse = options(
@@ -89,5 +113,33 @@ describe("Podcast HTTP responses", () => {
     expect(await credentialed.text()).toBe("");
     expect(credentialed.headers.get("access-control-allow-credentials")).toBe("true");
     expect(publicResponse.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  it("shares conflict, no-store JSON, and conditional ETag contracts", async () => {
+    const conflict = privateConflict(
+      request("https://admin.dustwave.xyz"),
+      { ALLOWED_ORIGINS: ORIGINS } as never,
+      "revision_conflict",
+      { currentRevision: 4 }
+    );
+    const webhook = noStoreJson({ received: true }, 202);
+
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toEqual({
+      error: "revision_conflict",
+      currentRevision: 4
+    });
+    expect(webhook.status).toBe(202);
+    expect(webhook.headers.get("cache-control")).toBe("no-store");
+    expect(await webhook.json()).toEqual({ received: true });
+    expect(etagMatches('"old", W/"current"', '"current"')).toBe(true);
+    expect(etagMatches("*", '"current"')).toBe(true);
+    expect(etagMatches(null, '"current"')).toBe(false);
+    const notFound = privateNotFound(
+      request("https://admin.dustwave.xyz"),
+      { ALLOWED_ORIGINS: ORIGINS } as never
+    );
+    expect(notFound.status).toBe(404);
+    expect(await notFound.json()).toEqual({ error: "not_found" });
   });
 });

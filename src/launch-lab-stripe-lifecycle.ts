@@ -2,6 +2,8 @@ import launchLabFixture from "../config/launch-lab-fixture.json";
 
 import type { PodcastEnv } from "./env";
 import { recordLaunchLabObservations } from "./launch-lab-ledger";
+import { createLaunchLabStripeValueReaders } from
+  "./launch-lab-stripe-values";
 import { reconcileLaunchLabStripeDeliveryOrder } from
   "./launch-lab-stripe-delivery";
 import { createPodcastStripeClient } from "./stripe-client";
@@ -18,6 +20,12 @@ const PROVIDER_METADATA = {
   platform: "dust_wave_podcast",
   launch_lab_fixture: FIXTURE_CONFIG_ID
 } as const;
+const {
+  nestedId,
+  positiveInteger,
+  providerId,
+  safeErrorCode
+} = createLaunchLabStripeValueReaders("launch_lab");
 
 type LifecyclePhase =
   | "new"
@@ -863,33 +871,6 @@ function sourcePeriodEnd(source: SourceRow): number {
   return Math.floor(milliseconds / 1_000);
 }
 
-function positiveInteger(value: unknown): number {
-  const number = Number(value);
-  return Number.isSafeInteger(number) && number > 0 ? number : 0;
-}
-
-function nestedId(value: unknown, prefix: string): string | null {
-  if (typeof value === "string") {
-    try {
-      return providerId(value, prefix);
-    } catch {
-      return null;
-    }
-  }
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return nestedId((value as Record<string, unknown>).id, prefix);
-  }
-  return null;
-}
-
-function providerId(value: unknown, prefix: string): string {
-  const text = String(value ?? "");
-  if (!new RegExp(`^${prefix}_[A-Za-z0-9_]{6,128}$`).test(text)) {
-    throw new Error(`launch_lab_invalid_${prefix}_id`);
-  }
-  return text;
-}
-
 function requiredPeriodEnd(value: number | null): number {
   if (!Number.isSafeInteger(value) || Number(value) <= 0) {
     throw new Error("launch_lab_subscription_period_missing");
@@ -899,11 +880,6 @@ function requiredPeriodEnd(value: number | null): number {
 
 function checkoutAttemptId(runId: string): string {
   return `checkout_launch_lab_${runId}`.slice(0, 150);
-}
-
-function safeErrorCode(error: unknown): string {
-  const value = error instanceof Error ? error.message : "unknown_error";
-  return value.replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 80);
 }
 
 function presentLifecycle(
