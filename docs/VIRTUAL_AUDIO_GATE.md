@@ -158,31 +158,13 @@ does not mutate Worker secrets or create Worker versions during a run. A
 force-killed process still requires the exact lease/object audit in the staging
 runbook.
 
-## Isolated synthetic staging evidence
+## Evidence interpretation
 
-On July 31, 2026, source commit
-`b0e5799ca7285b6518ccf6d38d7a5d1c3a14225e` passed the complete wrapper
-against `dust-wave-podcast-staging.jogo.workers.dev` with 5,000 request pairs
-at concurrency 12:
-
-- all 24 HTTP protocol probes passed, including `HEAD`, full and ranged
-  `GET`, open and suffix ranges, retry, `If-None-Match`, `If-Range`,
-  unsatisfiable/multipart rejection, and concurrent range reads;
-- all 10,000 measured requests completed with zero request errors and zero
-  content mismatches;
-- virtual delivery measured 282.93 ms p95 versus 206.27 ms for the
-  byte-identical private-R2 baseline, an added p95 of 76.66 ms against the
-  250 ms ceiling; and
-- the wrapper confirmed removal of every object uploaded by the run and its
-  exact D1 lease. A follow-up aggregate query found zero diagnostic leases.
-
-The retained JSON is mode `0600`, contains no raw lease token, signed
-capability, authorization value, or capability path, and explicitly records
-`nativeClientValidation: false`. This closes the synthetic HTTP and paired-load
-gate only. It does not authorize `staging_public` or `live`, satisfy native
-Apple/Spotify/Overcast/Pocket Casts/Podcast Addict playback, prove launch
-inventory has equal-length house coverage, or replace the reviewed sponsor
-pilot.
+Historical synthetic measurements remain in Git history. The latest operational
+result belongs in [CURRENT_STATE.md](CURRENT_STATE.md) and the durable gate rows.
+A synthetic pass records `nativeClientValidation: false`; it cannot satisfy the
+real application matrix, inventory coverage, sponsor pilot, or activation approval.
+Evidence freshness and source identity must pass again before promotion.
 
 ## Automatic evidence refresh
 

@@ -56,7 +56,9 @@ No R2 access key, Cloudflare account ID, or Cloudflare API token is required by
 the clip workflow. Do not copy Pool or Store deployment credentials.
 
 GitHub accepts `workflow_dispatch` only after the workflow file exists on the
-default branch. Queue a staging render in the authenticated workbench, then:
+default branch. Queue a staging render in the authenticated workbench; the
+[automatic dispatcher](PROCESSOR_DISPATCH_AUTOMATION.md) starts it. Use manual
+dispatch only for audited recovery of that exact queued render:
 
 ```sh
 gh workflow run process-clip-render.yml \

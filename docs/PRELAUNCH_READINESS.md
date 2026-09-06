@@ -5,6 +5,11 @@ rights-cleared episode without pretending that content-dependent launch work
 has already happened. D1 and the executable gates remain authoritative; this
 document is an operating model, not a second readiness store.
 
+The dated result and any regressions are recorded in
+[CURRENT_STATE.md](CURRENT_STATE.md). A green monitor workflow means its read
+completed safely; `safe=true` does not imply `platformReady=true`. Inspect the
+bounded report and use `--require-ready` when readiness itself must be enforced.
+
 ## Two truthful readiness signals
 
 Run the content-free composed report against the existing private launch
@@ -76,7 +81,9 @@ a successful refresh grant to reach the exact configured channel within 24
 hours; that stricter live access result must pass for `platformReady`.
 
 Refresh the two inputs through the existing protected workflows documented in
-the staging runbook. The daily readiness monitor only reads their bounded D1
+the [Launch Lab runbook](LAUNCH_LAB_RUNBOOK.md) and
+[virtual-audio exercise](STAGING_ACCEPTANCE.md#virtual-audio-evidence).
+The daily readiness monitor only reads their bounded D1
 evidence; it does not send email, charge a card, upload media, submit a feed,
 or create a qualified ad outcome.
 

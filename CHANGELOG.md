@@ -1,5 +1,19 @@
 # Changelog
 
+## Changes on main after v0.2.26
+
+These source changes do not identify a deployed Worker version:
+
+- Added content-independent prelaunch readiness with explicit content deferrals
+  and a private golden canary.
+- Added guarded show creation and empty-draft deletion with permanent identity
+  tombstones and shared default provisioning.
+- Consolidated processor workflow setup and cross-repository user-flow coverage.
+- Consolidated project status and next steps into `docs/CURRENT_STATE.md`;
+  removed obsolete handoff/deployment diaries and retired dispatch references.
+- Split staging operations into deployment, migration validation, feature
+  acceptance, and Launch Lab guides with linked procedures and historical evidence.
+
 ## v0.2.26 - 2026-08-06
 
 ### Shared bounded GitHub transport

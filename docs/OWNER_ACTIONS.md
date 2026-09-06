@@ -1,30 +1,39 @@
 # Owner action queue
 
-These decisions do not block local or authenticated staging implementation.
-They do gate the indicated production action.
+This file tracks human inputs, not live readiness. See
+[CURRENT_STATE.md](CURRENT_STATE.md) for dated verification and technical blockers,
+[ROADMAP.md](ROADMAP.md) for settled product decisions, and
+[PRELAUNCH_READINESS.md](PRELAUNCH_READINESS.md) for activation order.
 
-| Input | Needed before | Status |
+## Outstanding inputs
+
+| Input | Needed before | Concrete decision or evidence |
 |---|---|---|
-| Permanent feed and media hostnames | Directory submission or public feed route | Confirmed: `feeds.dustwave.xyz` and `media.dustwave.xyz`; attach only after the Worker routes pass staging |
-| Confirm the Substack blond-profile artwork and wordmark as launch assets | Public Dust Wave show-page promotion | Confirmed |
-| Final Spanish or bilingual canonical show description | Public metadata/feed promotion | Confirmed: Spanish primary with English translation |
-| `Ópera en la Selva` early-access default | First premium episode schedule | Confirmed: seven days before public release with per-episode override |
-| Optional free mini-episode | First-show offer activation | Confirmed: enabled, maximum one |
-| First rights-cleared publishable episode plus final title/summary/release intent | First real publication snapshot, directory item, and full-episode YouTube test | Awaiting source. Monitor run `31362711418` proves `platformReady=true` and tracks directory, YouTube publication, and real-client ad evidence as explicit content deferrals. The authorized Dust Don't Settle appearance remains a private `Do not publish` processor fixture and must not be repurposed. No Ópera en la Selva episode is publishable yet, so public snapshot, directory-ingestion, and full-episode YouTube work are intentionally held |
-| Full private listen and promote/reject decision for the ready enhanced derivative | Normalized delivery-audio render | Complete for the private source-test episode: enhanced revision 2, its delivery MP3/player peaks, and the current-audio production review are approved. Future episodes reuse the same expiring bilingual decision link; no manual workflow dispatch is required |
-| At least one additional super-admin identity | Production admin authentication | Confirmed privately; raw address remains outside the public repository |
-| Resend sender and staging API key | Staging magic-link delivery | Existing infrastructure is operational; use or rotate a least-privilege key without committing it |
-| Resend signed webhook endpoint and secret | First controlled live announcement test | Complete. Staging has a dedicated, rotated Podcast webhook for delivered, bounced, complained, failed, and suppressed events. Unsigned rejection plus signed unmatched-event/replay deduplication passed, one consented live delivery reached its signed `delivered` transition, the listener later withdrew the show preference, and no failed live delivery remains. Announcement mode must remain dry-run outside a separately approved exercise |
-| Consented staging recipient and approved suppression exercise | Resend launch evidence | Complete. The private address remains outside Git, and the listener journey proved consent, live delivery, later one-click withdrawal, and no-resend eligibility. Monitor run `31360051564` accepted the existing fresh, provider-correlated isolated suppression record after its shallow-history source check was corrected; no duplicate provider message or real-listener suppression was required |
-| Dust Wave YouTube OAuth/channel session and inspection | Controlled unlisted YouTube evidence | The YouTube Data API is enabled in the existing Dust Wave Google Cloud project. A dedicated staging Web client requests only `youtube.upload` and `youtube.readonly`, and all four purpose-bound values are installed as staging Worker secrets. The refreshed grant reached the exact configured `@dustwavecollective` channel, and monitor run `31360051564` passed the channel-access node with current durable health. Full-episode testing remains intentionally held until a separate publishable fixture exists; then force one unlisted upload, reconcile its exact video ID, record inspection, and restore dry-run mode |
-| Directory provider logins, terms, ownership codes, and reviews | 10+ platform certification | Browser readiness was checked on 2026-08-01 without submitting a feed: Spotify for Creators and Apple Podcasts Connect are authenticated, YouTube Studio is on the Dust Wave brand channel, Amazon Music and Pocket Casts expose their RSS forms, and Castbox still shows `Sign in`. Actual submission, terms, owner verification, and ingestion certification remain held until the canonical feed contains a publishable item. The credential-free packet, feed/artwork/enclosure validation, observation polling, recovery evidence, and 10+ claim gate are already automated; never mark owner setup, submission, or ingestion without provider evidence |
-| Turnstile key pairs | Listener/Checkout staging and first production deploy | Dedicated staging pair remains installed for listener and Checkout flows. At owner request, only isolated staging admin login omits the widget; origin checks, rate limits, and single-use Resend links remain. Production admin Turnstile stays required. Dedicated production widget is created for `dustwave.xyz` and `www.dustwave.xyz`; install its retrievable secret only when the production Worker is first created |
-| Dedicated restricted Stripe test API key | First controlled Podcast Checkout | Complete for one controlled staging purchase on 2026-08-08: the installed test key created the Customer and hosted Checkout, the entitlement activated, and the kill switch was restored to disabled. The obsolete test Product and both Prices are archived, while the completed terminal attempt remains content-free gate evidence. Remove only exact verified residual test artifacts and rotate the restricted key before another activation |
-| Versioned subscription-tax policy with rate, jurisdiction, evidence reference, approval identity, and effective date | Purchasable Stripe prices | Complete for staging test mode: the owner approved the exact `US-NM-87120` 7.625% exclusive candidate derived from Store commit `f4b95a2`; the importer created and attested the manual Stripe test Tax Rate, atomically assigned it, and the hosted Stripe gate passed 15/15 while Checkout stayed disabled. The Podcast webhook now has the exact 15-event contract, and one replayed paid invoice produced matched non-PII evidence for the expected $5.00 subtotal, $0.38 tax, and $5.38 total. Do not treat this ZIP-specific candidate as coverage for another destination or as production activation |
-| Podcast-only Stripe Customer Portal profile with address/rate-changing controls disabled | First controlled Portal session | Staging profile verified active: address, subscription update, and pause are disabled; cancellation is at period end with no proration. Production profile remains a promotion-time action |
-| Pool benefit product/tier mapping and entitlement duration for each podcast | First controlled Pool-code grant | Awaiting selection; the bridge and Dust Wave redemption flow remain mapping-independent |
-| Sponsor contract/disclosure/creative for the first direct campaign | Direct campaign activation | First sponsor confirmed as Dust Wave. The network-free Dust Wave direct/house rehearsal is automated by `npm run gate:sponsor-demo` and cannot count as billing, native-client, or launch evidence. Use the later private staging campaign to review the real disclosure and creative. A real native-client qualified download remains separate and must not be simulated |
-| Exact-snapshot Super-admin promotion approval | First production promotion | Intentionally undecided. Revisit only after every staging launch node passes. Codex prepares the immutable evidence snapshot, backup/migration order, canaries, capability-by-capability promotion, and rollback; the approval must name that exact snapshot and does not authorize unrelated production changes |
+| First rights-cleared episode or optional trailer | Real publication, directory ingestion, unlisted YouTube test, native-client ad pilot | Supply source media, rights, final title, Spanish-primary summary, English translation, artwork, access intent, and release time. No publishable source has been established in this review; both public feeds remain empty. The private `Do not publish` processor fixture cannot substitute |
+| Exact media and publication review | Each episode's approval and schedule | Listen to the final master/delivery audio and approve or reject the exact revision through the existing Admin review links |
+| YouTube account access, if health diagnosis requires it | Restoring exact-channel access | Reauthorize only the configured Dust Wave channel if the scoped health failure proves that necessary. An old successful grant is not current evidence |
+| Directory ownership, terms, login/2FA, and provider review | Each destination's submission and certification | Complete provider-specific owner steps against the rights-cleared item-bearing feed. Record actual ingestion/recovery; never infer it from an accessible form |
+| Production billing policy and provider configuration | Purchasable production prices | Obtain applicable versioned tax approval and matching manual rate/price evidence; verify restricted credentials, Podcast Portal, webhook event contract, and listener return. The approved staging test candidate does not authorize live billing |
+| Pool show/tier/add-on mapping and duration | Pool redemption activation | Select the benefit policy and verify the existing grant/redeem/revoke/overlap/expiry flow for that mapping |
+| Dust Wave campaign disclosure and creative approval | Direct-sponsor activation | Approve the real campaign and exact ad plan; provide genuine native-client listening evidence. The synthetic sponsor demo cannot prove a billable download |
+| Exact-snapshot Super-admin promotion approval | Each production capability promotion | Approve the named immutable evidence snapshot only after the applicable gates pass and backup/canary/rollback steps are reviewable |
 
-Do not put credentials or personal identifiers in this file. Provider secret
-presence will be tracked as booleans in the private admin diagnostics.
+## Preserve completed decisions and evidence
+
+Brand assets, bilingual scope, launch prices, seven-day early access, the optional
+mini-episode, and the first sponsor are settled in the roadmap. Do not ask for
+those decisions again unless their scope changes.
+
+The historical staging purchase and the consented announcement delivery/withdrawal
+have durable evidence. The current monitor still accepts the Stripe gate and asks
+for fresh isolated Resend suppression evidence. Reconcile existing terminal rows
+before any authorized provider refresh; do not repeat a listener send or delete
+completed D1 evidence to refresh a status.
+
+Keep the old launch-show test catalog archived and Checkout disabled. Any remaining
+test-artifact cleanup must identify the exact provider object and lifecycle state;
+never confuse it with the separate reusable Launch Lab test catalog. Verify
+credential scope and rotation before the next authorized activation.
+
+Raw identities, emails, login links, feed tokens, credentials, verification codes,
+and provider payloads remain outside this repository.

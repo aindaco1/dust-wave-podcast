@@ -62,7 +62,8 @@ The Python/model runtime belongs in a pinned GitHub or owner-controlled runner,
 not in the public Worker. The Worker owns job fingerprints, state, policy,
 result validation, and D1/R2 projection.
 
-The parent repository pins the green `release/0.2.2` submodule so the private
+The parent repository pins alignment source
+`32111c2a8dd62d891c4309f7638a86c31a789dc3` so the private
 benchmark-bundle assembler and its contract are reviewable with the Worker.
 Model execution remains independently pinned to reviewed commit
 `e611801d2af82dcdb079444b7e8a7eea4309d1a6` and runner digest
@@ -141,7 +142,7 @@ clean 60-minute run can therefore flow directly into private H1 resource
 evidence instead of requiring an operator to reconstruct measurements from
 logs.
 
-## Current evidence state
+## Evidence requirements
 
 The schema, normalized evaluator, private import path, adversarial integration
 fixtures, benchmark-bundle assembler, and automated processor handoff are
@@ -153,29 +154,11 @@ blocked until the 24-fixture rights-cleared corpus, human word boundaries, 100
 preview reviews, 60-minute resource runs, idempotency evidence, and
 clean-runner reproduction are imported and produce a passing row.
 
-As of August 1, 2026, the owner-authorized English Dust Don't Settle source has
-an approved, speaker-confirmed transcript and has completed exact WhisperX
-alignment under runner commit
-`e611801d2af82dcdb079444b7e8a7eea4309d1a6`. Staging job
-`alignment_job_0426ec9ac766e5b43e626dd75695f128` produced immutable manifest
-SHA-256
-`b60b845414ae52a78987530550be58b10d5e416b2567d876ce51842f567a1706`:
-10,176 of 10,176 words are aligned, with zero unaligned, interpolated,
-invalid, or projection-issue words. That result is structurally eligible and
-awaits the real H1 benchmark plus exact human approval; it is not launch-gate
-evidence by itself. The Ópera en la Selva Substack feed currently exposes two
-editorial items and no podcast-audio enclosure. A metadata-only review of
-candidate Dust Wave YouTube uploads found English automatic captions and no
-owner-confirmed Spanish spoken-audio source. YouTube's translated caption
-options are not evidence that the underlying speech is Spanish.
+Historical English alignment and authorized Spanish source preparation are
+recorded in Git history. They demonstrate private pipeline work, not a passing
+bilingual H1 benchmark. Keep source media, transcript words, rights records, and
+human-gold review in the controlled benchmark workspace. Automatic captions and
+structurally aligned words cannot replace human boundary/preview review.
 
-On August 1, 2026, the owner approved the native-Spanish interview
-`KVlzIKhqIWw` (36:28) for private benchmark testing. Its source metadata reports
-Spanish speech and YouTube exposes an original Spanish automatic-caption
-reference. `prepare:alignment-benchmark-source` now selects twelve distinct,
-non-overlapping, caption-dense two-to-five-minute windows, transcodes exact
-private PCM fixtures, and records source ranges, media/reference hashes,
-authorization, tool identity, and word-count evidence without committing media
-or transcript content. Automatic captions remain an unreviewed reference: the
-fixtures cannot become H1 gold until the Spanish transcript and sampled word
-boundaries are explicitly reviewed.
+Use [CURRENT_STATE.md](CURRENT_STATE.md) for dated project readiness; this
+post-launch feature gate does not authorize publication of a private fixture.

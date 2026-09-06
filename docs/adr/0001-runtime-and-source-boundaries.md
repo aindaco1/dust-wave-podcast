@@ -8,14 +8,15 @@
 Podcast is a separate Cloudflare Worker runtime with separate staging and
 production bindings. D1 is canonical for show, episode, subscription, feed,
 campaign, transcript, clip, and distribution state. R2 is canonical for
-Podcast-owned masters and derivatives. Analytics Engine receives bounded raw
-observations; D1/R2 hold reviewed aggregates and exports.
+Podcast-owned masters and derivatives. Analytics Engine receives bounded,
+normalized
+telemetry; D1/R2 hold reviewed aggregates and exports.
 
 `dustwave.xyz` remains canonical for show and episode pages. Every episode maps
 to one News page, and every show page exists even when it has zero episodes.
 RSS and media availability do not depend on completion of a static-site build.
 The permanent public origins are `https://feeds.dustwave.xyz` and
-`https://media.dustwave.xyz`. Both will be Worker Custom Domains: `feeds`
+`https://media.dustwave.xyz`. Both are configured as Worker Custom Domains: `feeds`
 serves public/private RSS and related feed endpoints; `media` serves range-safe
 public, premium, and dynamically assembled media. The R2 bucket remains private
 and is never connected directly to the media hostname.
