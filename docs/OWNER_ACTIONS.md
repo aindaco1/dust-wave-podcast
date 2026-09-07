@@ -11,7 +11,7 @@ This file tracks human inputs, not live readiness. See
 |---|---|---|
 | First rights-cleared episode or optional trailer | Real publication, directory ingestion, unlisted YouTube test, native-client ad pilot | Supply source media, rights, final title, Spanish-primary summary, English translation, artwork, access intent, and release time. No publishable source has been established in this review; both public feeds remain empty. The private `Do not publish` processor fixture cannot substitute |
 | Exact media and publication review | Each episode's approval and schedule | Listen to the final master/delivery audio and approve or reject the exact revision through the existing Admin review links |
-| YouTube account access, if health diagnosis requires it | Restoring exact-channel access | Reauthorize only the configured Dust Wave channel if the scoped health failure proves that necessary. An old successful grant is not current evidence |
+| YouTube account reauthorization | Restoring exact-channel access | Reconnect only the configured Dust Wave channel and replace its staging refresh grant. The existing checker must then verify that exact channel; an old successful grant is not current evidence. See the diagnosed failure in current state |
 | Directory ownership, terms, login/2FA, and provider review | Each destination's submission and certification | Complete provider-specific owner steps against the rights-cleared item-bearing feed. Record actual ingestion/recovery; never infer it from an accessible form |
 | Production billing policy and provider configuration | Purchasable production prices | Obtain applicable versioned tax approval and matching manual rate/price evidence; verify restricted credentials, Podcast Portal, webhook event contract, and listener return. The approved staging test candidate does not authorize live billing |
 | Pool show/tier/add-on mapping and duration | Pool redemption activation | Select the benefit policy and verify the existing grant/redeem/revoke/overlap/expiry flow for that mapping |
@@ -25,10 +25,10 @@ mini-episode, and the first sponsor are settled in the roadmap. Do not ask for
 those decisions again unless their scope changes.
 
 The historical staging purchase and the consented announcement delivery/withdrawal
-have durable evidence. The current monitor still accepts the Stripe gate and asks
-for fresh isolated Resend suppression evidence. Reconcile existing terminal rows
-before any authorized provider refresh; do not repeat a listener send or delete
-completed D1 evidence to refresh a status.
+have durable evidence. The current-state report records acceptance of those
+records and the refreshed isolated suppression evidence. Reconcile existing
+terminal rows before any authorized provider refresh; do not repeat a listener
+send or delete completed D1 evidence to refresh a status.
 
 Keep the old launch-show test catalog archived and Checkout disabled. Any remaining
 test-artifact cleanup must identify the exact provider object and lifecycle state;

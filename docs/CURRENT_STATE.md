@@ -1,17 +1,18 @@
 # Current state and next steps
 
 Verified: **2026-09-06** (`America/Denver`). Audience: maintainers and the next
-Codex task. Source inspected: `main` / `origin/main` at
-`f9f32a2df367d1453a59e0fae775347d4fbce776`, followed by the
-`fix/staging-evidence-cli` repair; package version `0.2.26`. Git records the
-exact repair commit and deployment acceptance below remains separate.
+Codex task. Runtime source: `main` / `origin/main` at
+`54ec39fd3e11f9aebea8ef3eb42a0d21986d7424`, merged in
+[PR #97](https://github.com/aindaco1/dust-wave-podcast/pull/97) and deployed to
+staging; package version `0.2.26`. Later documentation commits are separate.
 
 The hosting and Admin foundations are implemented, and the public feeds respond,
 but **the platform is not currently ready for first-content activation**. The
-latest bounded monitor report has **9 PASS, 3 BLOCK, 3 DEFER, 0 WAIT, 0 FAIL**:
-`safe=true`, `platformReady=false`, `launchReady=false`. The shared CLI import
-failure is repaired and covered locally; refresh the protected evidence workflows
-and restore YouTube access before proceeding with content activation.
+latest bounded monitor report has **11 PASS, 1 BLOCK, 3 DEFER, 0 WAIT, 0 FAIL**:
+`safe=true`, `platformReady=false`, `launchReady=false`. Both previously failing
+evidence workflows now pass, and the canary and suppression evidence are current.
+The sole remaining platform blocker is YouTube's rejected refresh grant, which
+requires reauthorization of the configured channel.
 
 This is a dated assessment, not a readiness store. Executable gates, D1, and
 provider evidence own operational truth. Replace this snapshot when reverified.
@@ -52,9 +53,9 @@ use it for product/ownership context, not current deployment or readiness claims
 | Editorial | Private transcription, review/export, AI proposals, alignment/chapter/clip contracts | Human-approved transcripts and the real bilingual H1 benchmark before gated public features |
 | Publication | One revision and root planner for RSS, News, and eligible YouTube; staleness, supersession, readiness digest and shadow/enforce modes | First-content projection and provider reconciliation; current modes remain guarded |
 | Billing/access | Stripe Checkout/Portal/webhook contracts, independent Stripe/Pool/manual sources, private-feed issue/rotation, expiry and manual tax evidence | Production policy/configuration approval and any selected Pool benefit mapping |
-| Announcements | Consent-bound outbox, signed events, withdrawal, suppression and idempotency | Fresh isolated suppression proof; any live send remains separately scoped |
+| Announcements | Consent-bound outbox, signed events, withdrawal, suppression and idempotency; fresh isolated suppression proof passes | Any new live send remains separately scoped |
 | YouTube/directories | Channel-health checks, controlled unlisted/native-video/audio-rendition paths, directory packet/validation/polling/recovery | Fresh exact-channel access, real publishable object, and ten genuine directory certifications |
-| Ads/analytics | Deterministic targeting, immutable equal-byte fallback, signed virtual audio, qualified counters, privacy-minimized aggregates/CSV | Current synthetic evidence plus real-client matrix and direct-sponsor pilot |
+| Ads/analytics | Deterministic targeting, immutable equal-byte fallback, signed virtual audio, qualified counters, privacy-minimized aggregates/CSV; current synthetic gate passes | Real-client matrix and direct-sponsor pilot |
 | RSS migration | Reviewed plan, private copy/reconciliation, channel identity, cutover packet and final approval contracts | Owner-controlled old-host action after the existing migration gates; no automatic redirect activation |
 
 Use [API.md](API.md), [SECURITY.md](SECURITY.md), and
@@ -68,16 +69,17 @@ Do not rebuild these implemented foundations as new roadmap tasks.
 | Git | Clean starting checkout, matching local/remote main; no open PRs or issues at inspection | Source SHA above identifies the runtime assessed; later documentation commits are recorded separately in Git |
 | Shared pins | Platform `a0006c3e0c3f8ab814387491753989956adbbe94` (`v0.23.0`); alignment source `32111c2a8dd62d891c4309f7638a86c31a789dc3`; both submodules clean | Alignment model execution has its own reviewed pin in the alignment gate |
 | Local `npm run check` | PASS on Node `22.22.2`: secret scan, zero audit vulnerabilities, generated types, typecheck, **180 files / 790 tests** | Includes two plain-Node CLI subprocess regressions plus immutable-preview and missing-ref coverage |
-| Staging and production dry runs | Both PASS with Wrangler `4.115.0` | Packaging evidence; no deployment performed |
+| Staging and production dry runs | Both PASS with Wrangler `4.115.0` | Packaging evidence; actual staging deployment recorded below |
 | Public staging and production gates | Both PASS; artwork, cache/security, ETag and conditional `304`; independent RSS reads confirm **zero items in each feed** | No item/enclosure playback, directory ingestion, or launch claim |
-| Main CI before repair | [Run 34063038931](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34063038931), 2026-09-06, PASS at source baseline | Repair CI and provider readiness require separate evidence |
-| Daily monitor | [Run 34045353540](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34045353540), 2026-09-06; its retained JSON reports 9 PASS / 3 BLOCK / 3 DEFER | Workflow success means the bounded read completed safely; it does not mean `platformReady` |
-| Virtual-audio refresh | [Run 33897566004](https://github.com/aindaco1/dust-wave-podcast/actions/runs/33897566004), 2026-09-04, FAIL during sponsor rehearsal | It never reaches the signed load/evidence step |
-| Launch Lab refresh | [Run 33901881630](https://github.com/aindaco1/dust-wave-podcast/actions/runs/33901881630), 2026-09-04, FAIL at contract-observation generation | It cannot refresh the required contract/suppression evidence |
-| Processor dispatcher | [Run 34055003543](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34055003543), 2026-09-06, success | Dispatcher execution alone is not completed media processing |
+| Repair CI | [PR run 34087172156](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087172156) and [main run 34087290394](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087290394), both PASS | Source and bundle verification, not provider readiness |
+| Readiness monitor | [Run 34087627066](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087627066), 2026-09-06 local; retained JSON reports **11 PASS / 1 BLOCK / 3 DEFER** | Workflow success means the bounded read completed safely; YouTube access still prevents `platformReady` |
+| Virtual-audio refresh | [Run 34087343263](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087343263), PASS: 24 protocol probes, 5,000 pairs / 10,000 measured requests, zero errors or content mismatches; exact objects and diagnostic lease removed | Synthetic protocol/load evidence, not native-client playback or qualified downloads |
+| Launch Lab refresh | [Run 34087344657](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087344657), workflow PASS: **33 passed / 8 pending / 0 failed**; all 24 required canary contracts current; Resend suppression and Stripe lifecycle/Portal cleanup pass | The full 41-scenario matrix remains incomplete: native-client qualification, three directory cases, hosted Checkout, and three YouTube cases remain pending; fixture evidence is never launch-eligible |
+| Processor dispatcher | [Run 34086019335](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34086019335), 2026-09-06, success | Dispatcher execution alone is not completed media processing |
 | D1 migrations | Staging migration `0089_admin_show_creation.sql` applied after a verified backup restore and local rehearsal; **89 applied**, preserved show/episode/admin counts, zero foreign-key violations. Production lists no pending migrations | Only staging was migrated; backup and restore evidence remain outside Git |
-| Website target | Staging source now pins reviewed website commit `0d3f7ffca11eb163970731eb2a215f49a87fa737`; the exact commit and catalog are readable through GitHub | Publishing remains `dry_run`; binding deployment and website artifact acceptance are separate |
-| Deployed versions before repair | Staging `3c814720-f78a-4b1e-9c6f-60eae0f1070e`; production `a2f41ecc-3efc-4c40-8d42-496aa2b73243` | Local Cloudflare inventory now succeeds; these versions were not mapped to a source commit |
+| Website target | Deployed staging binding pins reviewed website commit `0d3f7ffca11eb163970731eb2a215f49a87fa737`; the exact commit and catalog are readable through GitHub | Publishing remains `dry_run`; the source pin does not deploy a website artifact |
+| Staging deployment | Worker `37f420fd-cc22-4cf7-b58a-34ccdc893a3b`, annotated with exact runtime source above; public gate PASS. All bindings retained; only `GITHUB_REF` changed | Rollback Worker: `3c814720-f78a-4b1e-9c6f-60eae0f1070e`. The additive schema migration remains applied |
+| Production deployment | Worker `a2f41ecc-3efc-4c40-8d42-496aa2b73243`; public gate PASS | Inspected only; no production deployment or capability promotion |
 
 The monitor independently passes both fail-closed provider postures (14 staging
 modes / 17 production modes), all 18 required staging secret names, show
@@ -85,11 +87,7 @@ configuration, the episode gate, all 15 Stripe test-mode checks, fixture
 exclusion, the zero-write boundary, and D1 foreign keys. It does not provide a
 complete migration/deployment inventory or inspect secret values.
 
-## Concrete work queue
-
-### 1. Verify the repaired sponsor CLI path in protected workflows
-
-**Owner:** engineering. **Dependency:** none.
+## Completed repair
 
 The extensionless HTTP import in [src/virtual-media.ts](../src/virtual-media.ts)
 blocked both CLIs under plain Node while Vitest resolved it successfully.
@@ -100,65 +98,41 @@ was added.
 [Subprocess tests](../tests/sponsor-cli.test.mjs) failed on the original source
 and now pass under Node 22, checking JSON output and synthetic-evidence
 boundaries for both actual entry points. They run in the default suite and
-before Launch Lab fixture reconciliation. Full validation and both bundle dry
-runs pass. Remaining acceptance: the protected workflows must get past the
-formerly failing steps on the exact repair commit.
+before Launch Lab fixture reconciliation. Full validation, both bundle dry runs,
+and the two protected refresh workflows now pass on the deployed repair commit.
 
-### 2. Restore fresh canary and suppression evidence
+The staging website ref now resolves to the reviewed immutable commit in the
+evidence table, with exact-ref and missing-ref regressions. Staging migration
+`0089` was rehearsed against a restored private backup before remote application;
+do not replay it. Deployment retained every binding and all provider modes.
+The website pin selects preview source; it does not deploy a website artifact.
 
-**Owner:** engineering/operator. **Dependency:** step 1.
+## Concrete work queue
 
-The monitor reports `0/24` current required isolated contract scenarios, a
-missing/older-than-seven-days Launch Lab rehearsal, and no qualifying current
-signed media/load gate. Its Resend node specifically lacks **fresh isolated
-provider suppression**. These are platform blockers, not content deferrals.
+### 1. Reauthorize and restore YouTube channel access
 
-After the code fix, use the existing protected refresh workflows and their
-[Launch Lab](LAUNCH_LAB_RUNBOOK.md) and
-[virtual-audio reconciliation/cleanup contracts](STAGING_ACCEPTANCE.md#virtual-audio-evidence).
-Before any provider exercise, inspect the
-current durable run and exact stored provider object so ambiguity cannot cause a
-duplicate send. Preserve the completed consented delivery and withdrawal proof.
+**Owner:** account owner for reauthorization; engineering for verification.
 
-Acceptance: 24 required isolated contracts pass with current source and freshness;
-the signed media gate passes 5,000 pairs/10,000 requests, protocol checks and
-exact lease/object cleanup; fresh correlated suppression passes. Re-run the
-composed report and confirm these nodes are `PASS`. These workflows can mutate
-isolated staging/provider test state; no refresh was dispatched in this cleanup.
+A bounded staging health read diagnosed `youtube_oauth_invalid_grant`, last
+checked at `2026-09-07 05:10:38 UTC`, with 483 consecutive failures, no active
+lease, and last success at `2026-08-16 18:25:36 UTC`. Google rejected the saved
+refresh grant; these fields do not establish why it expired or was revoked.
+Existing tests already cover the bounded OAuth error, recovery on the next due
+check, exact-channel matching, and lease exclusion.
 
-### 3. Diagnose and restore YouTube channel access
-
-**Owner:** engineering; account owner only if reauthorization is needed.
-**Dependency:** can proceed independently of steps 1–2.
-
-Inspect the bounded provider-health failure/lease/freshness state and the existing
-scheduled access checker. The current report does not distinguish expired access,
-channel mismatch, or another health failure, so the root cause remains unverified.
-Repair the diagnosed cause through the existing checker; never upload the private
-processor fixture to prove access.
+Reconnect only the configured Dust Wave channel and replace its staging refresh
+grant through the existing secret configuration. Then let the existing scheduled
+checker verify access; it retries failed checks hourly. Do not alter D1 health
+to manufacture a pass or upload the private processor fixture as an access test.
 
 Acceptance: a successful refresh reaches the exact configured channel, evidence
 is under 24 hours old with healthy failure/lease state, and the composed
 `youtube_access` node passes. Keep publication dry-run.
 
-### 4. Deploy the reviewed staging website pin and source repair
+### 2. Re-establish the platform-ready checkpoint
 
-**Owner:** engineering/operator. **Dependency:** reviewed source and passing CI.
-
-[wrangler.jsonc](../wrangler.jsonc) replaces the deleted website branch with an
-immutable reviewed commit. Exact-ref reads, missing-ref failure, and the
-staging dry-run publication boundary have regression coverage. Staging schema
-is now through `0089`; do not reapply it. Production schema was inspected only.
-
-Deploy the tested source to staging, retain its exact Worker version and
-rollback target, and repeat the public gate. Keep production deployment and
-first-content/provider promotion separate. The website pin selects source for
-previews; it does not itself deploy a website artifact.
-
-### 5. Re-establish the platform-ready checkpoint
-
-**Owner:** engineering. **Dependency:** steps 1–4 and every remaining real platform
-blocker cleared.
+**Owner:** engineering. **Dependency:** restored YouTube access and continued
+freshness of the now-passing platform evidence.
 
 Run the existing prelaunch gate with `--require-ready` and inspect the structured
 summary. Preserve the semantic distinction between report safety and readiness.
@@ -168,10 +142,10 @@ do not add another scheduler or relax gate policy to obtain a green result.
 Acceptance: `platformReady=true`, zero non-content blocks/waits/failures, with the
 three content-dependent nodes explicitly deferred until evidence exists.
 
-### 6. Complete first content and the strict launch gate
+### 3. Complete first content and the strict launch gate
 
 **Owner:** content owner + engineering/operator. **Dependency:** rights-cleared
-publishable source and step 5.
+publishable source and step 2.
 
 Follow [first-content activation](PRELAUNCH_READINESS.md#first-content-activation):
 review rights/metadata/release intent; process and approve exact audio; freeze a
@@ -190,7 +164,7 @@ Acceptance: the strict `gate:launch:staging -- <configured episode pointer>
 --require-ready` passes with real, current, source-bound evidence. Empty feeds and
 private/synthetic fixtures cannot satisfy it.
 
-### 7. Prepare exact-snapshot promotion, then post-launch work
+### 4. Prepare exact-snapshot promotion, then post-launch work
 
 **Owner:** engineering prepares; Super-admin approves. **Dependency:** strict
 launch evidence and applicable production billing/provider decisions.
@@ -219,8 +193,8 @@ npm run gate:public:staging
 npm run gate:public:production
 ```
 
-The two standalone CLIs are known failures at the inspected source. Once the
-correct scoped credentials are available, these commands read operational state:
+The standalone CLIs now pass and have subprocess regression coverage. With the
+correct scoped credentials, these commands read operational state:
 
 ```sh
 npm run db:migrations:staging:list
