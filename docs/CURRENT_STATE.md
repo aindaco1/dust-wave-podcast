@@ -1,18 +1,19 @@
 # Current state and next steps
 
-Verified: **2026-09-06** (`America/Denver`). Audience: maintainers and the next
+Verified: **2026-09-07** (`America/Denver`). Audience: maintainers and the next
 Codex task. Runtime source: `main` / `origin/main` at
 `54ec39fd3e11f9aebea8ef3eb42a0d21986d7424`, merged in
 [PR #97](https://github.com/aindaco1/dust-wave-podcast/pull/97) and deployed to
 staging; package version `0.2.26`. Later documentation commits are separate.
 
-The hosting and Admin foundations are implemented, and the public feeds respond,
-but **the platform is not currently ready for first-content activation**. The
-latest bounded monitor report has **11 PASS, 1 BLOCK, 3 DEFER, 0 WAIT, 0 FAIL**:
-`safe=true`, `platformReady=false`, `launchReady=false`. Both previously failing
-evidence workflows now pass, and the canary and suppression evidence are current.
-The sole remaining platform blocker is YouTube's rejected refresh grant, which
-requires reauthorization of the configured channel.
+The hosting and Admin foundations are implemented, and **the platform-ready
+checkpoint now passes**. The latest bounded monitor report has **12 PASS,
+0 BLOCK, 3 DEFER, 0 WAIT, 0 FAIL**: `safe=true`, `platformReady=true`,
+`launchReady=false`. Both previously failing evidence workflows pass, the canary
+and suppression evidence are current, and YouTube exact-channel access is
+restored. Launch still needs the three content-dependent acceptance exercises.
+The renewed Google Testing grant has a seven-day lifetime; resolve the shared
+consent configuration before treating access as durable.
 
 This is a dated assessment, not a readiness store. Executable gates, D1, and
 provider evidence own operational truth. Replace this snapshot when reverified.
@@ -54,7 +55,7 @@ use it for product/ownership context, not current deployment or readiness claims
 | Publication | One revision and root planner for RSS, News, and eligible YouTube; staleness, supersession, readiness digest and shadow/enforce modes | First-content projection and provider reconciliation; current modes remain guarded |
 | Billing/access | Stripe Checkout/Portal/webhook contracts, independent Stripe/Pool/manual sources, private-feed issue/rotation, expiry and manual tax evidence | Production policy/configuration approval and any selected Pool benefit mapping |
 | Announcements | Consent-bound outbox, signed events, withdrawal, suppression and idempotency; fresh isolated suppression proof passes | Any new live send remains separately scoped |
-| YouTube/directories | Channel-health checks, controlled unlisted/native-video/audio-rendition paths, directory packet/validation/polling/recovery | Fresh exact-channel access, real publishable object, and ten genuine directory certifications |
+| YouTube/directories | Channel-health checks, controlled unlisted/native-video/audio-rendition paths, directory packet/validation/polling/recovery; exact-channel access restored September 7 | Retain current access evidence, a real publishable object, and ten genuine directory certifications |
 | Ads/analytics | Deterministic targeting, immutable equal-byte fallback, signed virtual audio, qualified counters, privacy-minimized aggregates/CSV; current synthetic gate passes | Real-client matrix and direct-sponsor pilot |
 | RSS migration | Reviewed plan, private copy/reconciliation, channel identity, cutover packet and final approval contracts | Owner-controlled old-host action after the existing migration gates; no automatic redirect activation |
 
@@ -72,13 +73,13 @@ Do not rebuild these implemented foundations as new roadmap tasks.
 | Staging and production dry runs | Both PASS with Wrangler `4.115.0` | Packaging evidence; actual staging deployment recorded below |
 | Public staging and production gates | Both PASS; artwork, cache/security, ETag and conditional `304`; independent RSS reads confirm **zero items in each feed** | No item/enclosure playback, directory ingestion, or launch claim |
 | Repair CI | [PR run 34087172156](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087172156) and [main run 34087290394](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087290394), both PASS | Source and bundle verification, not provider readiness |
-| Readiness monitor | [Run 34087627066](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087627066), 2026-09-06 local; retained JSON reports **11 PASS / 1 BLOCK / 3 DEFER** | Workflow success means the bounded read completed safely; YouTube access still prevents `platformReady` |
+| Readiness monitor | [Run 34094310174](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34094310174), 2026-09-07 local; retained JSON reports **12 PASS / 0 BLOCK / 3 DEFER**, `safe=true`, `platformReady=true`, `launchReady=false`; `youtube_access` passes | The three deferrals require genuine directory certification, controlled rights-cleared YouTube publication, and a real-client direct-ad pilot. This is current readiness evidence, not public launch or permanent credential validity |
 | Virtual-audio refresh | [Run 34087343263](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087343263), PASS: 24 protocol probes, 5,000 pairs / 10,000 measured requests, zero errors or content mismatches; exact objects and diagnostic lease removed | Synthetic protocol/load evidence, not native-client playback or qualified downloads |
 | Launch Lab refresh | [Run 34087344657](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087344657), workflow PASS: **33 passed / 8 pending / 0 failed**; all 24 required canary contracts current; Resend suppression and Stripe lifecycle/Portal cleanup pass | The full 41-scenario matrix remains incomplete: native-client qualification, three directory cases, hosted Checkout, and three YouTube cases remain pending; fixture evidence is never launch-eligible |
 | Processor dispatcher | [Run 34086019335](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34086019335), 2026-09-06, success | Dispatcher execution alone is not completed media processing |
 | D1 migrations | Staging migration `0089_admin_show_creation.sql` applied after a verified backup restore and local rehearsal; **89 applied**, preserved show/episode/admin counts, zero foreign-key violations. Production lists no pending migrations | Only staging was migrated; backup and restore evidence remain outside Git |
 | Website target | Deployed staging binding pins reviewed website commit `0d3f7ffca11eb163970731eb2a215f49a87fa737`; the exact commit and catalog are readable through GitHub | Publishing remains `dry_run`; the source pin does not deploy a website artifact |
-| Staging deployment | Worker `37f420fd-cc22-4cf7-b58a-34ccdc893a3b`, annotated with exact runtime source above; public gate PASS. All bindings retained; only `GITHUB_REF` changed | Rollback Worker: `3c814720-f78a-4b1e-9c6f-60eae0f1070e`. The additive schema migration remains applied |
+| Staging deployment | Credential revision `11295a7d-0a9c-483f-b27e-5e6877a98901` at 100%, September 7 at 07:02:31 UTC. Script ETag and runtime match source-annotated `37f420fd-cc22-4cf7-b58a-34ccdc893a3b`; only the YouTube client secret and refresh grant were replaced. Binding names and visible values are unchanged; public gate PASS | Keep the renewed credentials during any code rollback: older revisions reference the retired secret. The earlier code rollback target is `3c814720-f78a-4b1e-9c6f-60eae0f1070e`; the additive schema migration remains applied |
 | Production deployment | Worker `a2f41ecc-3efc-4c40-8d42-496aa2b73243`; public gate PASS | Inspected only; no production deployment or capability promotion |
 
 The monitor independently passes both fail-closed provider postures (14 staging
@@ -109,49 +110,57 @@ The website pin selects preview source; it does not deploy a website artifact.
 
 ## Concrete work queue
 
-### 1. Reauthorize and restore YouTube channel access
+### 1. Resolve the consent app's bounded token lifetime
 
-**Owner:** account owner for reauthorization; engineering for verification.
+**Owner:** account owner + engineering. Access renewal is complete; durable
+consent configuration requires a separate decision covering the shared project.
 
 OAuth follow-up on **2026-09-07** confirmed the dedicated **Dust Wave Podcast
 Staging** client in the same Google project as **Film Web**. The shared consent
 app remains **External / Testing**, so a renewed YouTube refresh grant has a
-seven-day lifetime under Google's rules. A fresh health read still reports
-`youtube_oauth_invalid_grant` at `2026-09-07 06:11:07 UTC`, 484 consecutive
-failures, no active lease, and last success at `2026-08-16 18:25:36 UTC`.
-The failure code alone cannot establish why the previous grant stopped working.
-Existing tests cover the bounded OAuth error, recovery on the next due check,
-exact-channel matching, and lease exclusion.
+seven-day lifetime under [Google's rules](STAGING_RUNBOOK.md#provider-credentials).
+The account owner completed consent for the configured Dust Wave brand channel.
+The replacement client secret and refresh grant are installed only in staging;
+the old secret is disabled and retained for recovery. The existing Worker checker
+successfully refreshed OAuth and verified the exact configured channel at
+`2026-09-07 07:05:16 UTC`, resetting 484 consecutive failures to zero. A second
+real refresh/channel check passed after the old secret was disabled, at
+`2026-09-07 07:15:16 UTC`, with zero failures and no active lease; the next normal
+check is due at `19:15:16 UTC`. This restores access; it does not establish why
+the previous grant stopped working.
 
-A replacement secret was added to the existing
-dedicated client because its previous secret is no longer retrievable from
-Google; the old secret remains enabled. Renewal is paused at Google's unverified
-test-app warning for the account owner. No replacement grant or secret has yet
-been installed in the Worker, and no upload or publishing-mode change occurred.
-Follow the [existing-client renewal procedure](STAGING_RUNBOOK.md#provider-credentials);
-do not create another client or secret to resume this prepared attempt.
+Renewal is a bounded recovery, with another grant expected to be needed around
+September 14 unless the consent configuration is resolved. Review every client
+sharing the Google project and the applicable publishing/verification requirements
+before changing the project-wide setting. The Film Web client and consent app's
+publishing state were left unchanged.
 
-Reconnect only the configured Dust Wave channel and replace its staging refresh
-grant through the existing secret configuration. Then let the existing scheduled
-checker verify access; it retries failed checks hourly. Do not alter D1 health
-to manufacture a pass or upload the private processor fixture as an access test.
+The existing scheduled checker owns health evidence and normally rechecks a
+success after 12 hours or a failure after one hour. During this renewal only its
+due timestamp was advanced; status, success timestamps, and failure counters were
+written by the real checker. Existing tests cover bounded OAuth errors, recovery,
+exact-channel matching, and lease exclusion. No private media was uploaded, and
+`YOUTUBE_PUBLISH_MODE` remains `dry_run`.
 
-Acceptance: a successful refresh reaches the exact configured channel, evidence
-is under 24 hours old with healthy failure/lease state, and the composed
-`youtube_access` node passes. Keep publication dry-run.
+Acceptance for durable access: the approved consent configuration supports the
+intended integration lifetime, and real exact-channel checks continue to pass.
+An old success or a freshly renewed testing grant cannot establish that lifetime.
 
-### 2. Re-establish the platform-ready checkpoint
+### 2. Preserve the restored platform-ready checkpoint
 
-**Owner:** engineering. **Dependency:** restored YouTube access and continued
-freshness of the now-passing platform evidence.
+**Owner:** engineering. **Status:** complete at the September 7 monitor snapshot;
+continued readiness depends on current source and provider evidence.
 
-Run the existing prelaunch gate with `--require-ready` and inspect the structured
-summary. Preserve the semantic distinction between report safety and readiness.
-If an alert is needed for `BLOCK`, derive it from the existing report/monitor;
-do not add another scheduler or relax gate policy to obtain a green result.
+The existing read-only monitor now reports `platformReady=true`, with zero
+non-content blocks, waits, or failures and the three content nodes deferred.
+Inspect this structured result rather than treating workflow success as readiness.
+Before activation, rerun the existing prelaunch gate with `--require-ready` and
+inspect its summary. If an alert is needed for `BLOCK`, derive it from the existing
+report/monitor; do not add another scheduler or relax gate policy.
 
-Acceptance: `platformReady=true`, zero non-content blocks/waits/failures, with the
-three content-dependent nodes explicitly deferred until evidence exists.
+Acceptance: keep `platformReady=true` and zero non-content blocks/waits/failures
+at the next intended operation, with each content deferral explicit until its
+own real evidence exists.
 
 ### 3. Complete first content and the strict launch gate
 
