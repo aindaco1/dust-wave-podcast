@@ -70,6 +70,12 @@ artwork, cache/security headers, and conditional requests. Remote migrations,
 deployment, provider exercises, and readiness approval are separate operations.
 See the current-state report for known checks outside the default suite.
 
+The default suite launches both sponsor/Launch Lab CLI entry points as plain
+Node subprocesses and validates their JSON output. Modules shared with those
+CLIs must use explicit extensions for runtime TypeScript imports; Node's native
+loader does not use Vitest's extension resolution. Keep the shared logic in its
+existing module rather than adding a second CLI implementation.
+
 ## Documentation map
 
 | Document | Responsibility |

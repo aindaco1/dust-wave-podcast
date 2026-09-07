@@ -55,7 +55,7 @@
         "YOUTUBE_PUBLISH_MODE": "dry_run",
         "GITHUB_OWNER": "aindaco1",
         "GITHUB_REPO": "dust-wave-new",
-        "GITHUB_REF": "release/1.2.0-youtube-preflight",
+        "GITHUB_REF": "0d3f7ffca11eb163970731eb2a215f49a87fa737",
         "GITHUB_PUBLISH_MODE": "dry_run",
         "PODCAST_EMAIL_FROM": "Dust Wave Podcasts <podcasts@dustwave.xyz>",
         "PODCAST_OWNER_EMAIL": "podcasts@dustwave.xyz",

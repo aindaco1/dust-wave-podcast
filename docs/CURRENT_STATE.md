@@ -2,13 +2,16 @@
 
 Verified: **2026-09-06** (`America/Denver`). Audience: maintainers and the next
 Codex task. Source inspected: `main` / `origin/main` at
-`12ab4f23d1b0ed5b6164db895eb4836016e9a811`; package version `0.2.26`.
+`f9f32a2df367d1453a59e0fae775347d4fbce776`, followed by the
+`fix/staging-evidence-cli` repair; package version `0.2.26`. Git records the
+exact repair commit and deployment acceptance below remains separate.
 
 The hosting and Admin foundations are implemented, and the public feeds respond,
 but **the platform is not currently ready for first-content activation**. The
 latest bounded monitor report has **9 PASS, 3 BLOCK, 3 DEFER, 0 WAIT, 0 FAIL**:
-`safe=true`, `platformReady=false`, `launchReady=false`. Restore the failing
-evidence automation and YouTube access before proceeding with content activation.
+`safe=true`, `platformReady=false`, `launchReady=false`. The shared CLI import
+failure is repaired and covered locally; refresh the protected evidence workflows
+and restore YouTube access before proceeding with content activation.
 
 This is a dated assessment, not a readiness store. Executable gates, D1, and
 provider evidence own operational truth. Replace this snapshot when reverified.
@@ -64,16 +67,17 @@ Do not rebuild these implemented foundations as new roadmap tasks.
 |---|---|---|
 | Git | Clean starting checkout, matching local/remote main; no open PRs or issues at inspection | Source SHA above identifies the runtime assessed; later documentation commits are recorded separately in Git |
 | Shared pins | Platform `a0006c3e0c3f8ab814387491753989956adbbe94` (`v0.23.0`); alignment source `32111c2a8dd62d891c4309f7638a86c31a789dc3`; both submodules clean | Alignment model execution has its own reviewed pin in the alignment gate |
-| Local `npm run check` | PASS on Node `22.22.2`: secret scan, zero audit vulnerabilities, generated types, typecheck, **179 files / 786 tests** | Default tests do not exercise the failing plain-Node sponsor CLI import path |
+| Local `npm run check` | PASS on Node `22.22.2`: secret scan, zero audit vulnerabilities, generated types, typecheck, **180 files / 790 tests** | Includes two plain-Node CLI subprocess regressions plus immutable-preview and missing-ref coverage |
 | Staging and production dry runs | Both PASS with Wrangler `4.115.0` | Packaging evidence; no deployment performed |
 | Public staging and production gates | Both PASS; artwork, cache/security, ETag and conditional `304`; independent RSS reads confirm **zero items in each feed** | No item/enclosure playback, directory ingestion, or launch claim |
-| Main CI | [Run 33227246455](https://github.com/aindaco1/dust-wave-podcast/actions/runs/33227246455), 2026-08-29, PASS at inspected main | Source verification, not provider readiness |
+| Main CI before repair | [Run 34063038931](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34063038931), 2026-09-06, PASS at source baseline | Repair CI and provider readiness require separate evidence |
 | Daily monitor | [Run 34045353540](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34045353540), 2026-09-06; its retained JSON reports 9 PASS / 3 BLOCK / 3 DEFER | Workflow success means the bounded read completed safely; it does not mean `platformReady` |
 | Virtual-audio refresh | [Run 33897566004](https://github.com/aindaco1/dust-wave-podcast/actions/runs/33897566004), 2026-09-04, FAIL during sponsor rehearsal | It never reaches the signed load/evidence step |
 | Launch Lab refresh | [Run 33901881630](https://github.com/aindaco1/dust-wave-podcast/actions/runs/33901881630), 2026-09-04, FAIL at contract-observation generation | It cannot refresh the required contract/suppression evidence |
 | Processor dispatcher | [Run 34055003543](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34055003543), 2026-09-06, success | Dispatcher execution alone is not completed media processing |
-| D1 migrations | **89 ordered source migrations**, ending in `0089_admin_show_creation.sql`; direct staging list failed with Cloudflare error `7403` (account invalid/not authorized) | Current remote applied migration lists and immutable Worker versions were not verified; do not repeat the old “through 0088/current” claim |
-| Website target | `git ls-remote` confirms website main exists at `366688e5e391db5f61cf38f2ae0d9c1c1139b961`, but staging's configured `release/1.2.0-youtube-preflight` branch is absent | Source refs do not prove deployed asset identity; website/runtime configuration was not changed |
+| D1 migrations | Staging migration `0089_admin_show_creation.sql` applied after a verified backup restore and local rehearsal; **89 applied**, preserved show/episode/admin counts, zero foreign-key violations. Production lists no pending migrations | Only staging was migrated; backup and restore evidence remain outside Git |
+| Website target | Staging source now pins reviewed website commit `0d3f7ffca11eb163970731eb2a215f49a87fa737`; the exact commit and catalog are readable through GitHub | Publishing remains `dry_run`; binding deployment and website artifact acceptance are separate |
+| Deployed versions before repair | Staging `3c814720-f78a-4b1e-9c6f-60eae0f1070e`; production `a2f41ecc-3efc-4c40-8d42-496aa2b73243` | Local Cloudflare inventory now succeeds; these versions were not mapped to a source commit |
 
 The monitor independently passes both fail-closed provider postures (14 staging
 modes / 17 production modes), all 18 required staging secret names, show
@@ -83,23 +87,22 @@ complete migration/deployment inventory or inspect secret values.
 
 ## Concrete work queue
 
-### 1. Repair the shared sponsor CLI import path
+### 1. Verify the repaired sponsor CLI path in protected workflows
 
 **Owner:** engineering. **Dependency:** none.
 
-Both scheduled refreshes fail with `ERR_MODULE_NOT_FOUND`: the plain Node process
-cannot resolve `./http` imported by [src/virtual-media.ts](../src/virtual-media.ts).
-The failure reproduces locally with `npm run gate:sponsor-demo` on CI-parity
-Node 22. The observation generator imports the same sponsor gate, so one broken
-module graph blocks both workflows. Vitest resolves it differently, explaining
-the green default suite.
+The extensionless HTTP import in [src/virtual-media.ts](../src/virtual-media.ts)
+blocked both CLIs under plain Node while Vitest resolved it successfully.
+The repair uses `./http.ts` and permits explicit TypeScript import extensions
+in the existing no-emit typecheck. No loader dependency or parallel media logic
+was added.
 
-Fix the shared plain-Node import/execution boundary without duplicating the
-selector or media logic. Add meaningful subprocess coverage or a CI step for
-both `npm run gate:sponsor-demo` and `npm run launch-lab:contracts`, including
-valid JSON output for the latter. Run the full check and both dry runs before a
-release PR. Acceptance: both actual CLIs exit zero under Node 22, and the two
-protected workflows get past the formerly failing steps on the exact fix commit.
+[Subprocess tests](../tests/sponsor-cli.test.mjs) failed on the original source
+and now pass under Node 22, checking JSON output and synthetic-evidence
+boundaries for both actual entry points. They run in the default suite and
+before Launch Lab fixture reconciliation. Full validation and both bundle dry
+runs pass. Remaining acceptance: the protected workflows must get past the
+formerly failing steps on the exact repair commit.
 
 ### 2. Restore fresh canary and suppression evidence
 
@@ -138,26 +141,19 @@ Acceptance: a successful refresh reaches the exact configured channel, evidence
 is under 24 hours old with healthy failure/lease state, and the composed
 `youtube_access` node passes. Keep publication dry-run.
 
-### 4. Repair the missing staging website ref and verify deployment/schema drift
+### 4. Deploy the reviewed staging website pin and source repair
 
-**Owner:** engineering/operator. **Dependency:** correct scoped Cloudflare access
-for remote inventory; a reviewed website source target for configuration work.
+**Owner:** engineering/operator. **Dependency:** reviewed source and passing CI.
 
-[wrangler.jsonc](../wrangler.jsonc) still sets staging `GITHUB_REF` to the absent
-`release/1.2.0-youtube-preflight` website branch. Select an existing reviewed target,
-validate the existing catalog/News dry-run contracts against it, and prepare the
-corresponding isolated website staging build. Do not silently change production
-or infer deployed asset identity from website main.
+[wrangler.jsonc](../wrangler.jsonc) replaces the deleted website branch with an
+immutable reviewed commit. Exact-ref reads, missing-ref failure, and the
+staging dry-run publication boundary have regression coverage. Staging schema
+is now through `0089`; do not reapply it. Production schema was inspected only.
 
-Restore the correct read-scoped account access, list migrations for both
-environments, and record immutable Worker versions. Compare deployed state with
-source through migration `0089`; prepare backup/forward-migration/rollback work
-only for a verified gap. Never edit or replay an applied migration. Keep secrets
-and database exports outside Git.
-
-Acceptance: the configured website ref resolves and staging projections validate;
-both migration lists and deployment inventories are recorded against the intended
-account; any authorized deployment has exact-source and public-gate evidence.
+Deploy the tested source to staging, retain its exact Worker version and
+rollback target, and repeat the public gate. Keep production deployment and
+first-content/provider promotion separate. The website pin selects source for
+previews; it does not itself deploy a website artifact.
 
 ### 5. Re-establish the platform-ready checkpoint
 
@@ -241,7 +237,7 @@ for deployment order, [STAGING_ACCEPTANCE.md](STAGING_ACCEPTANCE.md) for control
 exercises, and [LAUNCH_LAB_RUNBOOK.md](LAUNCH_LAB_RUNBOOK.md) for protected provider
 rehearsals and cleanup.
 
-## Cleanup completed in this review
+## Cleanup completed in the earlier documentation review
 
 - Removed **24 remote branches** and **4 local branches**. Twenty remote tips
   were ancestors of current main; four squash-merged branches matched their
@@ -271,8 +267,9 @@ rehearsals and cleanup.
   appendix. Updated navigation without rerunning or changing the dated runtime
   evidence above.
 
-No application code, binding value, migration, dependency pin, provider state, or
-deployment was changed. Remote branch removal is complete; Git history records
+That earlier cleanup changed no application code, binding value, migration,
+dependency pin, provider state, or deployment. The repair and staging migration
+described above are subsequent work. Remote branch removal is complete; Git history records
 the documentation consolidation separately from runtime changes. Future cleanups should inventory ignored output,
 retain needed evidence outside Git, prove branch merges, preserve active worktrees,
 and use exact ref checks before remote deletion.

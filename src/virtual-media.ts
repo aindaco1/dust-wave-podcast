@@ -1,4 +1,4 @@
-import { etagMatches, noStoreJson } from "./http";
+import { etagMatches, noStoreJson } from "./http.ts";
 
 export const MAX_VIRTUAL_MEDIA_SEGMENTS = 24;
 
