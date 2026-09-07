@@ -133,6 +133,15 @@ Worker validates and stores the result but can move it only to `needs_review`;
 an Admin/Super-admin approval button remains disabled until the benchmark row
 matches.
 
+Completion is established by the saved job, revision, manifest/quality identity,
+word count, and exact audit event. D1 batch row-change counters alone are not
+proof that completion failed. When a callback reports a conflict, inspect those
+records before retrying: a `ready` job may already contain the complete result,
+and its failure callback must not overwrite it. The existing completion
+regression covers a successful commit with zero reported batch changes and an
+idempotent replay. Use the dated evidence in [CURRENT_STATE.md](CURRENT_STATE.md)
+to distinguish a repaired historical workflow failure from current acceptance.
+
 The retained content-free evidence includes the source language and a sampled
 peak-disk measurement alongside the runner's input-duration, wall-clock, and
 peak-memory values. Disk sampling records immutable input bytes plus peak

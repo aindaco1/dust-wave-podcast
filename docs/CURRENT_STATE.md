@@ -77,6 +77,7 @@ Do not rebuild these implemented foundations as new roadmap tasks.
 | Virtual-audio refresh | [Run 34087343263](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087343263), PASS: 24 protocol probes, 5,000 pairs / 10,000 measured requests, zero errors or content mismatches; exact objects and diagnostic lease removed | Synthetic protocol/load evidence, not native-client playback or qualified downloads |
 | Launch Lab refresh | [Run 34087344657](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34087344657), workflow PASS: **33 passed / 8 pending / 0 failed**; all 24 required canary contracts current; Resend suppression and Stripe lifecycle/Portal cleanup pass | The full 41-scenario matrix remains incomplete: native-client qualification, three directory cases, hosted Checkout, and three YouTube cases remain pending; fixture evidence is never launch-eligible |
 | Processor dispatcher | [Run 34086019335](https://github.com/aindaco1/dust-wave-podcast/actions/runs/34086019335), 2026-09-06, success | Dispatcher execution alone is not completed media processing |
+| Historical alignment callback | September 7 read-only staging verification: the job from [run 30706834848](https://github.com/aindaco1/dust-wave-podcast/actions/runs/30706834848) is `ready`, with all **10,176 words aligned and persisted**, no failure code, one attempt, and one completion audit at `2026-08-01 15:59:29 UTC`; its revision is `needs_review` | The old handler returned a false `409` after committing the result. [Repair b7386658](https://github.com/aindaco1/dust-wave-podcast/commit/b7386658db21786850f603329b5747ea19e55547) is in the deployed staging code. The historical handler reproduces the conflict; the current handler and all 32 related tests pass. No later green alignment workflow or imported bilingual benchmark exists |
 | D1 migrations | Staging migration `0089_admin_show_creation.sql` applied after a verified backup restore and local rehearsal; **89 applied**, preserved show/episode/admin counts, zero foreign-key violations. Production lists no pending migrations | Only staging was migrated; backup and restore evidence remain outside Git |
 | Website target | Deployed staging binding pins reviewed website commit `0d3f7ffca11eb163970731eb2a215f49a87fa737`; the exact commit and catalog are readable through GitHub | Publishing remains `dry_run`; the source pin does not deploy a website artifact |
 | Staging deployment | Credential revision `11295a7d-0a9c-483f-b27e-5e6877a98901` at 100%, September 7 at 07:02:31 UTC. Script ETag and runtime match source-annotated `37f420fd-cc22-4cf7-b58a-34ccdc893a3b`; only the YouTube client secret and refresh grant were replaced. Binding names and visible values are unchanged; public gate PASS | Keep the renewed credentials during any code rollback: older revisions reference the retired secret. The earlier code rollback target is `3c814720-f78a-4b1e-9c6f-60eae0f1070e`; the additive schema migration remains applied |
@@ -87,6 +88,13 @@ modes / 17 production modes), all 18 required staging secret names, show
 configuration, the episode gate, all 15 Stripe test-mode checks, fixture
 exclusion, the zero-write boundary, and D1 foreign keys. It does not provide a
 complete migration/deployment inventory or inspect secret values.
+
+The alignment investigation made no remote changes or repeat model run. The
+saved result and audit confirm completed processing despite the old red Actions
+run; this incident needs no new patch or deployment. Staging has zero alignment
+benchmark rows, so the real bilingual H1 evidence and exact human approval in
+[the alignment gate](ALIGNMENT_GATE.md) remain outstanding. They gate word-level
+features and dependent chapters/clips, not the core audio/RSS launch.
 
 ## Completed repair
 
