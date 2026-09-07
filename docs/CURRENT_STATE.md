@@ -113,12 +113,23 @@ The website pin selects preview source; it does not deploy a website artifact.
 
 **Owner:** account owner for reauthorization; engineering for verification.
 
-A bounded staging health read diagnosed `youtube_oauth_invalid_grant`, last
-checked at `2026-09-07 05:10:38 UTC`, with 483 consecutive failures, no active
-lease, and last success at `2026-08-16 18:25:36 UTC`. Google rejected the saved
-refresh grant; these fields do not establish why it expired or was revoked.
-Existing tests already cover the bounded OAuth error, recovery on the next due
-check, exact-channel matching, and lease exclusion.
+OAuth follow-up on **2026-09-07** confirmed the dedicated **Dust Wave Podcast
+Staging** client in the same Google project as **Film Web**. The shared consent
+app remains **External / Testing**, so a renewed YouTube refresh grant has a
+seven-day lifetime under Google's rules. A fresh health read still reports
+`youtube_oauth_invalid_grant` at `2026-09-07 06:11:07 UTC`, 484 consecutive
+failures, no active lease, and last success at `2026-08-16 18:25:36 UTC`.
+The failure code alone cannot establish why the previous grant stopped working.
+Existing tests cover the bounded OAuth error, recovery on the next due check,
+exact-channel matching, and lease exclusion.
+
+A replacement secret was added to the existing
+dedicated client because its previous secret is no longer retrievable from
+Google; the old secret remains enabled. Renewal is paused at Google's unverified
+test-app warning for the account owner. No replacement grant or secret has yet
+been installed in the Worker, and no upload or publishing-mode change occurred.
+Follow the [existing-client renewal procedure](STAGING_RUNBOOK.md#provider-credentials);
+do not create another client or secret to resume this prepared attempt.
 
 Reconnect only the configured Dust Wave channel and replace its staging refresh
 grant through the existing secret configuration. Then let the existing scheduled

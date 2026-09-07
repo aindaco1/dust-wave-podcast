@@ -190,6 +190,25 @@ only during the bounded controlled-test window and must resolve to the same
 channel represented by the selected show's `youtube_channel_url` and the
 committed `YOUTUBE_CHANNEL_URL`.
 
+Renew the existing dedicated Podcast client rather than creating a parallel
+OAuth integration. Its registered renewal redirect is Google's OAuth Playground;
+select **Use your own OAuth credentials**, offline access, consent, and the
+`youtube.readonly` / `youtube.upload` scopes. Select the configured Dust Wave
+brand channel. Keep tokens and client secrets out of chat, logs, and Git.
+If Google no longer exposes the existing client secret and no secured copy is
+available, add a replacement to the same client, retain the old secret during
+verification, and install the replacement client secret with the new refresh
+grant in staging. Verify exact-channel health through the existing checker
+before retiring the old secret. Do not change `YOUTUBE_PUBLISH_MODE` to test access.
+
+Google issues seven-day refresh grants for external consent apps in **Testing**
+when these YouTube scopes are requested. Renewal restores access only for that
+bounded period; it is not a permanent repair of a testing-mode integration.
+Check the current consent publishing state and all clients sharing the Google
+project before changing that project-wide setting. See
+[Google's refresh-token rules](https://developers.google.com/identity/protocols/oauth2#expiration)
+and the dated [current state](CURRENT_STATE.md) for the active setup.
+
 Required for subscription Checkout:
 
 - `TAX_QUOTE_HASH_SECRET`
