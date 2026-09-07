@@ -75,11 +75,15 @@ staging. Production queue changes require an independent promotion and recovery
 review;
 verify its actual migration state instead of assuming a bootstrap baseline.
 
-Before deploying the staging Worker, verify `GITHUB_REF` names an existing
-reviewed website ref with `git ls-remote`. The retired staging ref is recorded in
-[CURRENT_STATE.md](CURRENT_STATE.md). A deleted or mistyped ref must leave the
+Before deploying the staging Worker, resolve its configured `GITHUB_REF` through
+the website repository's GitHub commits API. Staging uses an immutable reviewed
+website commit while `GITHUB_PUBLISH_MODE=dry_run`; Git branch listings alone do
+not validate a commit pin. Derive the ref from `wrangler.jsonc`, confirm the
+commit and `src/_data/podcastShows.json` are readable at that exact ref, and
+validate the catalog/News preview contracts. A missing target must leave the
 preview unavailable and must never fall back to the repository default branch.
-Production remains pinned to `main`.
+Any future staging write mode needs a separately reviewed writable branch.
+Production remains pinned to `main` with its current guarded publication mode.
 
 ## 2. Back up and migrate staging
 

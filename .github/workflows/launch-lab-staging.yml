@@ -29,6 +29,7 @@ jobs:
       - name: Rehearse DRY contract adapters
         run: >-
           npm test -- --run
+          tests/sponsor-cli.test.mjs
           tests/ad-runtime.test.ts
           tests/pool-redemptions.test.ts
           tests/pool-lifecycle.test.mjs

@@ -6,6 +6,12 @@ import {
   writeGitHubContentFile
 } from "../src/github-content";
 
+const stagingWebsite = {
+  GITHUB_OWNER: "aindaco1",
+  GITHUB_REPO: "dust-wave-new",
+  GITHUB_REF: "a".repeat(40)
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -24,7 +30,7 @@ describe("bounded GitHub Contents client", () => {
     const env = {
       GITHUB_OWNER: "aindaco1",
       GITHUB_REPO: "dust-wave-new",
-      GITHUB_REF: "release/1.2.0-youtube-preflight"
+      GITHUB_REF: stagingWebsite.GITHUB_REF
     } as unknown as PodcastEnv;
 
     await expect(
@@ -35,12 +41,26 @@ describe("bounded GitHub Contents client", () => {
     });
     const [url] = fetchMock.mock.calls[0];
     const init = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(String(url)).toContain(
-      "?ref=release%2F1.2.0-youtube-preflight"
-    );
+    expect(new URL(String(url)).searchParams.get("ref"))
+      .toBe(stagingWebsite.GITHUB_REF);
     expect(init.headers).not.toHaveProperty("authorization");
     expect(init.redirect).toBe("error");
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("does not fall back to main when the configured preview is unavailable", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
+      new Response(null, { status: 404 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(readGitHubContentFile(
+      stagingWebsite as unknown as PodcastEnv,
+      "src/_data/podcastShows.json"
+    )).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("ref"))
+      .toBe(stagingWebsite.GITHUB_REF);
   });
 
   it("requires write credentials before making a provider request", async () => {
@@ -67,7 +87,7 @@ describe("bounded GitHub Contents client", () => {
     const env = {
       GITHUB_OWNER: "aindaco1",
       GITHUB_REPO: "dust-wave-new",
-      GITHUB_REF: "release/1.2.0-youtube-preflight",
+      GITHUB_REF: "staging/review",
       GITHUB_TOKEN: "github_fixture_token"
     } as unknown as PodcastEnv;
 
@@ -86,7 +106,7 @@ describe("bounded GitHub Contents client", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       message: "Project fixture",
       content: btoa('[{"id":"show_fixture"}]\n'),
-      branch: "release/1.2.0-youtube-preflight",
+      branch: "staging/review",
       sha: "a".repeat(40)
     });
   });

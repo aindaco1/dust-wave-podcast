@@ -4,6 +4,11 @@
 
 These source changes do not identify a deployed Worker version:
 
+- Fixed plain-Node sponsor and Launch Lab CLIs by making the shared HTTP import
+  explicit, with subprocess regression coverage for JSON and synthetic-evidence
+  boundaries in the default CI suite.
+- Replaced the deleted staging website ref with a reviewed immutable commit;
+  retained dry-run publishing and tested exact-ref reads without a fallback.
 - Added content-independent prelaunch readiness with explicit content deferrals
   and a private golden canary.
 - Added guarded show creation and empty-draft deletion with permanent identity

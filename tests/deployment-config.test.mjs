@@ -39,6 +39,13 @@ function expectExactOrigins(origins) {
 }
 
 describe("deployment configuration", () => {
+  it("pins staging website previews to an immutable source with publishing closed", () => {
+    expect(config.env.staging.vars.GITHUB_REF).toMatch(/^[a-f0-9]{40}$/);
+    expect(config.env.staging.vars.GITHUB_PUBLISH_MODE).toBe("dry_run");
+    expect(config.env.production.vars.GITHUB_REF).toBe("main");
+    expect(config.env.production.vars.GITHUB_PUBLISH_MODE).toBe("dry_run");
+  });
+
   it("keeps credentialed browser origins isolated by environment", () => {
     const stagingOrigins = configuredOrigins("staging");
     const productionOrigins = configuredOrigins("production");
