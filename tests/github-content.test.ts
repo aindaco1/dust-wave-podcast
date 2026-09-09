@@ -44,7 +44,7 @@ describe("bounded GitHub Contents client", () => {
     expect(new URL(String(url)).searchParams.get("ref"))
       .toBe(stagingWebsite.GITHUB_REF);
     expect(init.headers).not.toHaveProperty("authorization");
-    expect(init.redirect).toBe("error");
+    expect(init.redirect).toBe("manual");
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -61,6 +61,17 @@ describe("bounded GitHub Contents client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get("ref"))
       .toBe(stagingWebsite.GITHUB_REF);
+  });
+
+  it("rejects redirects without following them or forwarding credentials", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, {
+      status: 302, headers: { location: "https://untrusted.example/content" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(readGitHubContentFile({
+      ...stagingWebsite, GITHUB_TOKEN: "github_fixture_token"
+    } as PodcastEnv, "src/_data/podcastShows.json")).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("requires write credentials before making a provider request", async () => {
