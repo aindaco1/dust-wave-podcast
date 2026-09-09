@@ -32,6 +32,8 @@ describe("Resend magic-link delivery evidence", () => {
     const payload = JSON.parse(
       String(fetchMock.mock.calls[0][1]?.body)
     ) as Record<string, unknown>;
+    expect(payload.reply_to).toBe("owner@example.com");
+    expect(payload.headers).toMatchObject({ "Auto-Submitted": "auto-generated" });
     expect(payload.subject).toBe("Tu enlace de acceso a Dust Wave Podcasts");
     expect(String(payload.html)).toContain("Acceder a Podcasts");
     expect(String(payload.html)).not.toContain("Sign in to Podcasts");
@@ -47,6 +49,8 @@ describe("Resend magic-link delivery evidence", () => {
     await sendAdminMagicLink(
       {
         RESEND_API_KEY: "resend_fixture",
+        PODCAST_OWNER_EMAIL: "owner@example.com",
+        PODCAST_EMAIL_REPLY_TO: "support@example.com",
         PODCAST_EMAIL_FROM:
           "Dust Wave Podcasts <podcasts@dustwave.xyz>"
       } as PodcastEnv,
@@ -55,6 +59,7 @@ describe("Resend magic-link delivery evidence", () => {
     const payload = JSON.parse(
       String(fetchMock.mock.calls[0][1]?.body)
     ) as Record<string, unknown>;
+    expect(payload.reply_to).toBe("support@example.com");
     expect(payload.subject).toBe("Your Dust Wave Podcasts sign-in link");
     expect(String(payload.html)).toContain("Sign in to Podcasts");
     expect(String(payload.html)).not.toContain("Acceder a Podcasts");
@@ -276,6 +281,7 @@ function deliver() {
   return sendAdminMagicLink(
     {
       RESEND_API_KEY: "resend_fixture",
+      PODCAST_OWNER_EMAIL: "owner@example.com",
       PODCAST_EMAIL_FROM:
         "Dust Wave Podcasts <podcasts@dustwave.xyz>"
     } as PodcastEnv,

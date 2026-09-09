@@ -1,3 +1,4 @@
+import { prepareResendEmail } from "@dustwave/worker-core/email";
 import type { PodcastEnv } from "./env";
 import { fetchWithTimeout } from "./fetch-with-timeout";
 import type { LoginLanguage } from "./passwordless-security";
@@ -371,7 +372,9 @@ async function sendResendPayload(
   if (!env.RESEND_API_KEY) {
     return { sent: false, failureCode: "not_configured" };
   }
-  const body = JSON.stringify(payload);
+  const body = JSON.stringify(prepareResendEmail(payload, {
+    replyTo: env.PODCAST_EMAIL_REPLY_TO || env.PODCAST_OWNER_EMAIL || ""
+  }));
   const requestInit = {
     method: "POST",
     headers: {

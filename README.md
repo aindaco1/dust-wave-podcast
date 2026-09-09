@@ -108,3 +108,5 @@ out of operating procedures. Older acceptance observations are labeled in the
 guides in `docs/` and keep submodule documentation with its owning repository.
 The old [Codex handoff](docs/CODEX_PROJECT_HANDOFF.md) is a
 compatibility link to the current-state report.
+
+Email transport defaults, configuration and rollback are documented in [Email delivery](docs/EMAIL_DELIVERABILITY.md).
