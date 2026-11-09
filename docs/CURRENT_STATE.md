@@ -1,22 +1,21 @@
 # Current state and next steps
 
-Verified: **2026-09-07** (`America/Denver`). Audience: maintainers and the next
-Codex task. Runtime source: `main` / `origin/main` at
-`54ec39fd3e11f9aebea8ef3eb42a0d21986d7424`, merged in
-[PR #97](https://github.com/aindaco1/dust-wave-podcast/pull/97) and deployed to
-staging; package version `0.2.26`. Later documentation commits are separate.
+Verified: **2026-11-08** (`America/Denver`). Source assessed: `main` at
+`b010ca1cc983ea7da6d462dcd82bcea286a92b2b`, package version `0.2.26`.
 
-The hosting and Admin foundations are implemented, and **the platform-ready
-checkpoint now passes**. The latest bounded monitor report has **12 PASS,
-0 BLOCK, 3 DEFER, 0 WAIT, 0 FAIL**: `safe=true`, `platformReady=true`,
-`launchReady=false`. Both previously failing evidence workflows pass, the canary
-and suppression evidence are current, and YouTube exact-channel access is
-restored. Launch still needs the three content-dependent acceptance exercises.
-The renewed Google Testing grant has a seven-day lifetime; resolve the shared
-consent configuration before treating access as durable.
+**The platform-ready checkpoint is currently blocked.** The latest retained
+[monitor report](https://github.com/aindaco1/dust-wave-podcast/actions/runs/42510184619)
+has **8 PASS, 3 BLOCK, 3 DEFER, 0 WAIT, 1 FAIL**: `safe=false`,
+`platformReady=false`, `launchReady=false`. Stripe's webhook journal fails;
+the private canary, YouTube channel access, and isolated Resend suppression
+evidence require attention. Content-dependent distribution, YouTube publication,
+and dynamic-ad acceptance remain deferred.
 
-This is a dated assessment, not a readiness store. Executable gates, D1, and
-provider evidence own operational truth. Replace this snapshot when reverified.
+The [November maintenance evidence](release-evidence/2026-11-08-maintenance.md)
+separates the local dependency repair from unresolved provider recovery. No
+provider settings, staging/production deployment, or launch capability were
+changed. This is a dated assessment; executable gates and durable provider
+records remain the authority.
 
 ## Goals and ownership
 
@@ -54,7 +53,7 @@ use it for product/ownership context, not current deployment or readiness claims
 | Editorial | Private transcription, review/export, AI proposals, alignment/chapter/clip contracts | Human-approved transcripts and the real bilingual H1 benchmark before gated public features |
 | Publication | One revision and root planner for RSS, News, and eligible YouTube; staleness, supersession, readiness digest and shadow/enforce modes | First-content projection and provider reconciliation; current modes remain guarded |
 | Billing/access | Stripe Checkout/Portal/webhook contracts, independent Stripe/Pool/manual sources, private-feed issue/rotation, expiry and manual tax evidence | Production policy/configuration approval and any selected Pool benefit mapping |
-| Announcements | Consent-bound outbox, signed events, withdrawal, suppression and idempotency; fresh isolated suppression proof passes | Any new live send remains separately scoped |
+| Announcements | Consent-bound outbox, signed events, withdrawal, suppression and idempotency; isolated suppression proof is required | Any new live send remains separately scoped |
 | YouTube/directories | Channel-health checks, controlled unlisted/native-video/audio-rendition paths, directory packet/validation/polling/recovery; exact-channel access restored September 7 | Retain current access evidence, a real publishable object, and ten genuine directory certifications |
 | Ads/analytics | Deterministic targeting, immutable equal-byte fallback, signed virtual audio, qualified counters, privacy-minimized aggregates/CSV; current synthetic gate passes | Real-client matrix and direct-sponsor pilot |
 | RSS migration | Reviewed plan, private copy/reconciliation, channel identity, cutover packet and final approval contracts | Owner-controlled old-host action after the existing migration gates; no automatic redirect activation |
@@ -63,7 +62,10 @@ Use [API.md](API.md), [SECURITY.md](SECURITY.md), and
 [USER_FLOWS.md](USER_FLOWS.md) for detailed behavior and regression ownership.
 Do not rebuild these implemented foundations as new roadmap tasks.
 
-## Verification evidence
+## Historical verification — September 7, 2026
+
+These results describe the earlier checkpoint and are not current acceptance.
+See the November evidence above for current checks and blockers.
 
 | Check | Result on this review | Limit |
 |---|---|---|
@@ -83,7 +85,7 @@ Do not rebuild these implemented foundations as new roadmap tasks.
 | Staging deployment | Credential revision `11295a7d-0a9c-483f-b27e-5e6877a98901` at 100%, September 7 at 07:02:31 UTC. Script ETag and runtime match source-annotated `37f420fd-cc22-4cf7-b58a-34ccdc893a3b`; only the YouTube client secret and refresh grant were replaced. Binding names and visible values are unchanged; public gate PASS | Keep the renewed credentials during any code rollback: older revisions reference the retired secret. The earlier code rollback target is `3c814720-f78a-4b1e-9c6f-60eae0f1070e`; the additive schema migration remains applied |
 | Production deployment | Worker `a2f41ecc-3efc-4c40-8d42-496aa2b73243`; public gate PASS | Inspected only; no production deployment or capability promotion |
 
-The monitor independently passes both fail-closed provider postures (14 staging
+The September 7 monitor independently passed both fail-closed provider postures (14 staging
 modes / 17 production modes), all 18 required staging secret names, show
 configuration, the episode gate, all 15 Stripe test-mode checks, fixture
 exclusion, the zero-write boundary, and D1 foreign keys. It does not provide a
@@ -96,7 +98,7 @@ benchmark rows, so the real bilingual H1 evidence and exact human approval in
 [the alignment gate](ALIGNMENT_GATE.md) remain outstanding. They gate word-level
 features and dependent chapters/clips, not the core audio/RSS launch.
 
-## Completed repair
+## Historical repair — September 7, 2026
 
 The extensionless HTTP import in [src/virtual-media.ts](../src/virtual-media.ts)
 blocked both CLIs under plain Node while Vitest resolved it successfully.
@@ -118,10 +120,28 @@ The website pin selects preview source; it does not deploy a website artifact.
 
 ## Concrete work queue
 
+### 0. Diagnose and recover the failed staging Stripe journal
+
+**Owner:** engineering with read access to staging D1. Inspect only the failed
+journal rows and the matching Launch Lab portal phase/error code. The November 6
+portal run and cleanup both returned HTTP 500; its contract snapshot reported
+`stripe_api_unavailable`. The November 8 monitor now passes 14 of 15 Stripe
+checks but fails the journal check. These observations do not establish a shared
+root cause. The connected Cloudflare account returned HTTP 403 for the read-only
+query, so provider diagnosis remains pending. On November 8 the owner explicitly
+chose to leave this investigation pending.
+
+Use the existing provider reconciliation/cleanup paths after identifying the
+exact failure. Do not delete failed rows, mark evidence successful manually, or
+rerun money-moving scenarios to clear a gate. Then refresh the private canary and
+isolated Resend suppression evidence through their existing approved workflows.
+
+
 ### 1. Resolve the consent app's bounded token lifetime
 
-**Owner:** account owner + engineering. Access renewal is complete; durable
-consent configuration requires a separate decision covering the shared project.
+**Owner:** account owner + engineering. The November 8 channel-access gate is
+blocked. The history below records the September renewal; it does not establish
+current access. Durable consent configuration still needs an account decision.
 
 OAuth follow-up on **2026-09-07** confirmed the dedicated **Dust Wave Podcast
 Staging** client in the same Google project as **Film Web**. The shared consent
@@ -154,12 +174,11 @@ Acceptance for durable access: the approved consent configuration supports the
 intended integration lifetime, and real exact-channel checks continue to pass.
 An old success or a freshly renewed testing grant cannot establish that lifetime.
 
-### 2. Preserve the restored platform-ready checkpoint
+### 2. Restore the platform-ready checkpoint
 
-**Owner:** engineering. **Status:** complete at the September 7 monitor snapshot;
-continued readiness depends on current source and provider evidence.
+**Owner:** engineering. **Status:** blocked at the November 8 monitor snapshot.
 
-The existing read-only monitor now reports `platformReady=true`, with zero
+The existing read-only monitor must report `platformReady=true`, with zero
 non-content blocks, waits, or failures and the three content nodes deferred.
 Inspect this structured result rather than treating workflow success as readiness.
 Before activation, rerun the existing prelaunch gate with `--require-ready` and
