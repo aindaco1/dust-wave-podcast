@@ -128,7 +128,8 @@ portal run and cleanup both returned HTTP 500; its contract snapshot reported
 `stripe_api_unavailable`. The November 8 monitor now passes 14 of 15 Stripe
 checks but fails the journal check. These observations do not establish a shared
 root cause. The connected Cloudflare account returned HTTP 403 for the read-only
-query, so provider diagnosis remains pending D1 Read access.
+query, so provider diagnosis remains pending. On November 8 the owner explicitly
+chose to leave this investigation pending.
 
 Use the existing provider reconciliation/cleanup paths after identifying the
 exact failure. Do not delete failed rows, mark evidence successful manually, or

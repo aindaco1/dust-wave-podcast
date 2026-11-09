@@ -18,7 +18,7 @@ provider recovery or deployment.
 
 - [November 6 Launch Lab](https://github.com/aindaco1/dust-wave-podcast/actions/runs/42403810148): portal and cleanup HTTP 500; retained contract observations fail `api_test_mode` and `product_price_contract` with `stripe_api_unavailable`.
 - [November 8 monitor](https://github.com/aindaco1/dust-wave-podcast/actions/runs/42510184619): 8 PASS, 3 BLOCK, 3 DEFER, 1 FAIL. Stripe now passes 14 checks but fails the webhook journal; private canary, channel access, and suppression evidence are blocked.
-- A read-only staging D1 query for failed event diagnostics and the portal phase returned HTTP 403. No query rows were available; no database/provider writes were attempted. Do not infer the portal's root cause from the general contract failure.
+- A read-only staging D1 query for failed event diagnostics and the portal phase returned HTTP 403. No query rows were available; no database/provider writes were attempted. The owner explicitly chose to leave provider investigation pending on November 8. Do not infer the portal's root cause from the general contract failure.
 
 The previous September checkpoint remains historical evidence in
 [Current state](../CURRENT_STATE.md#historical-verification--september-7-2026).
