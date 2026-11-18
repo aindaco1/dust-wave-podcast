@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const PLATFORM_COMMIT = "556fadad0755556bfbe3f177a9f60c208a6031a5";
+const PLATFORM_COMMIT = "d0b9e9595e2f57cbff26219db2bf78c26235d2f9";
 const PLATFORM_REMOTE = "https://github.com/aindaco1/dust-wave-platform.git";
 const PLATFORM_PACKAGES = {
-  "@dustwave/admin-shell": "0.10.2",
-  "@dustwave/media-core": "0.4.0",
-  "@dustwave/tax-core": "0.3.0",
-  "@dustwave/timed-text": "0.11.1",
-  "@dustwave/worker-core": "0.13.0"
+  "@dustwave/admin-shell": "0.15.1",
+  "@dustwave/media-core": "0.5.0",
+  "@dustwave/tax-core": "0.4.1",
+  "@dustwave/timed-text": "0.11.2",
+  "@dustwave/worker-core": "0.16.1"
 };
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
 
