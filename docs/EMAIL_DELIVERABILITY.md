@@ -8,6 +8,6 @@ All Podcast Resend messages use the existing `sendResendPayload` boundary. Optio
 
 ## Shared dependency and rollback
 
-Platform 0.36.0 (`556fadad0755556bfbe3f177a9f60c208a6031a5`) supplies Worker Core 0.13.0. Exact package versions are enforced by `tests/platform-pin.test.mjs`. This advances an older platform pin, so the full Podcast gate and staging/production Wrangler dry runs are required. No database migration is needed.
+Platform 0.51.1 (`d0b9e9595e2f57cbff26219db2bf78c26235d2f9`) supplies Worker Core 0.16.1. Exact package versions are enforced by `tests/platform-pin.test.mjs`. This advances an older platform pin, so the full Podcast gate and staging/production Wrangler dry runs are required. No database migration is needed.
 
 Rollback the complete adoption commit, restore pin `a0006c3e0c3f8ab814387491753989956adbbe94` with its matching lockfile, run `npm ci`, and redeploy the previous Worker version. Do not replay previously attempted announcement payloads under changed configuration; review existing delivery records before any manual resend.
